@@ -44,20 +44,22 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        prompt = f"""
+        prompt = f'''
 Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes entre A2 y C1, con el siguiente enfoque:
 
-1. Identifica claramente el TIPO DE TEXTO (carta formal, mensaje informal, correo electrónico profesional, narración, descripción, etc.). Explica por qué lo consideras así.
-2. Clasifica los ERRORES por categorías: gramática, léxico, puntuación, estructura textual. En cada categoría, indica:
-   - El fragmento erróneo exacto entre comillas.
+1. Indica claramente el TIPO DE TEXTO (carta formal, mensaje informal, correo profesional, narración, descripción, etc.) y justifica brevemente por qué.
+2. Clasifica los errores en secciones: Gramática, Léxico, Puntuación, Estructura textual. Dentro de cada sección, presenta:
+   - El fragmento erróneo entre comillas.
    - La corrección correspondiente.
    - Una explicación breve.
-3. Reescribe el texto corregido adaptándolo al tipo textual (por ejemplo, un registro formal si es una carta formal), respetando el estilo del alumno.
-4. Da un consejo final personalizado, empático y útil para el alumno llamado {nombre}.
+3. Reescribe el texto corregido adaptando el registro al tipo textual.
+4. Da un consejo final personalizado y empático para el alumno llamado {nombre}.
 
 Texto del alumno:
-"""{texto}"""
 """
+{texto}
+"""
+'''
 
         try:
             client = OpenAI(api_key=openai_api_key)
@@ -143,11 +145,7 @@ Texto del alumno:
                         p.style.font.size = Pt(11)
 
             doc.add_heading(f"Corrección para: {nombre}", 0)
-            doc.add_heading("Texto original", level=2)
-            for line in texto.strip().splitlines():
-                if line.strip():
-                    p = doc.add_paragraph(line.strip())
-                    p.style.font.size = Pt(11)
+            add_paragraph("Texto original", texto)
             if tipo_texto:
                 add_paragraph("Tipo de texto", tipo_texto)
             add_paragraph("Errores detectados", errores)
