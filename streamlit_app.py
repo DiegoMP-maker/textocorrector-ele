@@ -3,7 +3,8 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import openai
+from openai import OpenAI
+
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
