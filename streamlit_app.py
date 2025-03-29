@@ -1,39 +1,21 @@
 import streamlit as st
-from openai import OpenAI
-import requests
-import time
-import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from reportlab.pdfgen import canvas
-from io import BytesIO
 import json
+import gspread
+from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="Textocorrector ELE", layout="centered")
-st.title("📝 Textocorrector ELE – Corrección personalizada con voz y seguimiento")
-
-# Claves necesarias
-openai_api_key = st.text_input("🔑 Clave de OpenAI", type="password")
-elevenlabs_api_key = st.text_input("🔊 Clave ElevenLabs", type="password")
-assistant_id = "asst_ahcOfjROHfqwWAtxZygOvoMd"
-voice_id = "sAMGuncP1OMSXFyDOzx6"
-
-if not openai_api_key or not elevenlabs_api_key:
-    st.warning("Introduce tus claves para continuar.")
-    st.stop()
-
-client = OpenAI(api_key=openai_api_key)
-
-# Nombre del alumno
-nombre_alumno = st.text_input("👤 Nombre del alumno")
-texto = st.text_area("✍️ Texto del alumno (A2–C1):", height=300)
-
-# Usar credenciales desde Secrets
+# ÁMBITOS de acceso (lectura y escritura en hojas de cálculo)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+# Cargar las credenciales desde los SECRETS
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+
+# Autorizar cliente gspread
 client_gsheets = gspread.authorize(creds)
-sheet = client_gsheets.open("Historial_Correcciones_ELE").sheet1
+
+# Abrir hoja por ID (más seguro que por nombre)
+sheet = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").sheet1
+
 
 def analizar_errores(texto):
     errores = {
