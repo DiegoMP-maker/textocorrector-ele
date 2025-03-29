@@ -2,110 +2,79 @@ import streamlit as st
 import json
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime
+import openai
 
-# ÁMBITOS de acceso (lectura y escritura en hojas de cálculo)
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Cargar las credenciales desde los SECRETS
+# --- 2. CONEXIÓN A GOOGLE SHEETS ---
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# Cargar credenciales desde secrets
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-
-# Autorizar cliente gspread
 client_gsheets = gspread.authorize(creds)
 
-# Abrir hoja por ID (más seguro que por nombre)
-sheet = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").sheet1
+# Abrir hoja por ID
+try:
+    sheet = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").sheet1
+    st.success("✅ Conectado a Google Sheets correctamente.")
+except Exception as e:
+    st.error("❌ Error al conectar con Google Sheets. Revisa los permisos o el ID del documento.")
+    st.stop()
 
+# --- 3. INTERFAZ ---
+st.title("📝 Textocorrector ELE (por Diego)")
+st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback.")
 
-def analizar_errores(texto):
-    errores = {
-        "gramaticales": texto.lower().count("gramática"),
-        "léxicos": texto.lower().count("léxico"),
-        "puntuación": texto.lower().count("puntuación"),
-        "estructura": texto.lower().count("estructura")
-    }
-    errores["total"] = sum(errores.values())
-    return errores
+with st.form("formulario"):
+    nombre = st.text_input("¿Cómo te llamas?")
+    texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
+    enviar = st.form_submit_button("Corregir")
 
-def generar_pdf(nombre, correccion):
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.setFont("Helvetica", 10)
-    p.drawString(50, 820, f"Alumno: {nombre}")
-    p.drawString(50, 805, f"Fecha: {datetime.date.today()}")
-    y = 780
-    for line in correccion.split("\n"):
-        if y < 40:
-            p.showPage()
-            y = 800
-        p.drawString(50, y, line[:100])
-        y -= 15
-    p.save()
-    buffer.seek(0)
-    return buffer
+# --- 4. CORREGIR TEXTO CON IA ---
+if enviar and nombre and texto:
+    with st.spinner("Corrigiendo con IA…"):
 
-if st.button("Corregir texto y guardar historial"):
-    if not texto or not nombre_alumno:
-        st.warning("Faltan datos obligatorios.")
-        st.stop()
+        prompt = f"""
+Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Corrige el siguiente texto según estos criterios:
 
-    with st.spinner("Corrigiendo y generando feedback..."):
-        thread = client.beta.threads.create()
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=texto
-        )
+1. Clasificación de errores:
+   - Gramática
+   - Léxico
+   - Puntuación
+   - Estructura textual
 
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=assistant_id
-        )
+2. Explicaciones claras y breves por cada error.
 
-        while True:
-            run_check = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-            if run_check.status == "completed":
-                break
-            time.sleep(1)
+3. Versión corregida del texto (respetando el estilo del alumno).
 
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
-        respuesta = messages.data[0].content[0].text.value
+4. Consejo final personalizado para el alumno llamado {nombre}.
 
-        st.markdown("### ✅ Corrección completa:")
-        st.write(respuesta)
+Texto original:
+\"\"\"{texto}\"\"\"
+"""
 
-        consejo = respuesta.strip().split("\n")[-1]
-        errores = analizar_errores(respuesta)
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+            )
+            correccion = response.choices[0].message.content
 
-        fecha = str(datetime.date.today())
-        row = [
-            nombre_alumno, fecha, errores["total"], errores["gramaticales"],
-            errores["léxicos"], errores["puntuación"], errores["estructura"],
-            texto, respuesta, consejo
-        ]
-        sheet.append_row(row)
+            # Mostrar resultado
+            st.subheader("📘 Corrección")
+            st.markdown(correccion)
 
-        pdf = generar_pdf(nombre_alumno, respuesta)
-        st.download_button("⬇️ Descargar PDF de la corrección", data=pdf, file_name=f"correccion_{nombre_alumno}.pdf")
+            # Guardar en Google Sheets
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+            sheet.append_row([nombre, fecha, texto, correccion])
 
-        headers = {
-            "xi-api-key": elevenlabs_api_key,
-            "Content-Type": "application/json"
-        }
-        json_data = {
-            "text": consejo,
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
-            "model_id": "eleven_monolingual_v1"
-        }
-
-        audio_response = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-            headers=headers,
-            json=json_data
-        )
-
-        if audio_response.status_code == 200:
-            st.audio(audio_response.content, format="audio/mp3")
-            st.success("Consejo final leído con la voz de Diego.")
-        else:
-            st.error("No se pudo generar el audio con ElevenLabs.")
+            st.success("✅ Corrección guardada en Google Sheets.")
+        except Exception as e:
+            st.error(f"Error al generar la corrección o guardar: {e}")
