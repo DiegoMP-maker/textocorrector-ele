@@ -6,10 +6,8 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.enums import TA_JUSTIFY
+from docx import Document
+from docx.shared import Pt
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -61,9 +59,7 @@ Consejo final:
 [Consejo útil y motivador para el alumno llamado {nombre}]
 
 Texto del alumno:
-"""
 {texto}
-"""
 """
 
         try:
@@ -134,36 +130,28 @@ Texto del alumno:
             else:
                 errores = correccion
 
-            pdf_buffer = BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4,
-                                    rightMargin=60, leftMargin=60,
-                                    topMargin=60, bottomMargin=60)
+            doc = Document()
 
-            styles = getSampleStyleSheet()
-            styles.add(ParagraphStyle(name="Justify", alignment=TA_JUSTIFY, fontSize=11, leading=14))
-
-            story = []
-
-            def add_section(title, content):
-                story.append(Paragraph(f"<b>{title}</b>", styles["Heading4"]))
-                story.append(Spacer(1, 6))
+            def add_paragraph(title, content):
+                doc.add_heading(title, level=2)
                 for line in content.strip().splitlines():
                     if line.strip():
-                        story.append(Paragraph(line.strip(), styles["Justify"]))
-                        story.append(Spacer(1, 4))
-                story.append(Spacer(1, 12))
+                        p = doc.add_paragraph(line.strip())
+                        p.style.font.size = Pt(11)
 
-            story.append(Paragraph(f"Corrección para: <b>{nombre}</b>", styles["Title"]))
-            story.append(Spacer(1, 20))
+            doc.add_heading(f"Corrección para: {nombre}", 0)
             if tipo_texto:
-                add_section("Tipo de texto", tipo_texto)
-            add_section("Errores detectados", errores)
-            add_section("Versión corregida", version_corregida)
-            add_section("Consejo final", consejo_final)
+                add_paragraph("Tipo de texto", tipo_texto)
+            add_paragraph("Errores detectados", errores)
+            add_paragraph("Versión corregida", version_corregida)
+            add_paragraph("Consejo final", consejo_final)
 
-            doc.build(story)
-            pdf_buffer.seek(0)
-            st.download_button("📄 Descargar corrección en PDF", data=pdf_buffer, file_name=f"correccion_{nombre}.pdf")
+            word_buffer = BytesIO()
+            doc.save(word_buffer)
+            word_buffer.seek(0)
+
+            st.download_button("📄 Descargar corrección en Word", data=word_buffer, file_name=f"correccion_{nombre}.docx")
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
+
