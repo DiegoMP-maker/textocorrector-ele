@@ -140,6 +140,11 @@ Texto del alumno:
                         p.style.font.size = Pt(11)
 
             doc.add_heading(f"Corrección para: {nombre}", 0)
+            doc.add_heading("Texto original", level=2)
+            for line in texto.strip().splitlines():
+                if line.strip():
+                    p = doc.add_paragraph(line.strip())
+                    p.style.font.size = Pt(11)
             if tipo_texto:
                 add_paragraph("Tipo de texto", tipo_texto)
             add_paragraph("Errores detectados", errores)
@@ -154,4 +159,3 @@ Texto del alumno:
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
-
