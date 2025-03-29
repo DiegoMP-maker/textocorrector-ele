@@ -81,26 +81,32 @@ Texto del alumno:
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
+            # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
             if "Consejo final:" in correccion:
                 consejo = correccion.split("Consejo final:", 1)[-1].strip()
-                url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
-                headers = {
-                    "xi-api-key": elevenlabs_api_key,
-                    "Content-Type": "application/json"
-                }
-                data = {
-                    "text": consejo,
-                    "model_id": "eleven_multilingual_v2",
-                    "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.8
-                    }
-                }
-                response_audio = requests.post(url, headers=headers, json=data)
-                if response_audio.ok:
-                    st.audio(BytesIO(response_audio.content))
-                else:
-                    st.warning("No se pudo reproducir el consejo con ElevenLabs.")
+
+                if consejo:
+                    with st.spinner("Generando audio con ElevenLabs..."):
+                        url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                        headers = {
+                            "xi-api-key": elevenlabs_api_key,
+                            "Content-Type": "application/json"
+                        }
+                        data = {
+                            "text": consejo,
+                            "model_id": "eleven_multilingual_v2",
+                            "voice_settings": {
+                                "stability": 0.5,
+                                "similarity_boost": 0.8
+                            }
+                        }
+                        response_audio = requests.post(url, headers=headers, json=data)
+
+                        if response_audio.ok:
+                            audio_bytes = BytesIO(response_audio.content)
+                            st.audio(audio_bytes, format="audio/mpeg")
+                        else:
+                            st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
 
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
             txt_buffer = BytesIO()
