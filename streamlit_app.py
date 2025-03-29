@@ -60,7 +60,6 @@ Actúa como un profesor de español como lengua extranjera (ELE), experto y emp�
 
 Texto original:
 {texto}
-
 """
 
         try:
@@ -133,8 +132,7 @@ Texto original:
             pdf.setFont("Helvetica-Bold", 14)
             pdf.drawString(50, y, f"Corrección para: {nombre}")
 
-            def add_section(title, content):
-                nonlocal y
+            def add_section(pdf, title, content, y):
                 y -= 30
                 pdf.setFont("Helvetica-Bold", 12)
                 pdf.drawString(50, y, title)
@@ -146,10 +144,11 @@ Texto original:
                         y = 800
                     pdf.drawString(50, y, line[:100])
                     y -= 15
+                return y
 
-            add_section("Errores detectados", errores)
-            add_section("Versión corregida", version_corregida)
-            add_section("Consejo final", consejo_final)
+            y = add_section(pdf, "Errores detectados", errores, y)
+            y = add_section(pdf, "Versión corregida", version_corregida, y)
+            y = add_section(pdf, "Consejo final", consejo_final, y)
 
             pdf.save()
             pdf_buffer.seek(0)
