@@ -1,6 +1,7 @@
 streamlit
-openai>=1.2.0
+openai>=1.3.5
 requests
 gspread
 oauth2client
 reportlab
+pydub
