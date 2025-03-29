@@ -6,7 +6,9 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
-from reportlab.pdfgen import canvas
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -44,7 +46,9 @@ if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
         prompt = f"""
-Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Corrige el siguiente texto según estos criterios:
+Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Analiza primero el tipo de texto (por ejemplo: carta formal, correo informal, opinión, narrativa, etc.) y menciónalo al inicio.
+
+Después, corrige el texto según estos criterios:
 
 1. Clasificación de errores:
    - Gramática
@@ -54,9 +58,14 @@ Actúa como un profesor de español como lengua extranjera (ELE), experto y emp�
 
 2. Explicaciones claras y breves por cada error.
 
-3. Versión corregida del texto (respetando el estilo del alumno).
+3. Versión corregida del texto (respetando el estilo del alumno y adecuado al tipo textual detectado).
 
 4. Consejo final personalizado para el alumno llamado {nombre}.
+
+Además, aplica criterios específicos de corrección según el tipo de texto detectado. Por ejemplo:
+- En una carta formal: fórmulas de saludo y despedida, registro formal, estructuras convencionales.
+- En un correo informal: tono cercano, naturalidad, expresividad.
+- En textos argumentativos: uso de conectores, claridad de ideas, estructura de tesis-argumentos.
 
 Texto original:
 {texto}
@@ -111,49 +120,57 @@ Texto original:
                     st.warning("No se pudo reproducir el consejo con ElevenLabs.")
 
             # Generar PDF con estructura por secciones
+            tipo_texto = ""
             errores = ""
             version_corregida = ""
             consejo_final = ""
 
             if "Versión corregida:" in correccion:
                 partes = correccion.split("Versión corregida:", 1)
-                errores = partes[0].strip()
+                encabezado_y_errores = partes[0].strip()
                 resto = partes[1]
                 if "Consejo final:" in resto:
                     version_corregida, consejo_final = resto.split("Consejo final:", 1)
                 else:
                     version_corregida = resto
+
+                if "Tipo de texto:" in encabezado_y_errores:
+                    tipo_texto, errores = encabezado_y_errores.split("Tipo de texto:", 1)
+                    tipo_texto = "Tipo de texto:" + tipo_texto.strip()
+                    errores = errores.strip()
+                else:
+                    errores = encabezado_y_errores
             else:
                 errores = correccion
 
+            # PDF bien formateado con márgenes
             pdf_buffer = BytesIO()
-            pdf = canvas.Canvas(pdf_buffer)
-            y = 800
-            pdf.setFont("Helvetica-Bold", 14)
-            pdf.drawString(50, y, f"Corrección para: {nombre}")
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4,
+                                    rightMargin=50, leftMargin=50,
+                                    topMargin=50, bottomMargin=50)
 
-            def add_section(pdf, title, content, y):
-                y -= 30
-                pdf.setFont("Helvetica-Bold", 12)
-                pdf.drawString(50, y, title)
-                y -= 20
-                pdf.setFont("Helvetica", 10)
+            styles = getSampleStyleSheet()
+            story = []
+
+            def add_section(title, content):
+                story.append(Paragraph(f"<b>{title}</b>", styles["Heading4"]))
+                story.append(Spacer(1, 6))
                 for line in content.strip().splitlines():
-                    if y < 50:
-                        pdf.showPage()
-                        y = 800
-                    pdf.drawString(50, y, line[:100])
-                    y -= 15
-                return y
+                    story.append(Paragraph(line, styles["BodyText"]))
+                    story.append(Spacer(1, 4))
+                story.append(Spacer(1, 12))
 
-            y = add_section(pdf, "Errores detectados", errores, y)
-            y = add_section(pdf, "Versión corregida", version_corregida, y)
-            y = add_section(pdf, "Consejo final", consejo_final, y)
+            story.append(Paragraph(f"Corrección para: <b>{nombre}</b>", styles["Title"]))
+            story.append(Spacer(1, 20))
+            if tipo_texto:
+                add_section("Tipo de texto", tipo_texto)
+            add_section("Errores detectados", errores)
+            add_section("Versión corregida", version_corregida)
+            add_section("Consejo final", consejo_final)
 
-            pdf.save()
+            doc.build(story)
             pdf_buffer.seek(0)
             st.download_button("📄 Descargar corrección en PDF", data=pdf_buffer, file_name=f"correccion_{nombre}.pdf")
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
-
