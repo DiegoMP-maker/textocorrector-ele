@@ -7,8 +7,9 @@ from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.enums import TA_JUSTIFY
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -46,29 +47,23 @@ if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
         prompt = f"""
-Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Analiza primero el tipo de texto (por ejemplo: carta formal, correo informal, opinión, narrativa, etc.) y menciónalo al inicio.
+Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Tu respuesta debe estar estructurada así:
 
-Después, corrige el texto según estos criterios:
+Tipo de texto: [indica aquí el tipo textual: carta formal, email informal, opinión, descripción, etc.]
 
-1. Clasificación de errores:
-   - Gramática
-   - Léxico
-   - Puntuación
-   - Estructura textual
+Errores detectados:
+[Listado por categorías: gramática, léxico, puntuación, estructura textual. Explica cada uno brevemente.]
 
-2. Explicaciones claras y breves por cada error.
+Versión corregida:
+[Texto corregido, adecuado al tipo textual. Respeta el estilo del estudiante.]
 
-3. Versión corregida del texto (respetando el estilo del alumno y adecuado al tipo textual detectado).
+Consejo final:
+[Consejo útil y motivador para el alumno llamado {nombre}]
 
-4. Consejo final personalizado para el alumno llamado {nombre}.
-
-Además, aplica criterios específicos de corrección según el tipo de texto detectado. Por ejemplo:
-- En una carta formal: fórmulas de saludo y despedida, registro formal, estructuras convencionales.
-- En un correo informal: tono cercano, naturalidad, expresividad.
-- En textos argumentativos: uso de conectores, claridad de ideas, estructura de tesis-argumentos.
-
-Texto original:
+Texto del alumno:
+"""
 {texto}
+"""
 """
 
         try:
@@ -78,24 +73,21 @@ Texto original:
                 model="gpt-3.5-turbo",
                 temperature=0.5,
                 messages=[
-                    {"role": "system", "content": "Eres Diego, un profesor experto en ELE. Corrige textos de estudiantes entre A2 y C1. Señala errores, explica brevemente por qué, reescribe el texto corregido y da un consejo personalizado final."},
+                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual, explica errores, reescribe y da un consejo personalizado."},
                     {"role": "user", "content": prompt}
                 ]
             )
 
             correccion = response.choices[0].message.content
 
-            # Mostrar resultado
             st.subheader("📘 Corrección")
             st.markdown(correccion)
 
-            # Guardar en Google Sheets
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             sheet.append_row([nombre, fecha, texto, correccion])
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # Reproducir consejo final con voz clonada
             if "Consejo final:" in correccion:
                 consejo = correccion.split("Consejo final:", 1)[-1].strip()
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -119,7 +111,6 @@ Texto original:
                 else:
                     st.warning("No se pudo reproducir el consejo con ElevenLabs.")
 
-            # Generar PDF con estructura por secciones
             tipo_texto = ""
             errores = ""
             version_corregida = ""
@@ -143,21 +134,23 @@ Texto original:
             else:
                 errores = correccion
 
-            # PDF bien formateado con márgenes
             pdf_buffer = BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4,
                                     rightMargin=50, leftMargin=50,
                                     topMargin=50, bottomMargin=50)
 
             styles = getSampleStyleSheet()
+            styles.add(ParagraphStyle(name="Justify", alignment=TA_JUSTIFY))
+
             story = []
 
             def add_section(title, content):
                 story.append(Paragraph(f"<b>{title}</b>", styles["Heading4"]))
                 story.append(Spacer(1, 6))
                 for line in content.strip().splitlines():
-                    story.append(Paragraph(line, styles["BodyText"]))
-                    story.append(Spacer(1, 4))
+                    if line.strip():
+                        story.append(Paragraph(line.strip(), styles["Justify"]))
+                        story.append(Spacer(1, 4))
                 story.append(Spacer(1, 12))
 
             story.append(Paragraph(f"Corrección para: <b>{nombre}</b>", styles["Title"]))
