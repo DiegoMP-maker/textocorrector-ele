@@ -60,12 +60,21 @@ Texto original:
 """
 
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-            )
-            correccion = response.choices[0].message.content
+from openai import OpenAI
+
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+
+response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    temperature=0.5,
+    messages=[
+        {"role": "system", "content": "Eres Diego, un profesor experto en ELE. Corrige textos de estudiantes entre A2 y C1. Señala errores, explica brevemente por qué, reescribe el texto corregido y da un consejo personalizado final."},
+        {"role": "user", "content": prompt}
+    ]
+)
+
+correccion = response.choices[0].message.content
+
 
             # Mostrar resultado
             st.subheader("📘 Corrección")
