@@ -98,9 +98,7 @@ Texto del alumno:
                 }
                 response_audio = requests.post(url, headers=headers, json=data)
                 if response_audio.ok:
-                    with open("consejo_final.mp3", "wb") as f:
-                        f.write(response_audio.content)
-                    st.audio("consejo_final.mp3")
+                    st.audio(BytesIO(response_audio.content))
                 else:
                     st.warning("No se pudo reproducir el consejo con ElevenLabs.")
 
