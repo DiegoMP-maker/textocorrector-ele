@@ -109,7 +109,7 @@ Texto del alumno:
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
 
-            st.download_button("📄 Descargar corrección en TXT", data=txt_buffer, file_name=f"correccion_{nombre}.txt", mime="text/plain")
+            st.download_button("📝 Descargar corrección en TXT", data=txt_buffer, file_name=f"correccion_{nombre}.txt", mime="text/plain")
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
