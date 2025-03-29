@@ -1,0 +1,6 @@
+streamlit
+openai>=1.2.0
+requests
+gspread
+oauth2client
+reportlab
