@@ -138,31 +138,31 @@ Texto del alumno:
             x = margin
             y = height - margin
 
-            def draw_text_block(title, content):
-                nonlocal y
+            def draw_text_block(c, x, y_start, title, content):
                 c.setFont("Helvetica-Bold", 14)
-                c.drawString(x, y, title)
-                y -= 18
+                c.drawString(x, y_start, title)
+                y = y_start - 18
                 c.setFont("Helvetica", 11)
                 for line in content.strip().splitlines():
                     for subline in [line[i:i+90] for i in range(0, len(line), 90)]:
                         if y < margin:
                             c.showPage()
                             y = height - margin
+                            c.setFont("Helvetica", 11)
                         c.drawString(x, y, subline)
                         y -= 14
-                y -= 10
+                return y - 10
 
             c.setFont("Helvetica-Bold", 16)
             c.drawString(x, y, f"Corrección para: {nombre}")
             y -= 24
 
-            draw_text_block("Texto original", texto)
+            y = draw_text_block(c, x, y, "Texto original", texto)
             if tipo_texto:
-                draw_text_block("Tipo de texto", tipo_texto)
-            draw_text_block("Errores detectados", errores)
-            draw_text_block("Versión corregida", version_corregida)
-            draw_text_block("Consejo final", consejo_final)
+                y = draw_text_block(c, x, y, "Tipo de texto", tipo_texto)
+            y = draw_text_block(c, x, y, "Errores detectados", errores)
+            y = draw_text_block(c, x, y, "Versión corregida", version_corregida)
+            y = draw_text_block(c, x, y, "Consejo final", consejo_final)
 
             c.save()
             pdf_buffer.seek(0)
