@@ -47,15 +47,15 @@ if enviar and nombre and texto:
         prompt = f"""
 Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes entre A2 y C1, con el siguiente enfoque:
 
-1. **Identifica y nombra el tipo de texto** (carta formal, correo informal, narración, etc.). Debes empezar siempre con esto.
-2. **Detecta y clasifica los errores** por categorías (gramática, léxico, puntuación, estructura textual) indicando:
-   - El error encontrado
-   - La corrección correspondiente
-   - Una breve explicación
-3. **Reescribe el texto corregido** de forma adecuada al tipo textual, sin cambiar el estilo del alumno.
-4. **Da un consejo final personalizado y positivo al alumno llamado {nombre}**.
+1. Identifica claramente el TIPO DE TEXTO (carta formal, mensaje informal, correo electrónico profesional, narración, descripción, etc.). Explica por qué lo consideras así.
+2. Clasifica los ERRORES por categorías: gramática, léxico, puntuación, estructura textual. En cada categoría, indica:
+   - El fragmento erróneo exacto entre comillas.
+   - La corrección correspondiente.
+   - Una explicación breve.
+3. Reescribe el texto corregido adaptándolo al tipo textual (por ejemplo, un registro formal si es una carta formal), respetando el estilo del alumno.
+4. Da un consejo final personalizado, empático y útil para el alumno llamado {nombre}.
 
-**Texto del alumno**:
+Texto del alumno:
 """{texto}"""
 """
 
@@ -66,7 +66,7 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
                 model="gpt-3.5-turbo",
                 temperature=0.5,
                 messages=[
-                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual, explica errores con ejemplo/corrección/explicación, reescribe y da un consejo personalizado."},
+                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual con justificación, explica errores con ejemplo/corrección/explicación, reescribe con el registro adecuado y da un consejo personalizado."},
                     {"role": "user", "content": prompt}
                 ]
             )
