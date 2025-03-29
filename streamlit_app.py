@@ -7,7 +7,7 @@ from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -45,21 +45,20 @@ if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
         prompt = f"""
-Actúa como un profesor de español como lengua extranjera (ELE), experto y empático. Tu respuesta debe estar estructurada así:
+Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes entre A2 y C1, con el siguiente enfoque:
 
-Tipo de texto: [indica aquí el tipo textual: carta formal, email informal, opinión, descripción, etc.]
+1. **Identifica y nombra el tipo de texto** (carta formal, correo informal, narración, etc.). Debes empezar siempre con esto.
+2. **Detecta y clasifica los errores** en:
+   - Gramática
+   - Léxico
+   - Puntuación
+   - Estructura textual
+   Añade explicaciones breves y claras.
+3. **Reescribe el texto corregido** de forma adecuada al tipo textual, sin cambiar el estilo del alumno.
+4. **Da un consejo final personalizado y positivo al alumno llamado {nombre}**.
 
-Errores detectados:
-[Listado por categorías: gramática, léxico, puntuación, estructura textual. Explica cada uno brevemente.]
-
-Versión corregida:
-[Texto corregido, adecuado al tipo textual. Respeta el estilo del estudiante.]
-
-Consejo final:
-[Consejo útil y motivador para el alumno llamado {nombre}]
-
-Texto del alumno:
-{texto}
+**Texto del alumno**:
+"""{texto}"""
 """
 
         try:
@@ -131,6 +130,12 @@ Texto del alumno:
                 errores = correccion
 
             doc = Document()
+            sections = doc.sections
+            for section in sections:
+                section.top_margin = Inches(1)
+                section.bottom_margin = Inches(1)
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
 
             def add_paragraph(title, content):
                 doc.add_heading(title, level=2)
