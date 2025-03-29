@@ -59,7 +59,8 @@ Actúa como un profesor de español como lengua extranjera (ELE), experto y emp�
 4. Consejo final personalizado para el alumno llamado {nombre}.
 
 Texto original:
-"""{texto}"""
+{texto}
+
 """
 
         try:
