@@ -48,12 +48,10 @@ if enviar and nombre and texto:
 Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes entre A2 y C1, con el siguiente enfoque:
 
 1. **Identifica y nombra el tipo de texto** (carta formal, correo informal, narración, etc.). Debes empezar siempre con esto.
-2. **Detecta y clasifica los errores** en:
-   - Gramática
-   - Léxico
-   - Puntuación
-   - Estructura textual
-   Añade explicaciones breves y claras.
+2. **Detecta y clasifica los errores** por categorías (gramática, léxico, puntuación, estructura textual) indicando:
+   - El error encontrado
+   - La corrección correspondiente
+   - Una breve explicación
 3. **Reescribe el texto corregido** de forma adecuada al tipo textual, sin cambiar el estilo del alumno.
 4. **Da un consejo final personalizado y positivo al alumno llamado {nombre}**.
 
@@ -68,7 +66,7 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
                 model="gpt-3.5-turbo",
                 temperature=0.5,
                 messages=[
-                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual, explica errores, reescribe y da un consejo personalizado."},
+                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual, explica errores con ejemplo/corrección/explicación, reescribe y da un consejo personalizado."},
                     {"role": "user", "content": prompt}
                 ]
             )
