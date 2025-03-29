@@ -61,8 +61,6 @@ Texto original:
 """
 
         try:
-from openai import OpenAI
-
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 response = client.chat.completions.create(
@@ -75,6 +73,7 @@ response = client.chat.completions.create(
 )
 
 correccion = response.choices[0].message.content
+
 
 
             # Mostrar resultado
