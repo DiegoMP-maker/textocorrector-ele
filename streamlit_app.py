@@ -6,8 +6,9 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
-from docx import Document
-from docx.shared import Pt, Inches
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -129,34 +130,44 @@ Texto del alumno:
             else:
                 errores = correccion
 
-            doc = Document()
-            sections = doc.sections
-            for section in sections:
-                section.top_margin = Inches(1)
-                section.bottom_margin = Inches(1)
-                section.left_margin = Inches(1)
-                section.right_margin = Inches(1)
+            pdf_buffer = BytesIO()
+            c = canvas.Canvas(pdf_buffer, pagesize=A4)
+            width, height = A4
 
-            def add_paragraph(title, content):
-                doc.add_heading(title, level=2)
+            margin = inch
+            x = margin
+            y = height - margin
+
+            def draw_text_block(title, content):
+                nonlocal y
+                c.setFont("Helvetica-Bold", 14)
+                c.drawString(x, y, title)
+                y -= 18
+                c.setFont("Helvetica", 11)
                 for line in content.strip().splitlines():
-                    if line.strip():
-                        p = doc.add_paragraph(line.strip())
-                        p.style.font.size = Pt(11)
+                    for subline in [line[i:i+100] for i in range(0, len(line), 100)]:
+                        if y < margin:
+                            c.showPage()
+                            y = height - margin
+                        c.drawString(x, y, subline)
+                        y -= 14
+                y -= 10
 
-            doc.add_heading(f"Corrección para: {nombre}", 0)
-            add_paragraph("Texto original", texto)
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(x, y, f"Corrección para: {nombre}")
+            y -= 24
+
+            draw_text_block("Texto original", texto)
             if tipo_texto:
-                add_paragraph("Tipo de texto", tipo_texto)
-            add_paragraph("Errores detectados", errores)
-            add_paragraph("Versión corregida", version_corregida)
-            add_paragraph("Consejo final", consejo_final)
+                draw_text_block("Tipo de texto", tipo_texto)
+            draw_text_block("Errores detectados", errores)
+            draw_text_block("Versión corregida", version_corregida)
+            draw_text_block("Consejo final", consejo_final)
 
-            word_buffer = BytesIO()
-            doc.save(word_buffer)
-            word_buffer.seek(0)
+            c.save()
+            pdf_buffer.seek(0)
 
-            st.download_button("📄 Descargar corrección en Word", data=word_buffer, file_name=f"correccion_{nombre}.docx")
+            st.download_button("📄 Descargar corrección en PDF", data=pdf_buffer, file_name=f"correccion_{nombre}.pdf")
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
