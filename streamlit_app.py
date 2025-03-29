@@ -7,6 +7,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from reportlab.pdfgen import canvas
 from io import BytesIO
+import json
 
 st.set_page_config(page_title="Textocorrector ELE", layout="centered")
 st.title("📝 Textocorrector ELE – Corrección personalizada con voz y seguimiento")
@@ -27,12 +28,11 @@ client = OpenAI(api_key=openai_api_key)
 nombre_alumno = st.text_input("👤 Nombre del alumno")
 texto = st.text_area("✍️ Texto del alumno (A2–C1):", height=300)
 
-# Cargar credenciales de Google Sheets
+# Usar credenciales desde Secrets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client_gsheets = gspread.authorize(creds)
-
-# Abrir la hoja
 sheet = client_gsheets.open("Historial_Correcciones_ELE").sheet1
 
 def analizar_errores(texto):
@@ -95,7 +95,6 @@ if st.button("Corregir texto y guardar historial"):
         consejo = respuesta.strip().split("\n")[-1]
         errores = analizar_errores(respuesta)
 
-        # Guardar en Google Sheets
         fecha = str(datetime.date.today())
         row = [
             nombre_alumno, fecha, errores["total"], errores["gramaticales"],
@@ -104,11 +103,9 @@ if st.button("Corregir texto y guardar historial"):
         ]
         sheet.append_row(row)
 
-        # Generar PDF
         pdf = generar_pdf(nombre_alumno, respuesta)
         st.download_button("⬇️ Descargar PDF de la corrección", data=pdf, file_name=f"correccion_{nombre_alumno}.pdf")
 
-        # Audio con ElevenLabs
         headers = {
             "xi-api-key": elevenlabs_api_key,
             "Content-Type": "application/json"
