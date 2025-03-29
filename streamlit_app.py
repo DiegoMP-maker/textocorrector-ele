@@ -8,7 +8,7 @@ from openai import OpenAI
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
+from reportlab.lib.units import cm
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -134,7 +134,7 @@ Texto del alumno:
             c = canvas.Canvas(pdf_buffer, pagesize=A4)
             width, height = A4
 
-            margin = inch
+            margin = 2.54 * cm
             x = margin
             y = height - margin
 
@@ -145,7 +145,7 @@ Texto del alumno:
                 y -= 18
                 c.setFont("Helvetica", 11)
                 for line in content.strip().splitlines():
-                    for subline in [line[i:i+100] for i in range(0, len(line), 100)]:
+                    for subline in [line[i:i+90] for i in range(0, len(line), 90)]:
                         if y < margin:
                             c.showPage()
                             y = height - margin
