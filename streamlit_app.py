@@ -5,9 +5,8 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 
-
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+openai_api_key = st.secrets["OPENAI_API_KEY"]
 
 # --- 2. CONEXIÓN A GOOGLE SHEETS ---
 scope = [
@@ -61,20 +60,18 @@ Texto original:
 """
 
         try:
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+            client = OpenAI(api_key=openai_api_key)
 
-response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    temperature=0.5,
-    messages=[
-        {"role": "system", "content": "Eres Diego, un profesor experto en ELE. Corrige textos de estudiantes entre A2 y C1. Señala errores, explica brevemente por qué, reescribe el texto corregido y da un consejo personalizado final."},
-        {"role": "user", "content": prompt}
-    ]
-)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                temperature=0.5,
+                messages=[
+                    {"role": "system", "content": "Eres Diego, un profesor experto en ELE. Corrige textos de estudiantes entre A2 y C1. Señala errores, explica brevemente por qué, reescribe el texto corregido y da un consejo personalizado final."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
 
-correccion = response.choices[0].message.content
-
-
+            correccion = response.choices[0].message.content
 
             # Mostrar resultado
             st.subheader("📘 Corrección")
@@ -87,3 +84,4 @@ correccion = response.choices[0].message.content
             st.success("✅ Corrección guardada en Google Sheets.")
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
+
