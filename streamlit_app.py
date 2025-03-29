@@ -136,11 +136,11 @@ Texto del alumno:
 
             pdf_buffer = BytesIO()
             doc = SimpleDocTemplate(pdf_buffer, pagesize=A4,
-                                    rightMargin=50, leftMargin=50,
-                                    topMargin=50, bottomMargin=50)
+                                    rightMargin=60, leftMargin=60,
+                                    topMargin=60, bottomMargin=60)
 
             styles = getSampleStyleSheet()
-            styles.add(ParagraphStyle(name="Justify", alignment=TA_JUSTIFY))
+            styles.add(ParagraphStyle(name="Justify", alignment=TA_JUSTIFY, fontSize=11, leading=14))
 
             story = []
 
