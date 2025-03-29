@@ -6,9 +6,6 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -107,67 +104,12 @@ Texto del alumno:
                 else:
                     st.warning("No se pudo reproducir el consejo con ElevenLabs.")
 
-            tipo_texto = ""
-            errores = ""
-            version_corregida = ""
-            consejo_final = ""
+            feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
+            txt_buffer = BytesIO()
+            txt_buffer.write(feedback_txt.encode("utf-8"))
+            txt_buffer.seek(0)
 
-            if "Versión corregida:" in correccion:
-                partes = correccion.split("Versión corregida:", 1)
-                encabezado_y_errores = partes[0].strip()
-                resto = partes[1]
-                if "Consejo final:" in resto:
-                    version_corregida, consejo_final = resto.split("Consejo final:", 1)
-                else:
-                    version_corregida = resto
-
-                if "Tipo de texto:" in encabezado_y_errores:
-                    tipo_texto, errores = encabezado_y_errores.split("Tipo de texto:", 1)
-                    tipo_texto = "Tipo de texto:" + tipo_texto.strip()
-                    errores = errores.strip()
-                else:
-                    errores = encabezado_y_errores
-            else:
-                errores = correccion
-
-            pdf_buffer = BytesIO()
-            c = canvas.Canvas(pdf_buffer, pagesize=A4)
-            width, height = A4
-
-            margin = 2.54 * cm
-            x = margin
-            y = height - margin
-
-            def draw_text_block(c, x, y_start, title, content):
-                c.setFont("Helvetica-Bold", 14)
-                c.drawString(x, y_start, title)
-                y = y_start - 18
-                c.setFont("Helvetica", 11)
-                for line in content.strip().splitlines():
-                    for subline in [line[i:i+90] for i in range(0, len(line), 90)]:
-                        if y < margin:
-                            c.showPage()
-                            y = height - margin
-                            c.setFont("Helvetica", 11)
-                        c.drawString(x, y, subline)
-                        y -= 14
-                return y - 10
-
-            c.setFont("Helvetica-Bold", 16)
-            c.drawString(x, y, f"Corrección para: {nombre}")
-            y -= 24
-
-            y = draw_text_block(c, x, y, "Texto original", texto)
-            if tipo_texto:
-                y = draw_text_block(c, x, y, "Tipo de texto", tipo_texto)
-            y = draw_text_block(c, x, y, "Errores detectados", errores)
-            y = draw_text_block(c, x, y, "Versión corregida", version_corregida)
-            y = draw_text_block(c, x, y, "Consejo final", consejo_final)
-
-            c.save()
-            pdf_buffer.seek(0)
-
-            st.download_button("📄 Descargar corrección en PDF", data=pdf_buffer, file_name=f"correccion_{nombre}.pdf")
+            st.download_button("📄 Descargar corrección en TXT", data=txt_buffer, file_name=f"correccion_{nombre}.txt", mime="text/plain")
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
