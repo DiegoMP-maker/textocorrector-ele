@@ -113,7 +113,7 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
 
         # --- EXTRAER CONSEJO FINAL CON REGEX ROBUSTO ---
         consejo = ""
-        match = re.search(r"Consejo final:\s*(.*?)\s*Fin de texto corregido", correccion, re.DOTALL)
+        match = re.search(r"Consejo final:\s*(.+?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
         if match:
             consejo = match.group(1).strip()
         else:
