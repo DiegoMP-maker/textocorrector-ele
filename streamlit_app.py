@@ -84,16 +84,17 @@ Texto del alumno:
             # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
             consejo = ""
             encabezados_posibles = [
-                "Consejo final para",
                 "Consejo final:",
                 "Consejo personalizado:",
-                f"Consejo personalizado para {nombre}:",
-                f"Consejo final para {nombre}:"
+                f"Consejo final para {nombre}:",
+                f"Consejo personalizado para {nombre}:"
             ]
             for encabezado in encabezados_posibles:
                 if encabezado in correccion:
-                    consejo = correccion.split(encabezado, 1)[-1].split('\n')[0].strip()
-                    break
+                    partes = correccion.split(encabezado)
+                    if len(partes) > 1:
+                        consejo = partes[1].strip().split("\n")[0].strip()
+                        break
 
             if consejo:
                 st.markdown("**🔊 Consejo leído en voz alta:**")
