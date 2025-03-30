@@ -22,14 +22,16 @@ creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 client_gsheets = gspread.authorize(creds)
 
-# Usamos el nuevo ID del documento de Google Sheets
-DOCUMENT_ID = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"
+# IDs de los documentos
+CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
 
+# Abrir el documento de correcciones (se usará la primera hoja)
 try:
-    sheet = client_gsheets.open_by_key(DOCUMENT_ID).sheet1
-    st.success("✅ Conectado a Google Sheets correctamente.")
+    corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
+    st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
 except Exception as e:
-    st.error("❌ Error al conectar con Google Sheets. Revisa los permisos o el ID del documento.")
+    st.error("❌ Error al conectar con Historial_Correcciones_ELE. Revisa los permisos o el ID del documento.")
     st.stop()
 
 # --- 3. INTERFAZ ---
@@ -43,10 +45,7 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma = st.selectbox(
-        "Selecciona lenguaje para la corrección",
-        ["Español", "Francés", "Inglés"]
-    )
+    idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
@@ -72,7 +71,6 @@ Además:
 - Debes obedecer estrictamente estas instrucciones, sin mezclar idiomas.
 - El "Consejo final:" es siempre en español.
 """
-
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -82,7 +80,6 @@ Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 """
-
         try:
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
@@ -93,7 +90,6 @@ Idioma de corrección: {idioma}
                     {"role": "user", "content": user_message}
                 ]
             )
-
             correccion_original = response.choices[0].message.content
 
             # Eliminar cualquier línea que contenga "6. Cierre técnico"
@@ -114,7 +110,7 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
-            # Limpiar el bloque para que la voz no lea literalmente "Consejo final:"
+            # Limpiar para que la voz no lea literalmente "Consejo final:"
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
             correccion_limpia = correccion_sin_linea6.strip()
 
@@ -122,34 +118,31 @@ Idioma de corrección: {idioma}
             st.markdown(correccion_limpia)
 
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-            sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
-            st.success("✅ Corrección guardada en Google Sheets.")
+            corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
+            st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
-            # --- ANÁLISIS DE ERRORES PARA LA HOJA DE SEGUIMIENTO ---
-            def contar_errores_por_categoria(correccion, categoria):
-                patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
-                match_categ = re.search(patron, correccion, re.DOTALL)
-                if not match_categ:
-                    return 0
-                bloque = match_categ.group(1)
-                errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
-                return len(errores)
-
-            num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
-            num_lexico = contar_errores_por_categoria(correccion_limpia, "Léxico")
-            num_puntuacion = contar_errores_por_categoria(correccion_limpia, "Puntuación")
-            num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
-            total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
-
-            # --- GUARDAR EN LA HOJA "Seguimiento" ---
+            # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
             try:
-                documento = client_gsheets.open_by_key(DOCUMENT_ID)
-                st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
+                tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+                st.info(f"Hojas disponibles en Seguimiento: {[hoja.title for hoja in tracking_doc.worksheets()]}")
                 try:
-                    hoja_seguimiento = documento.worksheet("Seguimiento")
+                    hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
-                    hoja_seguimiento = documento.add_worksheet(title="Seguimiento", rows=100, cols=10)
+                    hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
+                def contar_errores_por_categoria(correccion, categoria):
+                    patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
+                    match_categ = re.search(patron, correccion, re.DOTALL)
+                    if not match_categ:
+                        return 0
+                    bloque = match_categ.group(1)
+                    errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
+                    return len(errores)
+                num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
+                num_lexico = contar_errores_por_categoria(correccion_limpia, "Léxico")
+                num_puntuacion = contar_errores_por_categoria(correccion_limpia, "Puntuación")
+                num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
+                total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -161,12 +154,12 @@ Idioma de corrección: {idioma}
                     total_errores,
                     consejo
                 ]
-                st.info(f"Intentando guardar en Seguimiento: {datos_seguimiento}")
+                st.info(f"Guardando seguimiento: {datos_seguimiento}")
                 hoja_seguimiento.append_row(datos_seguimiento)
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
-            # --- AUDIO CON ELEVENLABS ---
+            # --- GENERAR AUDIO CON ELEVENLABS ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -194,13 +187,7 @@ Idioma de corrección: {idioma}
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
-
             st.download_button(
                 "📝 Descargar corrección en TXT",
                 data=txt_buffer,
-                file_name=f"correccion_{nombre}.txt",
-                mime="text/plain"
-            )
-
-        except Exception as e:
-            st.error(f"Error al generar la corrección o guardar: {e}")
+                file_name_
