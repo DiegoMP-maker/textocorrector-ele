@@ -83,10 +83,17 @@ Texto del alumno:
 
             # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
             consejo = ""
-            if "Consejo final para" in correccion:
-                consejo = correccion.split("Consejo final para", 1)[-1].split("\n", 1)[-1].strip()
-            elif "Consejo final:" in correccion:
-                consejo = correccion.split("Consejo final:", 1)[-1].strip()
+            encabezados_posibles = [
+                "Consejo final para",
+                "Consejo final:",
+                "Consejo personalizado:",
+                f"Consejo personalizado para {nombre}:",
+                f"Consejo final para {nombre}:"
+            ]
+            for encabezado in encabezados_posibles:
+                if encabezado in correccion:
+                    consejo = correccion.split(encabezado, 1)[-1].strip()
+                    break
 
             if consejo:
                 st.markdown("**🔊 Consejo leído en voz alta:**")
@@ -111,6 +118,8 @@ Texto del alumno:
                         st.audio(audio_bytes, format="audio/mpeg")
                     else:
                         st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
+            else:
+                st.info("ℹ️ No se encontró el consejo final en el texto corregido. Asegúrate de que esté presente con una etiqueta clara como 'Consejo final:'.")
 
             # DESCARGA EN TXT
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
