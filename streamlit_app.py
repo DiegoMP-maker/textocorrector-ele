@@ -26,7 +26,7 @@ client_gsheets = gspread.authorize(creds)
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
 TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
 
-# Abrir el documento de correcciones (se usará la primera hoja)
+# --- Abrimos el documento de correcciones (historial) en su primera hoja ---
 try:
     corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
     st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
@@ -45,13 +45,18 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
+    idioma = st.selectbox(
+        "Selecciona lenguaje para la corrección",
+        ["Español", "Francés", "Inglés"]
+    )
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
+
+        # Mensaje de sistema
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
@@ -71,6 +76,8 @@ Además:
 - Debes obedecer estrictamente estas instrucciones, sin mezclar idiomas.
 - El "Consejo final:" es siempre en español.
 """
+
+        # Mensaje de usuario con triple comilla escapada
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -80,7 +87,9 @@ Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 """
+
         try:
+            # Llamada a la API de OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-4",
@@ -92,14 +101,14 @@ Idioma de corrección: {idioma}
             )
             correccion_original = response.choices[0].message.content
 
-            # Eliminar cualquier línea que contenga "6. Cierre técnico"
+            # Eliminar la línea "6. Cierre técnico" si aparece
             correccion_sin_linea6 = re.sub(
                 r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
                 "",
                 correccion_original
             )
 
-            # Extraer el bloque del consejo final (entre "Consejo final:" y "Fin de texto corregido")
+            # Extraer consejo final (entre "Consejo final:" y "Fin de texto corregido")
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -110,26 +119,32 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
-            # Limpiar para que la voz no lea literalmente "Consejo final:"
+            # Limpiar "Consejo final:" para que no lo lea la voz
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
             correccion_limpia = correccion_sin_linea6.strip()
 
+            # Mostramos la corrección en pantalla
             st.subheader("📘 Corrección")
             st.markdown(correccion_limpia)
 
+            # Guardamos en la hoja principal del documento Historial_Correcciones_ELE
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
-            # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
+            # --- GUARDAR SEGUIMIENTO EN OTRO DOCUMENTO ---
             try:
                 tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-                st.info(f"Hojas disponibles en Seguimiento: {[hoja.title for hoja in tracking_doc.worksheets()]}")
+                st.info(f"Hojas disponibles en el documento Seguimiento: {[hoja.title for hoja in tracking_doc.worksheets()]}")
+                
+                # Intentar abrir la hoja "Seguimiento"
                 try:
                     hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
                     hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
+                
+                # Función para contar errores por categoría
                 def contar_errores_por_categoria(correccion, categoria):
                     patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
                     match_categ = re.search(patron, correccion, re.DOTALL)
@@ -138,11 +153,14 @@ Idioma de corrección: {idioma}
                     bloque = match_categ.group(1)
                     errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
                     return len(errores)
+                
                 num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
                 num_lexico = contar_errores_por_categoria(correccion_limpia, "Léxico")
                 num_puntuacion = contar_errores_por_categoria(correccion_limpia, "Puntuación")
                 num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
                 total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+
+                # Datos para la hoja "Seguimiento"
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -188,6 +206,11 @@ Idioma de corrección: {idioma}
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
             st.download_button(
-                "📝 Descargar corrección en TXT",
+                label="📝 Descargar corrección en TXT",
                 data=txt_buffer,
-                file_name_
+                file_name=f"correccion_{nombre}.txt",
+                mime="text/plain"
+            )
+
+        except Exception as e:
+            st.error(f"Error al generar la corrección o guardar: {e}")
