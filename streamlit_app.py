@@ -159,10 +159,15 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            }}
        ]
   }},
-  "texto_corregido": "string",       // en {idioma}
+  "texto_corregido": "string",       // siempre en español
   "consejo_final": "string",         // en español
   "fin": "Fin de texto corregido."
 }}
+
+IMPORTANTE:
+- Las explicaciones de los errores deben estar en {idioma}
+- El texto corregido completo SIEMPRE debe estar en español, independientemente del idioma seleccionado
+- El consejo final SIEMPRE debe estar en español
 
 No devuelvas ningún texto extra fuera de este JSON.
 """
@@ -207,10 +212,10 @@ Idioma de corrección: {idioma}
                             st.write(f"    Explicación: {err.get('explicacion','')}")
                     st.write("---")
 
-            st.subheader("Texto corregido completo (en el idioma solicitado)")
+            st.subheader("Texto corregido completo")
             st.write(texto_corregido)
 
-            st.subheader("Consejo final (en español)")
+            st.subheader("Consejo final")
             st.write(consejo_final)
             st.write(fin)
 
@@ -277,7 +282,7 @@ Idioma de corrección: {idioma}
                 st.code(str(e))
 
             # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
-            st.markdown("**🔊 Consejo leído en voz alta (en español):**")
+            st.markdown("**🔊 Consejo leído en voz alta:**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
                 headers = {
