@@ -60,7 +60,7 @@ encabezados = {
         "saludo": "Salutation",
         "tipo_texto": "Type de texte et justification",
         "errores": "Erreurs détectées",
-        "texto_corregido": "Texte corrigé en espagnol (proposition idéale)",
+        "texto_corregido": "Texte corrigé (en espagnol)",
         "consejo_final": "Conseil final (en espagnol)",
         "fragmento": "Fragment erroné",
         "correccion": "Correction",
@@ -71,7 +71,7 @@ encabezados = {
         "saludo": "Greeting",
         "tipo_texto": "Text type and justification",
         "errores": "Detected errors",
-        "texto_corregido": "Corrected text in Spanish (ideal proposal)",
+        "texto_corregido": "Corrected text (in Spanish)",
         "consejo_final": "Final advice (in Spanish)",
         "fragmento": "Error fragment",
         "correccion": "Correction",
@@ -95,7 +95,8 @@ Texto del alumno:
 Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
-Recuerda: el texto corregido final debe estar en español, ya que es una propuesta modelo para el aprendizaje de ELE.
+
+IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR EN ESPAÑOL. NO RESPONDAS EN OTRO IDIOMA EN ESE CAMPO.
 '''
 
         client = OpenAI(api_key=openai_api_key)
@@ -109,18 +110,17 @@ Recuerda: el texto corregido final debe estar en español, ya que es una propues
                     "content": f"""
 Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
 
-Tu tarea es corregir textos escritos por estudiantes que están aprendiendo español, aunque escriban en otro idioma.
+⚠️ ATENCIÓN CRÍTICA:
+El texto corregido (campo \"texto_corregido\") debe estar SIEMPRE redactado en ESPAÑOL. No importa si el alumno escribe en inglés, francés o elige otro idioma para las explicaciones.
 
-IMPORTANTE:
-- Siempre debes devolver el campo \"texto_corregido\" redactado en **español correcto y natural**, sin importar el idioma del texto original o de las explicaciones.
-- Este campo es una propuesta modelo de cómo se escribiría ese mismo texto en español perfecto.
-- Las explicaciones de errores sí deben aparecer en el idioma seleccionado por el alumno (Español, Francés o Inglés).
-- Solo el texto final corregido va en español. No olvides esto.
+Si devuelves el texto corregido en otro idioma, será un ERROR GRAVE. Repite: el campo \"texto_corregido\" va siempre en español, es una propuesta modelo de ELE.
+
+Solo las "explicaciones" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones van en español.
 
 Estructura esperada:
 1. saludo
 2. tipo_texto
-3. errores clasificados (con explicaciones en el idioma seleccionado)
+3. errores clasificados (solo el campo "explicacion" en el idioma solicitado)
 4. texto_corregido (en español)
 5. consejo_final (en español)
 6. fin
