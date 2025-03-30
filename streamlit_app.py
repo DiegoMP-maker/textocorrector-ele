@@ -24,7 +24,7 @@ client_gsheets = gspread.authorize(creds)
 
 # IDs de los documentos
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
-TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
 
 # --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
 try:
@@ -49,12 +49,8 @@ with st.form("formulario"):
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
+# Función para obtener JSON de la IA con reintentos
 def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
-    """
-    Llama a la API de OpenAI hasta max_retries veces, intentando parsear la respuesta como JSON.
-    Si no se obtiene un JSON válido, envía un mensaje correctivo y reintenta.
-    Devuelve (raw_output, data_json) si tiene éxito, o lanza excepción si no logra parsear.
-    """
     client = OpenAI(api_key=openai_api_key)
     messages = [
         {"role": "system", "content": system_msg},
@@ -99,9 +95,9 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
         # Instrucciones: 
-        # 1) Secciones en el idioma indicado (saludo, tipo_texto, errores, texto_corregido).
-        # 2) "consejo_final" siempre en español.
-        # 3) Errores agrupados por categorías (cada categoría con una lista de errores).
+        # - "saludo", "tipo_texto", "errores" y "texto_corregido" se deben generar en el idioma solicitado.
+        # - "consejo_final" se debe generar en español.
+        # - Los errores se deben agrupar por categoría (cada categoría es una clave con un array de errores).
         system_message = f"""
 Eres Diego, un profesor experto en ELE.
 Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
@@ -116,7 +112,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
-           // más errores de Gramática
+           // más errores de Gramática (o [] si ninguno)
        ],
        "Léxico": [
            {{
@@ -124,7 +120,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
-           // más errores de Léxico
        ],
        "Puntuación": [
            {{
@@ -132,7 +127,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
-           // más errores de Puntuación
        ],
        "Estructura textual": [
            {{
@@ -140,7 +134,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
-           // más errores de Estructura textual
        ]
   }},
   "texto_corregido": "string",       // en {idioma}
@@ -150,7 +143,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
 
 No devuelvas ningún texto extra fuera de este JSON.
 """
-
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -172,18 +164,14 @@ Idioma de corrección: {idioma}
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
-            # MOSTRAR RESULTADOS
             st.subheader("Saludo")
             st.write(saludo)
-
             st.subheader("Tipo de texto y justificación")
             st.write(tipo_texto)
-
             st.subheader("Errores detectados")
             if not errores_obj:
                 st.write("No se han detectado errores.")
             else:
-                # Mostrar cada categoría una sola vez
                 for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
                     lista_errores = errores_obj.get(categoria, [])
                     st.markdown(f"**{categoria}**")
@@ -196,7 +184,7 @@ Idioma de corrección: {idioma}
                             st.write(f"    Explicación: {err.get('explicacion','')}")
                     st.write("---")
 
-            st.subheader("Texto corregido completo (en español o en el idioma solicitado)")
+            st.subheader("Texto corregido completo (en el idioma solicitado)")
             st.write(texto_corregido)
 
             st.subheader("Consejo final (en español)")
@@ -240,7 +228,6 @@ Idioma de corrección: {idioma}
                 ]
                 hoja_seguimiento.append_row(datos_seguimiento)
                 st.info(f"Guardado seguimiento: {datos_seguimiento}")
-
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
