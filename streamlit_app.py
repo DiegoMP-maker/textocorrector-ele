@@ -140,7 +140,7 @@ Idioma de corrección: {idioma}
 
             try:
                 hoja_seguimiento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").worksheet("Seguimiento")
-                hoja_seguimiento.append_row([
+                datos_seguimiento = [
                     nombre,
                     nivel,
                     fecha,
@@ -150,7 +150,9 @@ Idioma de corrección: {idioma}
                     num_estructura,
                     total_errores,
                     consejo
-                ])
+                ]
+                st.info(f"Intentando guardar en Seguimiento: {datos_seguimiento}")
+                hoja_seguimiento.append_row(datos_seguimiento)
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
