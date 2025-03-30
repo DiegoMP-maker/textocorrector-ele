@@ -951,10 +951,10 @@ Contexto cultural: {contexto_cultural}
                 # 2. Opciones de exportación
                 st.header("📊 Exportar informe")
                 
-                # Opciones de exportación en pestañas
-                tab1, tab2, tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
-                
-        with tab1:
+               # Opciones de exportación en pestañas
+tab1, tab2, tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
+
+with tab1:
     st.write("Exporta este informe como documento Word (DOCX)")
     
     # Generar el buffer por adelantado
