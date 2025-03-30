@@ -140,8 +140,8 @@ Idioma de corrección: {idioma}
 
             try:
                 documento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8")
-st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
-hoja_seguimiento = documento.worksheet("Seguimiento")
+                st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
+                hoja_seguimiento = documento.worksheet("Seguimiento")
                 datos_seguimiento = [
                     nombre,
                     nivel,
