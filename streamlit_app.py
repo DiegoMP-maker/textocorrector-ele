@@ -52,6 +52,7 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
+        # Mensaje del sistema
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
@@ -73,17 +74,19 @@ Además:
 - El "Consejo final:" es siempre en español.
 """
 
+        # Mensaje del usuario, con triple comilla escapada para el texto
         user_message = f"""
 Texto del alumno:
-"""
+\"\"\"
 {texto}
-"""
+\"\"\"
 Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 """
 
         try:
+            # Llamada a la API de OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-4",
@@ -96,12 +99,14 @@ Idioma de corrección: {idioma}
 
             correccion_original = response.choices[0].message.content
 
+            # Eliminamos si aparece "6. Cierre técnico"
             correccion_sin_linea6 = re.sub(
                 r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
                 "",
                 correccion_original
             )
 
+            # Extraemos el consejo final
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -112,12 +117,15 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
+            # Limpiamos el consejo para que la voz no lea "Consejo final:"
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
             correccion_limpia = correccion_sin_linea6.strip()
 
+            # Mostramos la corrección en pantalla
             st.subheader("📘 Corrección")
             st.markdown(correccion_limpia)
 
+            # Guardamos en la hoja principal
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
             st.success("✅ Corrección guardada en Google Sheets.")
@@ -125,10 +133,10 @@ Idioma de corrección: {idioma}
             # --- ANÁLISIS DE ERRORES PARA LA HOJA DE SEGUIMIENTO ---
             def contar_errores_por_categoria(correccion, categoria):
                 patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
-                match = re.search(patron, correccion, re.DOTALL)
-                if not match:
+                match_categ = re.search(patron, correccion, re.DOTALL)
+                if not match_categ:
                     return 0
-                bloque = match.group(1)
+                bloque = match_categ.group(1)
                 errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
                 return len(errores)
 
@@ -138,6 +146,7 @@ Idioma de corrección: {idioma}
             num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
             total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
+            # Guardamos en la hoja "Seguimiento"
             try:
                 documento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8")
                 st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
@@ -158,6 +167,7 @@ Idioma de corrección: {idioma}
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
+            # Generamos el audio del consejo
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -180,6 +190,7 @@ Idioma de corrección: {idioma}
                 else:
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
+            # Opción de descarga en TXT
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion_limpia}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
