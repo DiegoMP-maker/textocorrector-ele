@@ -92,7 +92,7 @@ Texto del alumno:
             ]
             for encabezado in encabezados_posibles:
                 if encabezado in correccion:
-                    consejo = correccion.split(encabezado, 1)[-1].strip()
+                    consejo = correccion.split(encabezado, 1)[-1].split('\n')[0].strip()
                     break
 
             if consejo:
@@ -119,7 +119,7 @@ Texto del alumno:
                     else:
                         st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
             else:
-                st.info("ℹ️ No se encontró el consejo final en el texto corregido. Asegúrate de que esté presente con una etiqueta clara como 'Consejo final:'.")
+                st.info("ℹ️ No se encontró el consejo final en el texto corregido.")
 
             # DESCARGA EN TXT
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
