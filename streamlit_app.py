@@ -1,3 +1,6 @@
+# Este script requiere un entorno con acceso a las bibliotecas necesarias.
+# Asegúrate de ejecutarlo localmente o en un entorno de Streamlit compatible.
+
 import streamlit as st
 import json
 import gspread
@@ -45,7 +48,6 @@ with st.form("formulario"):
     enviar = st.form_submit_button("Corregir")
 
 # --- Traducciones de encabezados ---
-# Todos los encabezados se muestran en español, excepto "explicación" que se adapta al idioma seleccionado.
 encabezados = {
     "Español": {
         "saludo": "Saludo",
@@ -59,26 +61,26 @@ encabezados = {
         "consejo_final": "Consejo final"
     },
     "Francés": {
-        "saludo": "Saludo",
-        "tipo_texto": "Tipo de texto y justificación",
-        "errores": "Errores detectados",
-        "texto_corregido": "Texto corregido",
-        "fragmento": "Fragmento erróneo",
-        "correccion": "Corrección",
+        "saludo": "Salutation",
+        "tipo_texto": "Type de texte et justification",
+        "errores": "Erreurs détectées",
+        "texto_corregido": "Texte corrigé",
+        "fragmento": "Fragment erroné",
+        "correccion": "Correction",
         "explicacion": "Explication",
-        "sin_errores": "Sin errores en esta categoría.",
-        "consejo_final": "Consejo final"
+        "sin_errores": "Pas d'erreurs dans cette catégorie.",
+        "consejo_final": "Conseil final"
     },
     "Inglés": {
-        "saludo": "Saludo",
-        "tipo_texto": "Tipo de texto y justificación",
-        "errores": "Errores detectados",
-        "texto_corregido": "Texto corregido",
-        "fragmento": "Fragmento erróneo",
-        "correccion": "Corrección",
+        "saludo": "Greeting",
+        "tipo_texto": "Text type and justification",
+        "errores": "Detected errors",
+        "texto_corregido": "Corrected text",
+        "fragmento": "Error fragment",
+        "correccion": "Correction",
         "explicacion": "Explanation",
-        "sin_errores": "Sin errores en esta categoría.",
-        "consejo_final": "Consejo final"
+        "sin_errores": "No errors in this category.",
+        "consejo_final": "Final advice"
     }
 }
 
@@ -86,8 +88,8 @@ encabezados = {
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        # Traducciones aplicadas únicamente al campo "explicacion"
         traducciones = encabezados[idioma]
+        encabezados_es = encabezados["Español"]
 
         prompt = f'''
 Texto del alumno:
@@ -113,14 +115,16 @@ IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR SIEMPRE EN ESPAÑOL. No importa 
 Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
 
 ⚠️ ATENCIÓN CRÍTICA:
-El campo "texto_corregido" debe estar SIEMPRE redactado en ESPAÑOL. Si lo devuelves en otro idioma, será un ERROR GRAVE. Repite: el campo "texto_corregido" va siempre en español, es una propuesta modelo de ELE.
+El texto corregido (campo \"texto_corregido\") debe estar SIEMPRE redactado en ESPAÑOL. No importa si el alumno escribe en inglés, francés o elige otro idioma para las explicaciones.
 
-Solo las "explicaciones" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones deben estar en español.
+Si devuelves el texto corregido en otro idioma, será un ERROR GRAVE. Repite: el campo \"texto_corregido\" va siempre en español, es una propuesta modelo de ELE.
+
+Solo las "explicaciones" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones van en español.
 
 Estructura esperada:
 1. saludo
 2. tipo_texto
-3. errores clasificados (solo el campo "explicacion" en el idioma seleccionado)
+3. errores clasificados (solo el campo \"explicacion\" en el idioma solicitado)
 4. texto_corregido (en español)
 5. consejo_final (en español)
 6. fin
@@ -139,6 +143,8 @@ Responde únicamente con esta estructura y evita cualquier otro comentario fuera
 
         st.subheader(f"📘 {traducciones['errores']}")
         st.markdown(correccion)
+
+        st.subheader(encabezados_es['texto_corregido'])
 
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
         sheet.append_row([nombre, nivel, fecha, texto, correccion])
@@ -169,12 +175,16 @@ Responde únicamente con esta estructura y evita cualquier otro comentario fuera
             else:
                 st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-        # El botón de descarga se mantiene en español, sin variar según el idioma seleccionado.
-        download_label = "📝 Descargar corrección en TXT"
         feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
         txt_buffer = BytesIO()
         txt_buffer.write(feedback_txt.encode("utf-8"))
         txt_buffer.seek(0)
+
+        download_label = {
+            "Español": "📝 Descargar corrección en TXT",
+            "Francés": "📝 Télécharger correction en TXT",
+            "Inglés": "📝 Download correction in TXT"
+        }[idioma]
 
         st.download_button(
             download_label,
