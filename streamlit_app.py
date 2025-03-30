@@ -8,6 +8,9 @@ from datetime import datetime
 from openai import OpenAI
 from io import BytesIO
 
+# Variable de debug: ponla en True para ver la salida cruda, False para ocultarla
+DEBUG = False
+
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 elevenlabs_api_key = st.secrets["ELEVENLABS_API_KEY"]
@@ -24,9 +27,9 @@ client_gsheets = gspread.authorize(creds)
 
 # IDs de los documentos
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
-TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
 
-# --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
+# Abrir documento de correcciones (Historial_Correcciones_ELE)
 try:
     corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
     st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
@@ -49,25 +52,14 @@ with st.form("formulario"):
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
-# --- FUNCIÓN DE LLAMADA A LA IA CON REINTENTOS ---
+# Función para obtener JSON de la IA con reintentos
 def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
-    """
-    Llama a la API de OpenAI hasta max_retries veces,
-    intentando parsear la respuesta como JSON.
-    Si no se obtiene un JSON válido, envía un mensaje
-    correctivo y reintenta.
-    Devuelve (raw_output, data_json) si tiene éxito,
-    o lanza excepción si no logra parsear.
-    """
     client = OpenAI(api_key=openai_api_key)
-    # Mensaje base
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": user_msg}
     ]
-
     for intento in range(max_retries):
-        # 1. Llamada a la API
         response = client.chat.completions.create(
             model="gpt-4",
             temperature=0.5,
@@ -75,16 +67,14 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
         )
         raw_output = response.choices[0].message.content
 
-        # 2. Mostrar salida cruda para debug
-        st.write(f"**Respuesta en crudo (intento {intento+1}):**")
-        st.code(raw_output)
+        if DEBUG:
+            st.write(f"**Respuesta en crudo (intento {intento+1}):**")
+            st.code(raw_output)
 
-        # 3. Intentar parsear el JSON
         data_json = None
         try:
             data_json = json.loads(raw_output)
         except json.JSONDecodeError:
-            # Intentar extraer un bloque con llaves
             match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
             if match_json:
                 json_str = match_json.group(0)
@@ -94,11 +84,8 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
                     data_json = None
 
         if data_json is not None:
-            # Se pudo parsear un JSON
             return raw_output, data_json
         else:
-            # Añadir mensaje correctivo y reintentar
-            # Se envía como "system" o "assistant" para que GPT lo obedezca más
             correction_message = {
                 "role": "system",
                 "content": (
@@ -108,15 +95,11 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
                 )
             }
             messages.append(correction_message)
-            # Continúa el bucle para reintentar
-
-    # Si llega aquí, es que no se obtuvo un JSON válido tras max_retries
     raise ValueError("No se pudo obtener un JSON válido tras varios reintentos.")
 
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Instrucciones del sistema: solicitar que la respuesta sea un JSON válido
         system_message = """
 Eres Diego, un profesor experto en ELE. 
 Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
@@ -131,7 +114,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
       "correccion": "string",
       "explicacion": "string"
     }
-    // Puedes repetir este objeto para cada error, o devolver un array vacío si no hay errores.
   ],
   "texto_corregido": "string",
   "consejo_final": "string",
@@ -140,7 +122,6 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
 
 No devuelvas ningún texto extra fuera de este JSON.
 """
-
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -152,10 +133,9 @@ Idioma de corrección: {idioma}
 """
 
         try:
-            # 1. Obtenemos el JSON (con reintentos)
             raw_output, data_json = obtener_json_de_ia(system_message, user_message, max_retries=2)
 
-            # 2. Extraemos campos
+            # Extraer campos del JSON
             saludo = data_json.get("saludo", "")
             tipo_texto = data_json.get("tipo_texto", "")
             errores = data_json.get("errores", [])
@@ -163,7 +143,6 @@ Idioma de corrección: {idioma}
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
-            # 3. Mostrar la corrección de forma estructurada
             st.subheader("Saludo")
             st.write(saludo)
             st.subheader("Tipo de texto y justificación")
@@ -178,32 +157,28 @@ Idioma de corrección: {idioma}
                     st.write(f"- Corrección: {err.get('correccion','')}")
                     st.write(f"- Explicación: {err.get('explicacion','')}")
                     st.write("---")
-
             st.subheader("Texto corregido completo (en español)")
             st.write(texto_corregido)
-
             st.subheader("Consejo final (en español)")
             st.write(consejo_final)
             st.write(fin)
 
-            # 4. Guardar la respuesta en Historial_Correcciones_ELE
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, raw_output])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
-            # 5. Conteo de errores
+            # --- CONTEO DE ERRORES ---
             num_gramatica = sum(1 for e in errores if e.get("categoria", "").strip() == "Gramática")
             num_lexico = sum(1 for e in errores if e.get("categoria", "").strip() == "Léxico")
             num_puntuacion = sum(1 for e in errores if e.get("categoria", "").strip() == "Puntuación")
             num_estructura = sum(1 for e in errores if e.get("categoria", "").strip() == "Estructura textual")
             total_errores = len(errores)
 
-            # 6. Guardar seguimiento en el documento "Seguimiento"
+            # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
             try:
                 tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
                 hojas = [hoja.title for hoja in tracking_doc.worksheets()]
                 st.info(f"Hojas disponibles en el documento Seguimiento: {hojas}")
-
                 try:
                     hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
@@ -223,11 +198,10 @@ Idioma de corrección: {idioma}
                 ]
                 hoja_seguimiento.append_row(datos_seguimiento)
                 st.info(f"Guardado seguimiento: {datos_seguimiento}")
-
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
-            # 7. Generar audio del consejo final con ElevenLabs
+            # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -235,7 +209,6 @@ Idioma de corrección: {idioma}
                     "xi-api-key": elevenlabs_api_key,
                     "Content-Type": "application/json"
                 }
-                # Se elimina "Consejo final:" si aparece
                 audio_text = consejo_final.replace("Consejo final:", "").strip()
                 data = {
                     "text": audio_text,
@@ -252,7 +225,7 @@ Idioma de corrección: {idioma}
                 else:
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-            # 8. Descarga en TXT
+            # --- DESCARGA EN TXT ---
             feedback_txt = (
                 f"Texto original:\n{texto}\n\n"
                 f"Saludo:\n{saludo}\n\n"
