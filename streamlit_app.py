@@ -51,7 +51,7 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
    - La corrección correspondiente.
    - Una explicación breve.
 3. Reescribe el texto corregido adaptando el registro al tipo textual.
-4. Da un consejo final personalizado y empático para el alumno llamado {nombre}.
+4. Da un consejo personalizado para el alumno llamado {nombre}.
 
 Texto del alumno:
 """
@@ -81,12 +81,14 @@ Texto del alumno:
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
+            # --- AUDIO AUTOMÁTICO DEL CONSEJO PERSONALIZADO ---
             consejo = ""
-            if "Consejo final:" in correccion:
-                consejo = correccion.split("Consejo final:", 1)[-1].strip()
+            if "Consejo personalizado para" in correccion:
+                consejo = correccion.split("Consejo personalizado para", 1)[-1].split("\n", 1)[-1].strip()
             elif "Consejo personalizado:" in correccion:
                 consejo = correccion.split("Consejo personalizado:", 1)[-1].strip()
+            elif "Consejo final:" in correccion:
+                consejo = correccion.split("Consejo final:", 1)[-1].strip()
 
             if consejo:
                 st.markdown("**🔊 Consejo leído en voz alta:**")
