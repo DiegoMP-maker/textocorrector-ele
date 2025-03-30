@@ -45,38 +45,40 @@ with st.form("formulario"):
     enviar = st.form_submit_button("Corregir")
 
 # --- Traducciones de encabezados ---
+# Todos los encabezados se muestran en español, excepto "explicación" que se adapta al idioma seleccionado.
 encabezados = {
     "Español": {
         "saludo": "Saludo",
         "tipo_texto": "Tipo de texto y justificación",
         "errores": "Errores detectados",
-        "texto_corregido": "Texto corregido (en español)",
+        "texto_corregido": "Texto corregido",
         "fragmento": "Fragmento erróneo",
         "correccion": "Corrección",
         "explicacion": "Explicación",
-        "sin_errores": "Sin errores en esta categoría."
+        "sin_errores": "Sin errores en esta categoría.",
+        "consejo_final": "Consejo final"
     },
     "Francés": {
-        "saludo": "Salutation",
-        "tipo_texto": "Type de texte et justification",
-        "errores": "Erreurs détectées",
-        "texto_corregido": "Texte corrigé (en espagnol)",
-        "consejo_final": "Conseil final (en espagnol)",
-        "fragmento": "Fragment erroné",
-        "correccion": "Correction",
+        "saludo": "Saludo",
+        "tipo_texto": "Tipo de texto y justificación",
+        "errores": "Errores detectados",
+        "texto_corregido": "Texto corregido",
+        "fragmento": "Fragmento erróneo",
+        "correccion": "Corrección",
         "explicacion": "Explication",
-        "sin_errores": "Pas d'erreurs dans cette catégorie."
+        "sin_errores": "Sin errores en esta categoría.",
+        "consejo_final": "Consejo final"
     },
     "Inglés": {
-        "saludo": "Greeting",
-        "tipo_texto": "Text type and justification",
-        "errores": "Detected errors",
-        "texto_corregido": "Corrected text (in Spanish)",
-        "consejo_final": "Final advice (in Spanish)",
-        "fragmento": "Error fragment",
-        "correccion": "Correction",
+        "saludo": "Saludo",
+        "tipo_texto": "Tipo de texto y justificación",
+        "errores": "Errores detectados",
+        "texto_corregido": "Texto corregido",
+        "fragmento": "Fragmento erróneo",
+        "correccion": "Corrección",
         "explicacion": "Explanation",
-        "sin_errores": "No errors in this category."
+        "sin_errores": "Sin errores en esta categoría.",
+        "consejo_final": "Consejo final"
     }
 }
 
@@ -84,7 +86,7 @@ encabezados = {
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        # Traducciones aplicadas solo a las explicaciones de errores, no al texto corregido final
+        # Traducciones aplicadas únicamente al campo "explicacion"
         traducciones = encabezados[idioma]
 
         prompt = f'''
@@ -94,9 +96,9 @@ Texto del alumno:
 """
 Nivel: {nivel}
 Nombre del alumno: {nombre}
-Idioma de corrección: {idioma}
+Idioma de las explicaciones: {idioma}
 
-IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR EN ESPAÑOL. NO RESPONDAS EN OTRO IDIOMA EN ESE CAMPO.
+IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR SIEMPRE EN ESPAÑOL. No importa si el alumno escribe en otro idioma o elige otro idioma para las explicaciones.
 '''
 
         client = OpenAI(api_key=openai_api_key)
@@ -111,16 +113,14 @@ IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR EN ESPAÑOL. NO RESPONDAS EN OTR
 Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
 
 ⚠️ ATENCIÓN CRÍTICA:
-El texto corregido (campo \"texto_corregido\") debe estar SIEMPRE redactado en ESPAÑOL. No importa si el alumno escribe en inglés, francés o elige otro idioma para las explicaciones.
+El campo "texto_corregido" debe estar SIEMPRE redactado en ESPAÑOL. Si lo devuelves en otro idioma, será un ERROR GRAVE. Repite: el campo "texto_corregido" va siempre en español, es una propuesta modelo de ELE.
 
-Si devuelves el texto corregido en otro idioma, será un ERROR GRAVE. Repite: el campo \"texto_corregido\" va siempre en español, es una propuesta modelo de ELE.
-
-Solo las "explicaciones" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones van en español.
+Solo las "explicaciones" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones deben estar en español.
 
 Estructura esperada:
 1. saludo
 2. tipo_texto
-3. errores clasificados (solo el campo "explicacion" en el idioma solicitado)
+3. errores clasificados (solo el campo "explicacion" en el idioma seleccionado)
 4. texto_corregido (en español)
 5. consejo_final (en español)
 6. fin
@@ -169,16 +169,12 @@ Responde únicamente con esta estructura y evita cualquier otro comentario fuera
             else:
                 st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
+        # El botón de descarga se mantiene en español, sin variar según el idioma seleccionado.
+        download_label = "📝 Descargar corrección en TXT"
         feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
         txt_buffer = BytesIO()
         txt_buffer.write(feedback_txt.encode("utf-8"))
         txt_buffer.seek(0)
-
-        download_label = {
-            "Español": "📝 Descargar corrección en TXT",
-            "Francés": "📝 Télécharger correction en TXT",
-            "Inglés": "📝 Download correction in TXT"
-        }[idioma]
 
         st.download_button(
             download_label,
