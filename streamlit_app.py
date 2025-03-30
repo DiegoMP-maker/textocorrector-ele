@@ -41,7 +41,9 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma_feedback = st.selectbox("¿En qué idioma quieres recibir la corrección?", ["Español", "Francés", "Inglés"])
+    idioma = st.selectbox("Selecciona el idioma de la corrección y errores detectados", [
+        "Español", "Francés", "Inglés"
+    ])
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
@@ -56,100 +58,102 @@ Texto del alumno:
 """
 Nivel: {nivel}
 Nombre del alumno: {nombre}
+Idioma de corrección: {idioma}
 '''
 
-        client = OpenAI(api_key=openai_api_key)
+        system_message = f"""Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica. Tu misión es corregir textos escritos por estudiantes de español de nivel A2 a C1 de forma eficaz, clara y empática.
 
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            temperature=0.5,
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
-
-Tu misión es corregir textos escritos por estudiantes de español de nivel A2 a C1 de forma eficaz, clara y empática.
-
-👉 IMPORTANTE: La corrección debe hacerse **en español**, pero el feedback explicativo (saludo, tipo de texto, errores detectados, explicaciones gramaticales y consejo final) debe escribirse en **{idioma_feedback.lower()}**.
+Actúas con precisión lingüística, estructura metódica y orientación personalizada.
 
 Cuando recibas un texto, sigue siempre esta estructura de salida:
 
-1. **Saludo personalizado**: Dirígete al alumno por su nombre con calidez y cercanía. (en {idioma_feedback.lower()})
-2. **Tipo de texto y justificación**: (en {idioma_feedback.lower()})
-3. **Errores detectados**: Agrupa los errores en estas categorías. Usa esta estructura:
+1. **Saludo personalizado**: Dirígete al alumno por su nombre, si está disponible. Saluda con calidez y cercanía, como lo haría un buen profesor.
+
+2. **Tipo de texto y justificación**: Indica el tipo textual (correo formal, narración, descripción, etc.) y explica brevemente por qué.
+
+3. **Errores detectados**: Agrupa los errores en las siguientes categorías. Dentro de cada categoría, usa esta estructura:
    - Fragmento erróneo entre comillas.
    - Corrección propuesta.
-   - Explicación breve y accesible.
+   - Explicación breve y accesible para el nivel del alumno.
 
-   Categorías (escríbelas en {idioma_feedback.lower()}):
-   - Gramática
-   - Léxico
-   - Puntuación
-   - Estructura textual
+   Categorías:
+   - **Gramática**
+   - **Léxico**
+   - **Puntuación**
+   - **Estructura textual**
 
-4. **Texto corregido completo**: Reescribe el texto corregido siempre en español. Respeta el estilo del alumno.
-5. **Consejo final motivador**: En {idioma_feedback.lower()}, incluye al menos un aspecto positivo y una recomendación clara.
-6. **Cierre técnico**: Termina siempre con la frase: \"Fin de texto corregido.\"
+4. **Texto corregido completo**: Reescribe el texto corregido de forma natural, respetando el estilo del alumno pero mejorando coherencia, registro y corrección lingüística. Debe estar en {idioma}.
 
-Escribe de forma clara, ordenada y empática. No añadas explicaciones fuera de las secciones indicadas.
+5. **Consejo final motivador**: Escribe un consejo final breve, personal y empático, como si fueras Diego. Comienza con "Consejo final:" y finaliza con un mensaje alentador. Este consejo siempre debe estar en español.
+
+6. **Cierre técnico**: Termina siempre con la frase: "Fin de texto corregido."
+
+Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias fuera de las secciones indicadas.
 """
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
 
-        correccion = response.choices[0].message.content
+        try:
+            client = OpenAI(api_key=openai_api_key)
+            response = client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.5,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt}
+                ]
+            )
 
-        st.subheader("📘 Corrección")
-        st.markdown(correccion)
+            correccion = response.choices[0].message.content
 
-        fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-        sheet.append_row([nombre, nivel, idioma_feedback, fecha, texto, correccion])
-        st.success("✅ Corrección guardada en Google Sheets.")
+            st.subheader("📘 Corrección")
+            st.markdown(correccion)
 
-        # --- EXTRAER CONSEJO FINAL ---
-        match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
-        if match:
-            consejo = match.group(1).strip()
-        else:
-            consejo = "No se encontró un consejo final claro en la corrección."
-            st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+            sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion])
+            st.success("✅ Corrección guardada en Google Sheets.")
 
-        # --- AUDIO CON ELEVENLABS ---
-        st.markdown("**🔊 Consejo leído en voz alta:**")
-        with st.spinner("Generando audio con ElevenLabs..."):
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
-            headers = {
-                "xi-api-key": elevenlabs_api_key,
-                "Content-Type": "application/json"
-            }
-            data = {
-                "text": consejo,
-                "model_id": "eleven_multilingual_v2",
-                "voice_settings": {
-                    "stability": 0.3,
-                    "similarity_boost": 0.9
-                }
-            }
-            response_audio = requests.post(url, headers=headers, json=data)
-            if response_audio.ok:
-                audio_bytes = BytesIO(response_audio.content)
-                st.audio(audio_bytes, format="audio/mpeg")
+            # --- EXTRAER CONSEJO FINAL CON REGEX ROBUSTO ---
+            match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
+            if match:
+                consejo = match.group(1).strip()
             else:
-                st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+                consejo = "No se encontró un consejo final claro en la corrección."
+                st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
 
-        # --- DESCARGA EN TXT ---
-        feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
-        txt_buffer = BytesIO()
-        txt_buffer.write(feedback_txt.encode("utf-8"))
-        txt_buffer.seek(0)
+            # --- AUDIO CON ELEVENLABS ---
+            st.markdown("**🔊 Consejo leído en voz alta:**")
+            with st.spinner("Generando audio con ElevenLabs..."):
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                headers = {
+                    "xi-api-key": elevenlabs_api_key,
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "text": consejo,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.8
+                    }
+                }
+                response_audio = requests.post(url, headers=headers, json=data)
+                if response_audio.ok:
+                    audio_bytes = BytesIO(response_audio.content)
+                    st.audio(audio_bytes, format="audio/mpeg")
+                else:
+                    st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-        st.download_button(
-            "📝 Descargar corrección en TXT",
-            data=txt_buffer,
-            file_name=f"correccion_{nombre}.txt",
-            mime="text/plain"
-        )
+            # --- DESCARGA EN TXT ---
+            feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
+            txt_buffer = BytesIO()
+            txt_buffer.write(feedback_txt.encode("utf-8"))
+            txt_buffer.seek(0)
+
+            st.download_button(
+                "📝 Descargar corrección en TXT",
+                data=txt_buffer,
+                file_name=f"correccion_{nombre}.txt",
+                mime="text/plain"
+            )
+
+        except Exception as e:
+            st.error(f"Error al generar la corrección o guardar: {e}")
