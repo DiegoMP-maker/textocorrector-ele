@@ -954,21 +954,30 @@ Contexto cultural: {contexto_cultural}
                 # Opciones de exportación en pestañas
                 tab1, tab2, tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
                 
-         with tab1:
+        with tab1:
     st.write("Exporta este informe como documento Word (DOCX)")
     
-    # Utilizamos directamente el botón de descarga sin un botón intermedio
-    if st.download_button(
-        label="📥 Generar y descargar documento Word",
-        data=lambda: generar_informe_docx(
+    # Generar el buffer por adelantado
+    docx_buffer = None
+    try:
+        docx_buffer = generar_informe_docx(
             nombre, nivel, fecha, texto, texto_corregido,
             errores_obj, analisis_contextual, consejo_final
-        ),
-        file_name=f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        key="docx_download"
-    ):
-        st.success("✅ Documento Word generado y descargado correctamente.")
+        )
+    except Exception as e:
+        st.error(f"Error al generar el documento Word: {e}")
+    
+    # Si el buffer se generó correctamente, mostrar el botón de descarga
+    if docx_buffer is not None:
+        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+        if st.download_button(
+            label="📥 Descargar documento Word",
+            data=docx_buffer,
+            file_name=nombre_archivo,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="docx_download"
+        ):
+            st.success("✅ Documento Word descargado correctamente.")
                 
                 with tab2:
                     st.write("Exporta este informe como página web (HTML)")
