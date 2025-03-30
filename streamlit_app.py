@@ -52,10 +52,10 @@ with st.form("formulario"):
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Instrucciones del sistema: solicita un JSON válido con la estructura exacta
+        # Instrucciones del sistema: solicitar que la respuesta sea un JSON válido
         system_message = """
 Eres Diego, un profesor experto en ELE. 
-Cuando corrijas un texto, DEBES devolver la respuesta en un JSON válido, sin ningún texto extra, con la siguiente estructura EXACTA:
+Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
 
 {
   "saludo": "string",
@@ -66,15 +66,15 @@ Cuando corrijas un texto, DEBES devolver la respuesta en un JSON válido, sin ni
       "fragmento_erroneo": "string",
       "correccion": "string",
       "explicacion": "string"
-    },
-    ... (más objetos de error si los hubiera)
+    }
+    // Puedes repetir este objeto para cada error, o devolver un array vacío si no hay errores.
   ],
   "texto_corregido": "string",
   "consejo_final": "string",
   "fin": "Fin de texto corregido."
 }
 
-No devuelvas nada fuera de este JSON.
+No devuelvas ningún texto extra fuera de este JSON.
 """
 
         user_message = f"""
@@ -98,14 +98,27 @@ Idioma de corrección: {idioma}
                 ]
             )
             raw_output = response.choices[0].message.content
+
+            # Mostrar salida cruda para debug
             st.write("**Respuesta en crudo (para debug):**")
             st.code(raw_output)
 
+            # Intentar parsear el JSON directamente
             try:
                 data_json = json.loads(raw_output)
             except json.JSONDecodeError as je:
-                st.error("La respuesta no es un JSON válido. Revisa el prompt o la salida.")
-                st.stop()
+                # Si falla, intentar extraer el bloque JSON usando regex
+                match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
+                if match_json:
+                    json_str = match_json.group(0)
+                    try:
+                        data_json = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        st.error("No se pudo parsear el JSON extraído. Revisa la salida.")
+                        st.stop()
+                else:
+                    st.error("La respuesta no contiene un bloque JSON válido.")
+                    st.stop()
 
             # Extraer campos del JSON
             saludo = data_json.get("saludo", "")
@@ -124,11 +137,11 @@ Idioma de corrección: {idioma}
             if not errores:
                 st.write("No se han detectado errores.")
             else:
-                for error in errores:
-                    st.markdown(f"**Categoría:** {error.get('categoria','')}")
-                    st.write(f"- Fragmento erróneo: {error.get('fragmento_erroneo','')}")
-                    st.write(f"- Corrección: {error.get('correccion','')}")
-                    st.write(f"- Explicación: {error.get('explicacion','')}")
+                for err in errores:
+                    st.markdown(f"**Categoría:** {err.get('categoria','')}")
+                    st.write(f"- Fragmento erróneo: {err.get('fragmento_erroneo','')}")
+                    st.write(f"- Corrección: {err.get('correccion','')}")
+                    st.write(f"- Explicación: {err.get('explicacion','')}")
                     st.write("---")
             st.subheader("Texto corregido completo (en español)")
             st.write(texto_corregido)
@@ -136,7 +149,7 @@ Idioma de corrección: {idioma}
             st.write(consejo_final)
             st.write(fin)
 
-            # Guardar la respuesta JSON cruda en Historial_Correcciones_ELE
+            # Guardar la respuesta JSON en Historial_Correcciones_ELE
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, raw_output])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
@@ -158,7 +171,7 @@ Idioma de corrección: {idioma}
                 except gspread.exceptions.WorksheetNotFound:
                     hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
-                
+
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -175,7 +188,7 @@ Idioma de corrección: {idioma}
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
-            # --- GENERAR AUDIO CON ELEVENLABS ---
+            # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -183,7 +196,7 @@ Idioma de corrección: {idioma}
                     "xi-api-key": elevenlabs_api_key,
                     "Content-Type": "application/json"
                 }
-                # Se elimina "Consejo final:" del texto para audio si aparece
+                # Se elimina "Consejo final:" si aparece en el texto
                 audio_text = consejo_final.replace("Consejo final:", "").strip()
                 data = {
                     "text": audio_text,
