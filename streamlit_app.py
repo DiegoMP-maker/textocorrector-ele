@@ -24,7 +24,7 @@ client_gsheets = gspread.authorize(creds)
 
 # IDs de los documentos
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
-TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
 
 # --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
 try:
@@ -52,40 +52,39 @@ with st.form("formulario"):
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Nuevo system_message con instrucciones para utilizar encabezados en negrita
+        # System message reforzado para que la salida tenga el formato EXACTO:
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
-INSTRUCCIONES FUNDAMENTALES:
+INSTRUCCIONES OBLIGATORIAS:
 - El usuario ha elegido {idioma} para la corrección y errores detectados.
-- Debes producir la salida con la siguiente estructura EXACTA:
-  
-  1. **Saludo personalizado** (en {idioma}).
-  
-  2. **Tipo de texto y justificación** (en {idioma}).
-  
-  3. **Errores detectados** (en {idioma}). En esta sección, usa los siguientes encabezados EXACTOS en negrita para las categorías:
-     - **Gramática**
-     - **Léxico**
-     - **Puntuación**
-     - **Estructura textual**
-     
-     Dentro de cada categoría, lista cada error mostrando:
-       - El fragmento erróneo entre comillas.
-       - La corrección propuesta.
-       - Una breve explicación.
-  
-  4. **Texto corregido completo** (en español). No incluyas encabezados numerados adicionales.
-  
-  5. **Consejo final:** (en español), que empiece con "Consejo final:" y sea breve y motivador.
-  
-- No generes ningún encabezado adicional (por ejemplo, "6. Cierre técnico").
-- Termina siempre con la frase EXACTA:
-  Fin de texto corregido.
-- No añadas explicaciones fuera de estas secciones.
-- Recuerda: El "Consejo final:" es siempre en español.
-"""
+- Debes producir la salida con la siguiente estructura EXACTA (sin numeración en los títulos):
 
+  1. **Saludo personalizado** (en {idioma}).
+
+  2. **Tipo de texto y justificación** (en {idioma}).
+
+  3. **Errores detectados** (en {idioma}). En esta sección, usa EXACTAMENTE estos encabezados (sin numerar):
+     **Gramática**
+     **Léxico**
+     **Puntuación**
+     **Estructura textual**
+
+     Dentro de cada categoría, lista cada error usando el siguiente formato EXACTO:
+       "fragmento erróneo" → "corrección"
+       Explicación breve...
+     (Las comillas dobles " " son OBLIGATORIAS para el fragmento erróneo y la corrección.)
+
+  4. **Texto corregido completo** (en español). No añadas encabezados numerados adicionales en esta sección.
+
+  5. **Consejo final:** (en español), que comience con las palabras "Consejo final:" y sea breve y motivador.
+
+- No generes ningún encabezado adicional (por ejemplo, "6. Cierre técnico").
+- Termina SIEMPRE con la frase EXACTA:
+  Fin de texto corregido.
+- Recuérdalo: No mezcles idiomas; las secciones 1 a 3 deben estar en {idioma}, mientras que la sección 4 y 5 son en español.
+"""
+        # Definición del mensaje del alumno (user_message) usando triple comillas escapadas
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -108,14 +107,14 @@ Idioma de corrección: {idioma}
             )
             correccion_original = response.choices[0].message.content
 
-            # Eliminar cualquier línea que contenga "6. Cierre técnico"
+            # Eliminar cualquier línea que contenga "6. Cierre técnico" (por si aparece)
             correccion_sin_linea6 = re.sub(
                 r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
                 "",
                 correccion_original
             )
 
-            # Extraer el bloque del consejo final (entre "Consejo final:" y "Fin de texto corregido")
+            # Extraer el bloque del "Consejo final:" (entre "Consejo final:" y "Fin de texto corregido")
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -146,14 +145,16 @@ Idioma de corrección: {idioma}
                 except gspread.exceptions.WorksheetNotFound:
                     hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
-                
+
+                # Función para contar errores por categoría con regex adaptada: se admite opcionalmente ":" tras la categoría
                 def contar_errores_por_categoria(correccion, categoria):
-                    patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
+                    patron = rf"(?i)\*\*{categoria}\*\*:?(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
                     match_categ = re.search(patron, correccion, re.DOTALL)
                     if not match_categ:
                         return 0
                     bloque = match_categ.group(1)
-                    errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
+                    # Buscar errores entre comillas dobles
+                    errores = re.findall(r'"[^"]+"', bloque)
                     return len(errores)
                 
                 num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
