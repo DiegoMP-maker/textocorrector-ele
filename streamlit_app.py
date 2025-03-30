@@ -24,7 +24,7 @@ client_gsheets = gspread.authorize(creds)
 
 # IDs de los documentos
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
-TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
 
 # --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
 try:
@@ -33,6 +33,26 @@ try:
 except Exception as e:
     st.error(f"❌ Error al conectar con Historial_Correcciones_ELE: {e}")
     st.stop()
+
+# --- Verificar y preparar documento de seguimiento ---
+try:
+    tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+    hojas = [hoja.title for hoja in tracking_doc.worksheets()]
+    
+    # Verificar si existe la hoja Seguimiento
+    try:
+        tracking_sheet = tracking_doc.worksheet("Seguimiento")
+        st.success("✅ Conectado a hoja Seguimiento correctamente.")
+    except gspread.exceptions.WorksheetNotFound:
+        # Crear la hoja si no existe
+        tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
+        # Añadir encabezados a la hoja
+        headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
+                   "Errores Puntuación", "Errores Estructura", "Total Errores", "Consejo Final"]
+        tracking_sheet.append_row(headers)
+        st.success("✅ Hoja 'Seguimiento' creada y preparada correctamente.")
+except Exception as e:
+    st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
 # --- 3. INTERFAZ ---
 st.title("📝 Textocorrector ELE (por Diego)")
@@ -50,54 +70,57 @@ with st.form("formulario"):
     enviar = st.form_submit_button("Corregir")
 
 # Función para obtener JSON de la IA con reintentos
-def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
+def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
     client = OpenAI(api_key=openai_api_key)
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": user_msg}
     ]
-    for _ in range(max_retries):
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            temperature=0.5,
-            messages=messages
-        )
-        raw_output = response.choices[0].message.content
-
-        data_json = None
+    
+    for attempt in range(max_retries):
         try:
-            data_json = json.loads(raw_output)
-        except json.JSONDecodeError:
-            match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
-            if match_json:
-                json_str = match_json.group(0)
-                try:
-                    data_json = json.loads(json_str)
-                except json.JSONDecodeError:
-                    data_json = None
+            response = client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.5,
+                messages=messages
+            )
+            raw_output = response.choices[0].message.content
 
-        if data_json is not None:
-            return raw_output, data_json
-        else:
-            correction_message = {
-                "role": "system",
-                "content": (
-                    "Tu respuesta anterior no cumplió el formato JSON requerido. "
-                    "Por favor, responde ÚNICAMENTE en JSON válido con la estructura solicitada. "
-                    "No incluyas texto extra."
-                )
-            }
-            messages.append(correction_message)
+            try:
+                data_json = json.loads(raw_output)
+                return raw_output, data_json
+            except json.JSONDecodeError:
+                # Intenta extraer JSON usando regex
+                match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
+                if match_json:
+                    json_str = match_json.group(0)
+                    try:
+                        data_json = json.loads(json_str)
+                        return raw_output, data_json
+                    except json.JSONDecodeError:
+                        pass
+
+                # Si aún no hay JSON válido, pide al modelo que corrija
+                if attempt < max_retries - 1:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "Tu respuesta anterior no cumplió el formato JSON requerido. "
+                            "Por favor, responde ÚNICAMENTE en JSON válido con la estructura solicitada. "
+                            "No incluyas texto extra, backticks, ni marcadores de código fuente."
+                        )
+                    })
+        except Exception as e:
+            st.warning(f"Intento {attempt+1}: Error en la API de OpenAI: {e}")
+            if attempt == max_retries - 1:
+                raise
 
     raise ValueError("No se pudo obtener un JSON válido tras varios reintentos.")
 
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Instrucciones: 
-        # - "saludo", "tipo_texto", "errores" y "texto_corregido" se deben generar en el idioma solicitado.
-        # - "consejo_final" se debe generar en español.
-        # - Los errores se deben agrupar por categoría (cada categoría es una clave con un array de errores).
+        # Instrucciones para el modelo de IA
         system_message = f"""
 Eres Diego, un profesor experto en ELE.
 Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
@@ -154,7 +177,7 @@ Idioma de corrección: {idioma}
 """
 
         try:
-            raw_output, data_json = obtener_json_de_ia(system_message, user_message, max_retries=2)
+            raw_output, data_json = obtener_json_de_ia(system_message, user_message, max_retries=3)
 
             # Extraer campos del JSON
             saludo = data_json.get("saludo", "")
@@ -205,16 +228,6 @@ Idioma de corrección: {idioma}
 
             # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
             try:
-                tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-                hojas = [hoja.title for hoja in tracking_doc.worksheets()]
-                st.info(f"Hojas disponibles en el documento Seguimiento: {hojas}")
-
-                try:
-                    hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
-                except gspread.exceptions.WorksheetNotFound:
-                    hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
-                    st.info("Hoja 'Seguimiento' creada automáticamente.")
-
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -226,10 +239,42 @@ Idioma de corrección: {idioma}
                     total_errores,
                     consejo_final
                 ]
-                hoja_seguimiento.append_row(datos_seguimiento)
-                st.info(f"Guardado seguimiento: {datos_seguimiento}")
+                
+                # Intenta aprovechar la variable tracking_sheet que definimos al inicio
+                try:
+                    tracking_sheet.append_row(datos_seguimiento)
+                    st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
+                    
+                    # Mostrar resumen de errores
+                    st.subheader("Resumen de errores")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Gramática", num_gramatica)
+                    with col2:
+                        st.metric("Léxico", num_lexico)
+                    with col3:
+                        st.metric("Puntuación", num_puntuacion)
+                    with col4:
+                        st.metric("Estructura", num_estructura)
+                    st.metric("Total errores", total_errores)
+                    
+                except NameError:
+                    # Si tracking_sheet no está definido, intentamos recuperarlo
+                    tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+                    try:
+                        tracking_sheet = tracking_doc.worksheet("Seguimiento")
+                    except gspread.exceptions.WorksheetNotFound:
+                        tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
+                        headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
+                                "Errores Puntuación", "Errores Estructura", "Total Errores", "Consejo Final"]
+                        tracking_sheet.append_row(headers)
+                    
+                    tracking_sheet.append_row(datos_seguimiento)
+                    st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento (recuperada).")
             except Exception as e:
-                st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
+                st.error(f"❌ Error al guardar estadísticas en Seguimiento: {str(e)}")
+                st.info("Detalles del error para depuración:")
+                st.code(str(e))
 
             # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
@@ -248,19 +293,22 @@ Idioma de corrección: {idioma}
                         "similarity_boost": 0.9
                     }
                 }
-                response_audio = requests.post(tts_url, headers=headers, json=data)
-                if response_audio.ok:
-                    audio_bytes = BytesIO(response_audio.content)
-                    st.audio(audio_bytes, format="audio/mpeg")
-                else:
-                    st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+                try:
+                    response_audio = requests.post(tts_url, headers=headers, json=data)
+                    if response_audio.ok:
+                        audio_bytes = BytesIO(response_audio.content)
+                        st.audio(audio_bytes, format="audio/mpeg")
+                    else:
+                        st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+                except Exception as e:
+                    st.warning(f"⚠️ Error al generar audio: {e}")
 
             # --- DESCARGA EN TXT ---
             feedback_txt = (
                 f"Texto original:\n{texto}\n\n"
                 f"Saludo:\n{saludo}\n\n"
                 f"Tipo de texto:\n{tipo_texto}\n\n"
-                f"Errores:\n{json.dumps(errores_obj, indent=2)}\n\n"
+                f"Errores:\n{json.dumps(errores_obj, indent=2, ensure_ascii=False)}\n\n"
                 f"Texto corregido:\n{texto_corregido}\n\n"
                 f"Consejo final:\n{consejo_final}\n\n"
                 f"{fin}"
@@ -277,3 +325,5 @@ Idioma de corrección: {idioma}
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
+            import traceback
+            st.code(traceback.format_exc())
