@@ -310,11 +310,20 @@ Contexto cultural: {contexto_cultural}
             puntuacion_adecuacion = adecuacion.get("puntuacion", 0)
 
             # --- MOSTRAR RESULTADOS EN LA INTERFAZ ---
-            # Mostrar el saludo directamente sin encabezado
+            # Mostrar el saludo y presentación directamente sin encabezados
             st.write(saludo)
             
-            st.subheader("Tipo de texto y justificación")
-            st.write(tipo_texto_detectado)
+            # Generar texto de presentación en el idioma seleccionado
+            if idioma == "Español":
+                presentacion = f"A continuación encontrarás el análisis completo de tu texto. He identificado tu escrito como un texto de tipo **{tipo_texto_detectado.lower()}**. He revisado aspectos gramaticales, léxicos, de puntuación y estructura, además de realizar un análisis de coherencia, cohesión, registro y adecuación cultural. Todas las correcciones están adaptadas a tu nivel {nivel_info['descripcion']}."
+            elif idioma == "Francés":
+                presentacion = f"Voici l'analyse complète de ton texte. J'ai identifié ton écrit comme un texte de type **{tipo_texto_detectado.lower()}**. J'ai examiné les aspects grammaticaux, lexicaux, de ponctuation et de structure, en plus de réaliser une analyse de cohérence, cohésion, registre et adaptation culturelle. Toutes les corrections sont adaptées à ton niveau {nivel_info['descripcion']}."
+            elif idioma == "Inglés":
+                presentacion = f"Below you will find the complete analysis of your text. I have identified your writing as a **{tipo_texto_detectado.lower()}** type text. I have reviewed grammatical, lexical, punctuation and structural aspects, as well as analyzing coherence, cohesion, register and cultural appropriateness. All corrections are adapted to your {nivel_info['descripcion']} level."
+            else:
+                presentacion = f"A continuación encontrarás el análisis completo de tu texto. He identificado tu escrito como un texto de tipo **{tipo_texto_detectado.lower()}**."
+                
+            st.markdown(presentacion)
             
             # Errores detectados
             st.subheader("Errores detectados")
