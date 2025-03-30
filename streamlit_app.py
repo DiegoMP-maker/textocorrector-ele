@@ -33,7 +33,7 @@ except Exception as e:
     st.stop()
 
 # --- 3. INTERFAZ ---
-st.title("📝 Textocorrector ELE")
+st.title("📝 Textocorrector ELE (por Diego)")
 st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback.")
 
 with st.form("formulario"):
@@ -59,28 +59,6 @@ encabezados = {
         "explicacion": "Explicación",
         "sin_errores": "Sin errores en esta categoría.",
         "consejo_final": "Consejo final"
-    },
-    "Francés": {
-        "saludo": "Salutation",
-        "tipo_texto": "Type de texte et justification",
-        "errores": "Erreurs détectées",
-        "texto_corregido": "Texte corrigé",
-        "fragmento": "Fragment erroné",
-        "correccion": "Correction",
-        "explicacion": "Explication",
-        "sin_errores": "Pas d'erreurs dans cette catégorie.",
-        "consejo_final": "Conseil final"
-    },
-    "Inglés": {
-        "saludo": "Greeting",
-        "tipo_texto": "Text type and justification",
-        "errores": "Detected errors",
-        "texto_corregido": "Corrected text",
-        "fragmento": "Error fragment",
-        "correccion": "Correction",
-        "explicacion": "Explanation",
-        "sin_errores": "No errors in this category.",
-        "consejo_final": "Final advice"
     }
 }
 
@@ -88,38 +66,19 @@ encabezados = {
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        traducciones = encabezados[idioma]
-        encabezados_es = encabezados["Español"]
+        traducciones = encabezados["Español"]
 
         prompt = f'''
-Estás corrigiendo un texto de un estudiante de Español como Lengua Extranjera (ELE).
-
-Datos del alumno:
-- Nombre: {nombre}
-- Nivel aproximado: {nivel}
-- Idioma preferido para las explicaciones: {idioma}
-
-IMPORTANTE:
-La sección **Texto corregido completo** debe estar **siempre redactada en español**, independientemente del idioma del texto original o del idioma elegido para las explicaciones. Esta sección representa una **propuesta de texto ideal**, corregido y mejorado a partir del texto del alumno, con un nivel adecuado a su competencia lingüística.
-
-Texto a corregir:
-\"\"\"
+Texto del alumno:
+"""
 {texto}
-\"\"\"
+"""
+Nivel: {nivel}
+Nombre del alumno: {nombre}
+Idioma de las explicaciones: {idioma}
 
-Corrige este texto siguiendo estas indicaciones:
-
-1. **Saluda al alumno por su nombre** y motívalo con un tono cálido.
-2. **Indica el tipo de texto** y justifica brevemente.
-3. **Detecta y clasifica los errores** en: gramática, léxico, puntuación y estructura textual.
-   - Muestra el fragmento erróneo entre comillas.
-   - Propón una corrección.
-   - Explica de forma clara y adaptada al nivel del alumno.
-4. **Reescribe el texto completo corregido** (en español) con un nivel adecuado, respetando el estilo original del alumno.
-5. **Finaliza con un consejo personalizado y alentador** que incluya una fortaleza y una sugerencia de mejora.
-6. **Termina con la frase obligatoria**: "Fin de texto corregido."
+IMPORTANTE: EL TEXTO CORREGIDO FINAL DEBE ESTAR SIEMPRE EN ESPAÑOL. No importa si el alumno escribe en otro idioma o elige otro idioma para las explicaciones.
 '''
-
 
         client = OpenAI(api_key=openai_api_key)
 
@@ -128,45 +87,41 @@ Corrige este texto siguiendo estas indicaciones:
             temperature=0.5,
             messages=[
                 {
-                  "role": "system",
-"content": f"""
-Eres Diego, un profesor experto en la enseñanza de Español como Lengua Extranjera (ELE), con formación filológica y gran sensibilidad pedagógica. Corriges textos de estudiantes con un enfoque didáctico, afectivo y estructurado.
+                    "role": "system",
+                    "content": f"""
+Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
 
-🚨 INSTRUCCIONES CRÍTICAS:
+⚠️ ATENCIÓN CRÍTICA:
+El texto corregido (campo \"texto_corregido\") debe estar SIEMPRE redactado en ESPAÑOL. No importa si el alumno escribe en inglés, francés o elige otro idioma para las explicaciones.
 
-El campo **"texto_corregido"** debe estar **siempre redactado en español**, sin excepción. No importa si el texto original está en otro idioma o si el alumno ha elegido otro idioma para las explicaciones.
+Si devuelves el texto corregido en otro idioma, será un ERROR GRAVE. Repite: el campo \"texto_corregido\" va siempre en español, es una propuesta modelo de ELE.
 
-➡️ Si generas el texto corregido en otro idioma, se considerará un **error grave**. Repite: **"texto_corregido"** es una **propuesta ideal** del texto del alumno, **corregida y mejorada en español**, adaptada a su nivel de ELE.
+Solo las \"explicaciones\" dentro de cada categoría de errores deben estar en el idioma seleccionado por el usuario ({idioma}). Los fragmentos erróneos y las correcciones van en español.
 
-✅ Solo el campo **"explicacion"** dentro de cada error puede estar en el idioma solicitado por el usuario: **{idioma}**.  
-Los fragmentos erróneos y las correcciones deben estar siempre en español.
+Estructura esperada:
+1. saludo
+2. tipo_texto
+3. errores clasificados (solo el campo \"explicacion\" en el idioma solicitado)
+4. texto_corregido (en español)
+5. consejo_final (en español)
+6. fin
 
-📦 Estructura obligatoria de salida en formato JSON:
-```json
-{{
-  "saludo": "...",
-  "tipo_texto": "...",
-  "errores": [
-    {{
-      "categoria": "gramática | léxico | puntuación | estructura textual",
-      "fragmento": "...",
-      "correccion": "...",
-      "explicacion": "..."  // En {idioma}
-    }},
-    ...
-  ],
-  "texto_corregido": "...",  // SIEMPRE en español
-  "consejo_final": "...",     // En español
-  "fin": "Fin de texto corregido."
-}}
-
+Responde únicamente con esta estructura y evita cualquier otro comentario fuera del JSON.
+"""
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
 
         correccion = response.choices[0].message.content
 
         st.subheader(f"📘 {traducciones['errores']}")
         st.markdown(correccion)
 
-        st.subheader(encabezados_es['texto_corregido'])
+        st.subheader(traducciones['texto_corregido'])
 
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
         sheet.append_row([nombre, nivel, fecha, texto, correccion])
@@ -202,14 +157,8 @@ Los fragmentos erróneos y las correcciones deben estar siempre en español.
         txt_buffer.write(feedback_txt.encode("utf-8"))
         txt_buffer.seek(0)
 
-        download_label = {
-            "Español": "📝 Descargar corrección en TXT",
-            "Francés": "📝 Télécharger correction en TXT",
-            "Inglés": "📝 Download correction in TXT"
-        }[idioma]
-
         st.download_button(
-            download_label,
+            "📝 Descargar corrección en TXT",
             data=txt_buffer,
             file_name=f"correccion_{nombre}.txt",
             mime="text/plain"
