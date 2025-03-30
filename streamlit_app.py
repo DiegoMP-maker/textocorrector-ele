@@ -82,35 +82,37 @@ Texto del alumno:
             st.success("✅ Corrección guardada en Google Sheets.")
 
             # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
+            consejo = ""
             if "Consejo final:" in correccion:
                 consejo = correccion.split("Consejo final:", 1)[-1].strip()
-                st.write(f"📢 Consejo detectado: {consejo}")  # debug temporal
+            elif "Consejo personalizado:" in correccion:
+                consejo = correccion.split("Consejo personalizado:", 1)[-1].strip()
 
-                if consejo:
-                    with st.spinner("Generando audio con ElevenLabs..."):
-                        url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
-                        headers = {
-                            "xi-api-key": elevenlabs_api_key,
-                            "Content-Type": "application/json"
+            if consejo:
+                st.markdown("**🔊 Consejo leído en voz alta:**")
+                with st.spinner("Generando audio con ElevenLabs..."):
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                    headers = {
+                        "xi-api-key": elevenlabs_api_key,
+                        "Content-Type": "application/json"
+                    }
+                    data = {
+                        "text": consejo,
+                        "model_id": "eleven_multilingual_v2",
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.8
                         }
-                        data = {
-                            "text": consejo,
-                            "model_id": "eleven_multilingual_v2",
-                            "voice_settings": {
-                                "stability": 0.5,
-                                "similarity_boost": 0.8
-                            }
-                        }
-                        response_audio = requests.post(url, headers=headers, json=data)
+                    }
+                    response_audio = requests.post(url, headers=headers, json=data)
 
-                        st.write(f"Respuesta ElevenLabs: {response_audio.status_code}")  # debug temporal
+                    if response_audio.ok:
+                        audio_bytes = BytesIO(response_audio.content)
+                        st.audio(audio_bytes, format="audio/mpeg")
+                    else:
+                        st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
 
-                        if response_audio.ok:
-                            audio_bytes = BytesIO(response_audio.content)
-                            st.audio(audio_bytes, format="audio/mpeg")
-                        else:
-                            st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
-
+            # DESCARGA EN TXT
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
