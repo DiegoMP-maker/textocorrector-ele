@@ -71,12 +71,12 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
         )
         raw_output = response.choices[0].message.content
 
-        # Intentar parsear directamente como JSON
+        # 1. Intentar parsear como JSON
         data_json = None
         try:
             data_json = json.loads(raw_output)
         except json.JSONDecodeError:
-            # Si falla, intentar extraer un bloque con llaves
+            # 2. Si falla, buscar un bloque con llaves
             match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
             if match_json:
                 json_str = match_json.group(0)
@@ -88,7 +88,7 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
         if data_json is not None:
             return raw_output, data_json
         else:
-            # Añadir mensaje correctivo
+            # Añadir mensaje correctivo y reintentar
             correction_message = {
                 "role": "system",
                 "content": (
@@ -99,7 +99,6 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
             }
             messages.append(correction_message)
 
-    # Si no se obtuvo un JSON válido tras varios reintentos
     raise ValueError("No se pudo obtener un JSON válido tras varios reintentos.")
 
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
@@ -148,6 +147,7 @@ Idioma de corrección: {idioma}
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
+            # MOSTRAR RESULTADOS
             st.subheader("Saludo")
             st.write(saludo)
             st.subheader("Tipo de texto y justificación")
@@ -170,23 +170,24 @@ Idioma de corrección: {idioma}
             st.write(consejo_final)
             st.write(fin)
 
-            # Guardar la respuesta en Historial_Correcciones_ELE
+            # GUARDAR EN HISTORIAL
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, raw_output])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
-            # Conteo de errores
+            # CONTEO DE ERRORES
             num_gramatica = sum(1 for e in errores if e.get("categoria", "").strip() == "Gramática")
             num_lexico = sum(1 for e in errores if e.get("categoria", "").strip() == "Léxico")
             num_puntuacion = sum(1 for e in errores if e.get("categoria", "").strip() == "Puntuación")
             num_estructura = sum(1 for e in errores if e.get("categoria", "").strip() == "Estructura textual")
             total_errores = len(errores)
 
-            # Guardar seguimiento en "Seguimiento"
+            # GUARDAR SEGUIMIENTO
             try:
                 tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
                 hojas = [hoja.title for hoja in tracking_doc.worksheets()]
                 st.info(f"Hojas disponibles en el documento Seguimiento: {hojas}")
+
                 try:
                     hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
@@ -210,7 +211,7 @@ Idioma de corrección: {idioma}
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
-            # Generar audio del consejo final con ElevenLabs
+            # GENERAR AUDIO
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -234,7 +235,7 @@ Idioma de corrección: {idioma}
                 else:
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-            # Opción de descarga en TXT
+            # DESCARGA EN TXT
             feedback_txt = (
                 f"Texto original:\n{texto}\n\n"
                 f"Saludo:\n{saludo}\n\n"
