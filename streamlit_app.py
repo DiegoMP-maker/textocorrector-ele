@@ -51,7 +51,7 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
    - La corrección correspondiente.
    - Una explicación breve.
 3. Reescribe el texto corregido adaptando el registro al tipo textual.
-4. Da un consejo personalizado para el alumno llamado {nombre}.
+4. Da un consejo final personalizado para el alumno llamado {nombre}.
 
 Texto del alumno:
 """
@@ -66,7 +66,7 @@ Texto del alumno:
                 model="gpt-3.5-turbo",
                 temperature=0.5,
                 messages=[
-                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual con justificación, explica errores con ejemplo/corrección/explicación, reescribe con el registro adecuado y da un consejo personalizado."},
+                    {"role": "system", "content": "Corrige textos como profesor ELE experto. Identifica el tipo textual con justificación, explica errores con ejemplo/corrección/explicación, reescribe con el registro adecuado y da un consejo final personalizado."},
                     {"role": "user", "content": prompt}
                 ]
             )
@@ -81,12 +81,10 @@ Texto del alumno:
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # --- AUDIO AUTOMÁTICO DEL CONSEJO PERSONALIZADO ---
+            # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
             consejo = ""
-            if "Consejo personalizado para" in correccion:
-                consejo = correccion.split("Consejo personalizado para", 1)[-1].split("\n", 1)[-1].strip()
-            elif "Consejo personalizado:" in correccion:
-                consejo = correccion.split("Consejo personalizado:", 1)[-1].strip()
+            if "Consejo final para" in correccion:
+                consejo = correccion.split("Consejo final para", 1)[-1].split("\n", 1)[-1].strip()
             elif "Consejo final:" in correccion:
                 consejo = correccion.split("Consejo final:", 1)[-1].strip()
 
