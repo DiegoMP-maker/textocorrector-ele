@@ -133,7 +133,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"
+             "explicacion": "string"  // Explicación en {idioma}
            }}
            // más errores de Gramática (o [] si ninguno)
        ],
@@ -141,28 +141,34 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"
+             "explicacion": "string"  // Explicación en {idioma}
            }}
        ],
        "Puntuación": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"
+             "explicacion": "string"  // Explicación en {idioma}
            }}
        ],
        "Estructura textual": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"
+             "explicacion": "string"  // Explicación en {idioma}
            }}
        ]
   }},
   "texto_corregido": "string",       // en {idioma}
-  "consejo_final": "string",         // en español
+  "consejo_final": "string",         // SOLO esta parte va en español, independientemente del idioma seleccionado
   "fin": "Fin de texto corregido."
 }}
+
+INSTRUCCIONES IMPORTANTES:
+1. Las categorías "Gramática", "Léxico", "Puntuación", "Estructura textual" siempre van en español, no las traduzcas.
+2. "saludo", "tipo_texto", "texto_corregido" y TODAS las explicaciones de errores deben estar en el idioma: {idioma}
+3. SOLO "consejo_final" va SIEMPRE en español, independientemente del idioma seleccionado.
+4. No traduzcas ni "fragmento_erroneo" ni "correccion", deben mantener el idioma del texto original.
 
 No devuelvas ningún texto extra fuera de este JSON.
 """
@@ -174,6 +180,10 @@ Texto del alumno:
 Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
+
+IMPORTANTE: Recuerda que la corrección debe estar en el idioma seleccionado ({idioma}). 
+El "saludo", "tipo_texto", "texto_corregido" y todas las explicaciones de errores deben estar en {idioma}. 
+Solo el "consejo_final" va siempre en español.
 """
 
         try:
@@ -187,30 +197,77 @@ Idioma de corrección: {idioma}
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
-            st.subheader("Saludo")
+            # Adaptamos las cabeceras según el idioma seleccionado
+            headers_by_language = {
+                "Español": {
+                    "saludo": "Saludo", 
+                    "tipo_texto": "Tipo de texto y justificación", 
+                    "errores": "Errores detectados",
+                    "texto_corregido": "Texto corregido completo", 
+                    "consejo_final": "Consejo final (en español)"
+                },
+                "Francés": {
+                    "saludo": "Salutation", 
+                    "tipo_texto": "Type de texte et justification", 
+                    "errores": "Erreurs détectées",
+                    "texto_corregido": "Texte corrigé complet", 
+                    "consejo_final": "Conseil final (en espagnol)"
+                },
+                "Inglés": {
+                    "saludo": "Greeting", 
+                    "tipo_texto": "Text type and justification", 
+                    "errores": "Detected errors",
+                    "texto_corregido": "Complete corrected text", 
+                    "consejo_final": "Final advice (in Spanish)"
+                }
+            }
+            
+            h = headers_by_language.get(idioma, headers_by_language["Español"])
+
+            st.subheader(h["saludo"])
             st.write(saludo)
-            st.subheader("Tipo de texto y justificación")
+            st.subheader(h["tipo_texto"])
             st.write(tipo_texto)
-            st.subheader("Errores detectados")
+            st.subheader(h["errores"])
             if not errores_obj:
-                st.write("No se han detectado errores.")
+                if idioma == "Español":
+                    st.write("No se han detectado errores.")
+                elif idioma == "Francés":
+                    st.write("Aucune erreur détectée.")
+                else:  # Inglés
+                    st.write("No errors detected.")
             else:
                 for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
                     lista_errores = errores_obj.get(categoria, [])
                     st.markdown(f"**{categoria}**")
                     if not lista_errores:
-                        st.write("  - Sin errores en esta categoría.")
+                        if idioma == "Español":
+                            st.write("  - Sin errores en esta categoría.")
+                        elif idioma == "Francés":
+                            st.write("  - Pas d'erreurs dans cette catégorie.")
+                        else:  # Inglés
+                            st.write("  - No errors in this category.")
                     else:
                         for err in lista_errores:
-                            st.write(f"  - Fragmento erróneo: {err.get('fragmento_erroneo','')}")
-                            st.write(f"    Corrección: {err.get('correccion','')}")
-                            st.write(f"    Explicación: {err.get('explicacion','')}")
+                            # Adaptamos las etiquetas según el idioma
+                            if idioma == "Español":
+                                st.write(f"  - Fragmento erróneo: {err.get('fragmento_erroneo','')}")
+                                st.write(f"    Corrección: {err.get('correccion','')}")
+                                st.write(f"    Explicación: {err.get('explicacion','')}")
+                            elif idioma == "Francés":
+                                st.write(f"  - Fragment erroné: {err.get('fragmento_erroneo','')}")
+                                st.write(f"    Correction: {err.get('correccion','')}")
+                                st.write(f"    Explication: {err.get('explicacion','')}")
+                            else:  # Inglés
+                                st.write(f"  - Erroneous fragment: {err.get('fragmento_erroneo','')}")
+                                st.write(f"    Correction: {err.get('correccion','')}")
+                                st.write(f"    Explanation: {err.get('explicacion','')}")
                     st.write("---")
 
-            st.subheader("Texto corregido completo (en el idioma solicitado)")
+            st.subheader(h["texto_corregido"])
             st.write(texto_corregido)
 
-            st.subheader("Consejo final (en español)")
+            st.subheader(h["consejo_final"])
             st.write(consejo_final)
             st.write(fin)
 
