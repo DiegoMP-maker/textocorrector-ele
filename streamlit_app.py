@@ -55,7 +55,7 @@ except Exception as e:
     st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
 # --- 3. INTERFAZ ---
-st.title("📝 Textocorrector ELE")
+st.title("📝 Textocorrector ELE (por Diego)")
 st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback.")
 
 with st.form("formulario"):
@@ -159,7 +159,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            }}
        ]
   }},
-  "texto_corregido": "string",       // en español (siempre en español)
+  "texto_corregido": "string",       // en {idioma}
   "consejo_final": "string",         // en español (siempre en español)
   "fin": "Fin de texto corregido."
 }}
@@ -180,7 +180,7 @@ Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 
 Por favor, asegúrate de que la corrección y explicaciones estén en el idioma: {idioma}.
-Solo el Texto corregido completo y el consejo final deben estar siempre en español.
+Solo el consejo final debe estar siempre en español.
 """
 
         try:
