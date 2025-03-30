@@ -1118,13 +1118,6 @@ Contexto cultural: {contexto_cultural}
                                 mime="text/csv",
                             )
                 
-                # Descarga en TXT (original)
-                st.download_button(
-                    label="📝 Descargar corrección completa en TXT",
-                    data=feedback_txt.encode("utf-8"),
-                    file_name=f"correccion_{nombre}.txt",
-                    mime="text/plain"
-                )
 
             except Exception as e:
                 st.error(f"Error al generar la corrección o guardar: {e}")
