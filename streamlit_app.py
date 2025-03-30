@@ -47,8 +47,18 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
+        # Ajustar instrucciones según nivel
+        if "principiante" in nivel:
+            tono = "Usa explicaciones simples y ejemplos básicos, sin tecnicismos."
+        elif "intermedio" in nivel:
+            tono = "Adapta las explicaciones al nivel B1-B2, usando vocabulario intermedio y ejemplos algo más complejos."
+        else:
+            tono = "Puedes usar explicaciones más técnicas y proponer mejoras estilísticas o estructuras más avanzadas."
+
         prompt = f'''
 Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes de {nivel} según el MCER, con el siguiente enfoque:
+
+{tono}
 
 1. Indica claramente el TIPO DE TEXTO (carta formal, mensaje informal, correo profesional, narración, descripción, etc.) y justifica brevemente por qué.
 2. Clasifica los errores en secciones: Gramática, Léxico, Puntuación, Estructura textual. Dentro de cada sección, presenta:
@@ -58,7 +68,7 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
 3. Reescribe el texto corregido adaptando el registro al tipo textual y teniendo en cuenta el nivel del alumno.
 4. Da un consejo final personalizado para el alumno llamado {nombre}, iniciando con "Consejo final:".
 5. Al final del texto corregido, añade siempre la línea "Fin de texto corregido".
-        
+
 Texto del alumno:
 """
 {texto}
@@ -66,7 +76,6 @@ Texto del alumno:
 '''
 
         try:
-            # Nota: si usas el wrapper oficial de openai, deberás adaptar estas líneas.
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
