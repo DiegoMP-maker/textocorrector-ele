@@ -133,7 +133,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"  // Explicación en {idioma}
+             "explicacion": "string"  // en {idioma}
            }}
            // más errores de Gramática (o [] si ninguno)
        ],
@@ -141,36 +141,34 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"  // Explicación en {idioma}
+             "explicacion": "string"  // en {idioma}
            }}
        ],
        "Puntuación": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"  // Explicación en {idioma}
+             "explicacion": "string"  // en {idioma}
            }}
        ],
        "Estructura textual": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
-             "explicacion": "string"  // Explicación en {idioma}
+             "explicacion": "string"  // en {idioma}
            }}
        ]
   }},
   "texto_corregido": "string",       // en {idioma}
-  "consejo_final": "string",         // SOLO esta parte va en español, independientemente del idioma seleccionado
+  "consejo_final": "string",         // en español (siempre en español)
   "fin": "Fin de texto corregido."
 }}
 
-INSTRUCCIONES IMPORTANTES:
-1. Las categorías "Gramática", "Léxico", "Puntuación", "Estructura textual" siempre van en español, no las traduzcas.
-2. "saludo", "tipo_texto", "texto_corregido" y TODAS las explicaciones de errores deben estar en el idioma: {idioma}
-3. SOLO "consejo_final" va SIEMPRE en español, independientemente del idioma seleccionado.
-4. No traduzcas ni "fragmento_erroneo" ni "correccion", deben mantener el idioma del texto original.
-
-No devuelvas ningún texto extra fuera de este JSON.
+IMPORTANTE: 
+- "saludo", "tipo_texto", "texto_corregido" y TODAS las explicaciones de cada error deben estar en el idioma {idioma} (ya sea Español, Francés o Inglés según la elección del usuario).
+- Solo "consejo_final" siempre debe estar en español, independientemente del idioma elegido.
+- Los nombres de las categorías ("Gramática", "Léxico", etc.) se mantienen en español.
+- No devuelvas ningún texto extra fuera de este JSON.
 """
         user_message = f"""
 Texto del alumno:
@@ -181,9 +179,8 @@ Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 
-IMPORTANTE: Recuerda que la corrección debe estar en el idioma seleccionado ({idioma}). 
-El "saludo", "tipo_texto", "texto_corregido" y todas las explicaciones de errores deben estar en {idioma}. 
-Solo el "consejo_final" va siempre en español.
+Por favor, asegúrate de que la corrección y explicaciones estén en el idioma: {idioma}.
+Solo el consejo final debe estar siempre en español.
 """
 
         try:
@@ -197,77 +194,74 @@ Solo el "consejo_final" va siempre en español.
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
-            # Adaptamos las cabeceras según el idioma seleccionado
-            headers_by_language = {
+            # Traducciones de encabezados según idioma seleccionado
+            encabezados = {
                 "Español": {
-                    "saludo": "Saludo", 
-                    "tipo_texto": "Tipo de texto y justificación", 
+                    "saludo": "Saludo",
+                    "tipo_texto": "Tipo de texto y justificación",
                     "errores": "Errores detectados",
-                    "texto_corregido": "Texto corregido completo", 
-                    "consejo_final": "Consejo final (en español)"
+                    "texto_corregido": "Texto corregido completo",
+                    "consejo_final": "Consejo final (en español)",
+                    "sin_errores": "Sin errores en esta categoría.",
+                    "fragmento": "Fragmento erróneo",
+                    "correccion": "Corrección",
+                    "explicacion": "Explicación"
                 },
                 "Francés": {
-                    "saludo": "Salutation", 
-                    "tipo_texto": "Type de texte et justification", 
+                    "saludo": "Salutation",
+                    "tipo_texto": "Type de texte et justification",
                     "errores": "Erreurs détectées",
-                    "texto_corregido": "Texte corrigé complet", 
-                    "consejo_final": "Conseil final (en espagnol)"
+                    "texto_corregido": "Texte corrigé complet",
+                    "consejo_final": "Conseil final (en espagnol)",
+                    "sin_errores": "Pas d'erreurs dans cette catégorie.",
+                    "fragmento": "Fragment erroné",
+                    "correccion": "Correction",
+                    "explicacion": "Explication"
                 },
                 "Inglés": {
-                    "saludo": "Greeting", 
-                    "tipo_texto": "Text type and justification", 
+                    "saludo": "Greeting",
+                    "tipo_texto": "Text type and justification",
                     "errores": "Detected errors",
-                    "texto_corregido": "Complete corrected text", 
-                    "consejo_final": "Final advice (in Spanish)"
+                    "texto_corregido": "Complete corrected text",
+                    "consejo_final": "Final advice (in Spanish)",
+                    "sin_errores": "No errors in this category.",
+                    "fragmento": "Error fragment",
+                    "correccion": "Correction",
+                    "explicacion": "Explanation"
                 }
             }
             
-            h = headers_by_language.get(idioma, headers_by_language["Español"])
+            # Obtener las traducciones para el idioma seleccionado
+            traducciones = encabezados.get(idioma, encabezados["Español"])
 
-            st.subheader(h["saludo"])
+            st.subheader(traducciones["saludo"])
             st.write(saludo)
-            st.subheader(h["tipo_texto"])
+            
+            st.subheader(traducciones["tipo_texto"])
             st.write(tipo_texto)
-            st.subheader(h["errores"])
+            
+            st.subheader(traducciones["errores"])
             if not errores_obj:
-                if idioma == "Español":
-                    st.write("No se han detectado errores.")
-                elif idioma == "Francés":
-                    st.write("Aucune erreur détectée.")
-                else:  # Inglés
-                    st.write("No errors detected.")
+                st.write("No se han detectado errores." if idioma == "Español" else 
+                        "Aucune erreur détectée." if idioma == "Francés" else 
+                        "No errors detected.")
             else:
                 for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
                     lista_errores = errores_obj.get(categoria, [])
                     st.markdown(f"**{categoria}**")
                     if not lista_errores:
-                        if idioma == "Español":
-                            st.write("  - Sin errores en esta categoría.")
-                        elif idioma == "Francés":
-                            st.write("  - Pas d'erreurs dans cette catégorie.")
-                        else:  # Inglés
-                            st.write("  - No errors in this category.")
+                        st.write(f"  - {traducciones['sin_errores']}")
                     else:
                         for err in lista_errores:
-                            # Adaptamos las etiquetas según el idioma
-                            if idioma == "Español":
-                                st.write(f"  - Fragmento erróneo: {err.get('fragmento_erroneo','')}")
-                                st.write(f"    Corrección: {err.get('correccion','')}")
-                                st.write(f"    Explicación: {err.get('explicacion','')}")
-                            elif idioma == "Francés":
-                                st.write(f"  - Fragment erroné: {err.get('fragmento_erroneo','')}")
-                                st.write(f"    Correction: {err.get('correccion','')}")
-                                st.write(f"    Explication: {err.get('explicacion','')}")
-                            else:  # Inglés
-                                st.write(f"  - Erroneous fragment: {err.get('fragmento_erroneo','')}")
-                                st.write(f"    Correction: {err.get('correccion','')}")
-                                st.write(f"    Explanation: {err.get('explicacion','')}")
+                            st.write(f"  - {traducciones['fragmento']}: {err.get('fragmento_erroneo','')}")
+                            st.write(f"    {traducciones['correccion']}: {err.get('correccion','')}")
+                            st.write(f"    {traducciones['explicacion']}: {err.get('explicacion','')}")
                     st.write("---")
 
-            st.subheader(h["texto_corregido"])
+            st.subheader(traducciones["texto_corregido"])
             st.write(texto_corregido)
 
-            st.subheader(h["consejo_final"])
+            st.subheader(traducciones["consejo_final"])
             st.write(consejo_final)
             st.write(fin)
 
@@ -302,8 +296,11 @@ Solo el "consejo_final" va siempre en español.
                     tracking_sheet.append_row(datos_seguimiento)
                     st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
                     
-                    # Mostrar resumen de errores
-                    st.subheader("Resumen de errores")
+                    # Mostrar resumen de errores - adaptamos los encabezados según idioma
+                    resumen_titulo = "Resumen de errores" if idioma == "Español" else "Résumé des erreurs" if idioma == "Francés" else "Error summary"
+                    total_texto = "Total errores" if idioma == "Español" else "Total des erreurs" if idioma == "Francés" else "Total errors"
+                    
+                    st.subheader(resumen_titulo)
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Gramática", num_gramatica)
@@ -313,7 +310,7 @@ Solo el "consejo_final" va siempre en español.
                         st.metric("Puntuación", num_puntuacion)
                     with col4:
                         st.metric("Estructura", num_estructura)
-                    st.metric("Total errores", total_errores)
+                    st.metric(total_texto, total_errores)
                     
                 except NameError:
                     # Si tracking_sheet no está definido, intentamos recuperarlo
@@ -334,7 +331,8 @@ Solo el "consejo_final" va siempre en español.
                 st.code(str(e))
 
             # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
-            st.markdown("**🔊 Consejo leído en voz alta (en español):**")
+            audio_titulo = "Consejo leído en voz alta (en español)" if idioma == "Español" else "Conseil lu à haute voix (en espagnol)" if idioma == "Francés" else "Advice read aloud (in Spanish)"
+            st.markdown(f"**🔊 {audio_titulo}:**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
                 headers = {
@@ -356,31 +354,34 @@ Solo el "consejo_final" va siempre en español.
                         audio_bytes = BytesIO(response_audio.content)
                         st.audio(audio_bytes, format="audio/mpeg")
                     else:
-                        st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+                        error_msg = "⚠️ No se pudo reproducir el consejo con ElevenLabs." if idioma == "Español" else "⚠️ Impossible de lire le conseil avec ElevenLabs." if idioma == "Francés" else "⚠️ Could not play advice with ElevenLabs."
+                        st.warning(f"{error_msg} (Status code: {response_audio.status_code})")
                 except Exception as e:
                     st.warning(f"⚠️ Error al generar audio: {e}")
 
             # --- DESCARGA EN TXT ---
+            download_text = "📝 Descargar corrección en TXT" if idioma == "Español" else "📝 Télécharger correction en TXT" if idioma == "Francés" else "📝 Download correction in TXT"
             feedback_txt = (
                 f"Texto original:\n{texto}\n\n"
-                f"Saludo:\n{saludo}\n\n"
-                f"Tipo de texto:\n{tipo_texto}\n\n"
-                f"Errores:\n{json.dumps(errores_obj, indent=2, ensure_ascii=False)}\n\n"
-                f"Texto corregido:\n{texto_corregido}\n\n"
-                f"Consejo final:\n{consejo_final}\n\n"
+                f"{traducciones['saludo']}:\n{saludo}\n\n"
+                f"{traducciones['tipo_texto']}:\n{tipo_texto}\n\n"
+                f"{traducciones['errores']}:\n{json.dumps(errores_obj, indent=2, ensure_ascii=False)}\n\n"
+                f"{traducciones['texto_corregido']}:\n{texto_corregido}\n\n"
+                f"{traducciones['consejo_final']}:\n{consejo_final}\n\n"
                 f"{fin}"
             )
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
             st.download_button(
-                label="📝 Descargar corrección en TXT",
+                label=download_text,
                 data=txt_buffer,
                 file_name=f"correccion_{nombre}.txt",
                 mime="text/plain"
             )
 
         except Exception as e:
-            st.error(f"Error al generar la corrección o guardar: {e}")
+            error_msg = "Error al generar la corrección o guardar" if idioma == "Español" else "Erreur lors de la génération de la correction ou de l'enregistrement" if idioma == "Francés" else "Error generating correction or saving"
+            st.error(f"{error_msg}: {e}")
             import traceback
             st.code(traceback.format_exc())
