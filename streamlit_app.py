@@ -26,7 +26,7 @@ client_gsheets = gspread.authorize(creds)
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
 TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
 
-# --- Abrimos el documento de correcciones (historial) en su primera hoja ---
+# --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
 try:
     corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
     st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
@@ -45,39 +45,47 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma = st.selectbox(
-        "Selecciona lenguaje para la corrección",
-        ["Español", "Francés", "Inglés"]
-    )
+    idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-
-        # Mensaje de sistema
+        # Nuevo system_message con instrucciones para utilizar encabezados en negrita
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
 INSTRUCCIONES FUNDAMENTALES:
 - El usuario ha elegido {idioma} para la corrección y errores detectados.
-- Por tanto, produce:
-  1. Saludo personalizado (en {idioma}).
-  2. Tipo de texto y justificación (en {idioma}).
-  3. Errores detectados (en {idioma}), con categorías: Gramática, Léxico, Puntuación, Estructura textual.
-  4. Texto corregido completo (en español) – NO incluyas encabezados numerados adicionales.
-  5. Consejo final (en español), que empiece con "Consejo final:".
-- No generes "6. Cierre técnico" ni ningún encabezado adicional.
-- Cierra siempre con la frase exacta:
+- Debes producir la salida con la siguiente estructura EXACTA:
+  
+  1. **Saludo personalizado** (en {idioma}).
+  
+  2. **Tipo de texto y justificación** (en {idioma}).
+  
+  3. **Errores detectados** (en {idioma}). En esta sección, usa los siguientes encabezados EXACTOS en negrita para las categorías:
+     - **Gramática**
+     - **Léxico**
+     - **Puntuación**
+     - **Estructura textual**
+     
+     Dentro de cada categoría, lista cada error mostrando:
+       - El fragmento erróneo entre comillas.
+       - La corrección propuesta.
+       - Una breve explicación.
+  
+  4. **Texto corregido completo** (en español). No incluyas encabezados numerados adicionales.
+  
+  5. **Consejo final:** (en español), que empiece con "Consejo final:" y sea breve y motivador.
+  
+- No generes ningún encabezado adicional (por ejemplo, "6. Cierre técnico").
+- Termina siempre con la frase EXACTA:
   Fin de texto corregido.
 - No añadas explicaciones fuera de estas secciones.
-Además:
-- Debes obedecer estrictamente estas instrucciones, sin mezclar idiomas.
-- El "Consejo final:" es siempre en español.
+- Recuerda: El "Consejo final:" es siempre en español.
 """
 
-        # Mensaje de usuario con triple comilla escapada
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -89,7 +97,6 @@ Idioma de corrección: {idioma}
 """
 
         try:
-            # Llamada a la API de OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-4",
@@ -101,14 +108,14 @@ Idioma de corrección: {idioma}
             )
             correccion_original = response.choices[0].message.content
 
-            # Eliminar la línea "6. Cierre técnico" si aparece
+            # Eliminar cualquier línea que contenga "6. Cierre técnico"
             correccion_sin_linea6 = re.sub(
                 r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
                 "",
                 correccion_original
             )
 
-            # Extraer consejo final (entre "Consejo final:" y "Fin de texto corregido")
+            # Extraer el bloque del consejo final (entre "Consejo final:" y "Fin de texto corregido")
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -119,32 +126,27 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
-            # Limpiar "Consejo final:" para que no lo lea la voz
+            # Limpiar el bloque para que la voz no lea literalmente "Consejo final:"
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
             correccion_limpia = correccion_sin_linea6.strip()
 
-            # Mostramos la corrección en pantalla
             st.subheader("📘 Corrección")
             st.markdown(correccion_limpia)
 
-            # Guardamos en la hoja principal del documento Historial_Correcciones_ELE
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
-            # --- GUARDAR SEGUIMIENTO EN OTRO DOCUMENTO ---
+            # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
             try:
                 tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
                 st.info(f"Hojas disponibles en el documento Seguimiento: {[hoja.title for hoja in tracking_doc.worksheets()]}")
-                
-                # Intentar abrir la hoja "Seguimiento"
                 try:
                     hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
                     hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
                 
-                # Función para contar errores por categoría
                 def contar_errores_por_categoria(correccion, categoria):
                     patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
                     match_categ = re.search(patron, correccion, re.DOTALL)
@@ -160,7 +162,6 @@ Idioma de corrección: {idioma}
                 num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
                 total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
-                # Datos para la hoja "Seguimiento"
                 datos_seguimiento = [
                     nombre,
                     nivel,
