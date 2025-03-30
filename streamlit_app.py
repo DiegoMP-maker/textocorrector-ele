@@ -26,12 +26,12 @@ client_gsheets = gspread.authorize(creds)
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
 TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
 
-# --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
+# Abrir documento de correcciones (Historial_Correcciones_ELE)
 try:
     corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
     st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
 except Exception as e:
-    st.error("❌ Error al conectar con Historial_Correcciones_ELE. Revisa los permisos o el ID del documento.")
+    st.error(f"❌ Error al conectar con Historial_Correcciones_ELE: {e}")
     st.stop()
 
 # --- 3. INTERFAZ ---
@@ -49,42 +49,34 @@ with st.form("formulario"):
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
-# --- 4. CORREGIR TEXTO CON IA ---
+# --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # System message reforzado para que la salida tenga el formato EXACTO:
-        system_message = f"""
-Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
+        # Instrucciones del sistema: solicita un JSON válido con la estructura exacta
+        system_message = """
+Eres Diego, un profesor experto en ELE. 
+Cuando corrijas un texto, DEBES devolver la respuesta en un JSON válido, sin ningún texto extra, con la siguiente estructura EXACTA:
 
-INSTRUCCIONES OBLIGATORIAS:
-- El usuario ha elegido {idioma} para la corrección y errores detectados.
-- Debes producir la salida con la siguiente estructura EXACTA (sin numeración en los títulos):
+{
+  "saludo": "string",
+  "tipo_texto": "string",
+  "errores": [
+    {
+      "categoria": "Gramática" | "Léxico" | "Puntuación" | "Estructura textual",
+      "fragmento_erroneo": "string",
+      "correccion": "string",
+      "explicacion": "string"
+    },
+    ... (más objetos de error si los hubiera)
+  ],
+  "texto_corregido": "string",
+  "consejo_final": "string",
+  "fin": "Fin de texto corregido."
+}
 
-  1. **Saludo personalizado** (en {idioma}).
-
-  2. **Tipo de texto y justificación** (en {idioma}).
-
-  3. **Errores detectados** (en {idioma}). En esta sección, usa EXACTAMENTE estos encabezados (sin numerar):
-     **Gramática**
-     **Léxico**
-     **Puntuación**
-     **Estructura textual**
-
-     Dentro de cada categoría, lista cada error usando el siguiente formato EXACTO:
-       "fragmento erróneo" → "corrección"
-       Explicación breve...
-     (Las comillas dobles " " son OBLIGATORIAS para el fragmento erróneo y la corrección.)
-
-  4. **Texto corregido completo** (en español). No añadas encabezados numerados adicionales en esta sección.
-
-  5. **Consejo final:** (en español), que comience con las palabras "Consejo final:" y sea breve y motivador.
-
-- No generes ningún encabezado adicional (por ejemplo, "6. Cierre técnico").
-- Termina SIEMPRE con la frase EXACTA:
-  Fin de texto corregido.
-- Recuérdalo: No mezcles idiomas; las secciones 1 a 3 deben estar en {idioma}, mientras que la sección 4 y 5 son en español.
+No devuelvas nada fuera de este JSON.
 """
-        # Definición del mensaje del alumno (user_message) usando triple comillas escapadas
+
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -105,64 +97,68 @@ Idioma de corrección: {idioma}
                     {"role": "user", "content": user_message}
                 ]
             )
-            correccion_original = response.choices[0].message.content
+            raw_output = response.choices[0].message.content
+            st.write("**Respuesta en crudo (para debug):**")
+            st.code(raw_output)
 
-            # Eliminar cualquier línea que contenga "6. Cierre técnico" (por si aparece)
-            correccion_sin_linea6 = re.sub(
-                r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
-                "",
-                correccion_original
-            )
+            try:
+                data_json = json.loads(raw_output)
+            except json.JSONDecodeError as je:
+                st.error("La respuesta no es un JSON válido. Revisa el prompt o la salida.")
+                st.stop()
 
-            # Extraer el bloque del "Consejo final:" (entre "Consejo final:" y "Fin de texto corregido")
-            match = re.search(
-                r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
-                correccion_sin_linea6,
-                re.DOTALL
-            )
-            if match:
-                consejo = match.group(1).strip()
+            # Extraer campos del JSON
+            saludo = data_json.get("saludo", "")
+            tipo_texto = data_json.get("tipo_texto", "")
+            errores = data_json.get("errores", [])
+            texto_corregido = data_json.get("texto_corregido", "")
+            consejo_final = data_json.get("consejo_final", "")
+            fin = data_json.get("fin", "")
+
+            # Mostrar la corrección de forma estructurada
+            st.subheader("Saludo")
+            st.write(saludo)
+            st.subheader("Tipo de texto y justificación")
+            st.write(tipo_texto)
+            st.subheader("Errores detectados")
+            if not errores:
+                st.write("No se han detectado errores.")
             else:
-                consejo = "No se encontró un consejo final claro en la corrección."
+                for error in errores:
+                    st.markdown(f"**Categoría:** {error.get('categoria','')}")
+                    st.write(f"- Fragmento erróneo: {error.get('fragmento_erroneo','')}")
+                    st.write(f"- Corrección: {error.get('correccion','')}")
+                    st.write(f"- Explicación: {error.get('explicacion','')}")
+                    st.write("---")
+            st.subheader("Texto corregido completo (en español)")
+            st.write(texto_corregido)
+            st.subheader("Consejo final (en español)")
+            st.write(consejo_final)
+            st.write(fin)
 
-            # Limpiar el bloque para que la voz no lea literalmente "Consejo final:"
-            consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
-            correccion_limpia = correccion_sin_linea6.strip()
-
-            st.subheader("📘 Corrección")
-            st.markdown(correccion_limpia)
-
+            # Guardar la respuesta JSON cruda en Historial_Correcciones_ELE
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-            corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
+            corrections_sheet.append_row([nombre, nivel, idioma, fecha, texto, raw_output])
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
+
+            # --- CONTEO DE ERRORES ---
+            num_gramatica = sum(1 for e in errores if e.get("categoria", "").strip() == "Gramática")
+            num_lexico = sum(1 for e in errores if e.get("categoria", "").strip() == "Léxico")
+            num_puntuacion = sum(1 for e in errores if e.get("categoria", "").strip() == "Puntuación")
+            num_estructura = sum(1 for e in errores if e.get("categoria", "").strip() == "Estructura textual")
+            total_errores = len(errores)
 
             # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
             try:
                 tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-                st.info(f"Hojas disponibles en el documento Seguimiento: {[hoja.title for hoja in tracking_doc.worksheets()]}")
+                hojas = [hoja.title for hoja in tracking_doc.worksheets()]
+                st.info(f"Hojas disponibles en el documento Seguimiento: {hojas}")
                 try:
                     hoja_seguimiento = tracking_doc.worksheet("Seguimiento")
                 except gspread.exceptions.WorksheetNotFound:
                     hoja_seguimiento = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=10)
                     st.info("Hoja 'Seguimiento' creada automáticamente.")
-
-                # Función para contar errores por categoría con regex adaptada: se admite opcionalmente ":" tras la categoría
-                def contar_errores_por_categoria(correccion, categoria):
-                    patron = rf"(?i)\*\*{categoria}\*\*:?(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
-                    match_categ = re.search(patron, correccion, re.DOTALL)
-                    if not match_categ:
-                        return 0
-                    bloque = match_categ.group(1)
-                    # Buscar errores entre comillas dobles
-                    errores = re.findall(r'"[^"]+"', bloque)
-                    return len(errores)
                 
-                num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
-                num_lexico = contar_errores_por_categoria(correccion_limpia, "Léxico")
-                num_puntuacion = contar_errores_por_categoria(correccion_limpia, "Puntuación")
-                num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
-                total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
-
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -172,30 +168,32 @@ Idioma de corrección: {idioma}
                     num_puntuacion,
                     num_estructura,
                     total_errores,
-                    consejo
+                    consejo_final
                 ]
-                st.info(f"Guardando seguimiento: {datos_seguimiento}")
                 hoja_seguimiento.append_row(datos_seguimiento)
+                st.info(f"Guardado seguimiento: {datos_seguimiento}")
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
             # --- GENERAR AUDIO CON ELEVENLABS ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
-                url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
                 headers = {
                     "xi-api-key": elevenlabs_api_key,
                     "Content-Type": "application/json"
                 }
+                # Se elimina "Consejo final:" del texto para audio si aparece
+                audio_text = consejo_final.replace("Consejo final:", "").strip()
                 data = {
-                    "text": consejo_para_audio,
+                    "text": audio_text,
                     "model_id": "eleven_multilingual_v2",
                     "voice_settings": {
                         "stability": 0.3,
                         "similarity_boost": 0.9
                     }
                 }
-                response_audio = requests.post(url, headers=headers, json=data)
+                response_audio = requests.post(tts_url, headers=headers, json=data)
                 if response_audio.ok:
                     audio_bytes = BytesIO(response_audio.content)
                     st.audio(audio_bytes, format="audio/mpeg")
@@ -203,7 +201,15 @@ Idioma de corrección: {idioma}
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
             # --- DESCARGA EN TXT ---
-            feedback_txt = f"Texto original:\n{texto}\n\n{correccion_limpia}"
+            feedback_txt = (
+                f"Texto original:\n{texto}\n\n"
+                f"Saludo:\n{saludo}\n\n"
+                f"Tipo de texto:\n{tipo_texto}\n\n"
+                f"Errores:\n{json.dumps(errores, indent=2)}\n\n"
+                f"Texto corregido:\n{texto_corregido}\n\n"
+                f"Consejo final:\n{consejo_final}\n\n"
+                f"{fin}"
+            )
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
