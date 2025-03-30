@@ -55,8 +55,8 @@ except Exception as e:
     st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
 # --- 3. INTERFAZ ---
-st.title("📝 Textocorrector ELE (por Diego)")
-st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback.")
+st.title("📝 Textocorrector ELE")
+st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback. Creado por el profesor Diego Medina")
 
 with st.form("formulario"):
     nombre = st.text_input("¿Cómo te llamas?")
