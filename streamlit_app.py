@@ -57,8 +57,8 @@ except Exception as e:
     st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
 # --- 3. INTERFAZ ---
-st.title("📝 Textocorrector ELE (por Diego)")
-st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado.")
+st.title("📝 Textocorrector ELE")
+st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
 with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
     st.markdown("""
@@ -310,7 +310,7 @@ Contexto cultural: {contexto_cultural}
             puntuacion_adecuacion = adecuacion.get("puntuacion", 0)
 
             # --- MOSTRAR RESULTADOS EN LA INTERFAZ ---
-            st.subheader("Saludo")
+            # Mostrar el saludo directamente sin encabezado
             st.write(saludo)
             
             st.subheader("Tipo de texto y justificación")
