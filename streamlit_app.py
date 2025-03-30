@@ -979,144 +979,146 @@ Contexto cultural: {contexto_cultural}
                         ):
                             st.success("✅ Documento Word descargado correctamente.")
                 
-                with export_tab2:
-                    st.write("Exporta este informe como página web (HTML)")
-                    
-                    if st.button("Generar HTML"):
-                        with st.spinner("Generando documento HTML..."):
-                            html_content = f"""
-                            <!DOCTYPE html>
-                            <html lang="es">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Informe de corrección - {nombre}</title>
-                                <style>
-                                    body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                                    .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
-                                    h1 {{ color: #2c3e50; }}
-                                    h2 {{ color: #3498db; margin-top: 30px; }}
-                                    h3 {{ color: #2980b9; }}
-                                    .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
-                                    .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
-                                    .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
-                                    .fragmento {{ color: #dc3545; }}
-                                    .correccion {{ color: #28a745; }}
-                                    .explicacion {{ color: #17a2b8; font-style: italic; }}
-                                    .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
-                                    .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
-                                    .puntuaciones th {{ background-color: #f2f2f2; }}
-                                    .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
-                                    .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
-                                </style>
-                            </head>
-                            <body>
-                                <div class="container">
-                                    <h1>Informe de corrección textual</h1>
-                                    
-                                    <section>
-                                        <h2>Información general</h2>
-                                        <p><strong>Nombre:</strong> {nombre}</p>
-                                        <p><strong>Nivel:</strong> {nivel}</p>
-                                        <p><strong>Fecha:</strong> {fecha}</p>
-                                    </section>
-                                    
-                                    <section>
-                                        <h2>Texto original</h2>
-                                        <div class="original">
-                                            <p>{texto.replace(chr(10), '<br>')}</p>
-                                        </div>
-                                        
-                                        <h2>Texto corregido</h2>
-                                        <div class="corregido">
-                                            <p>{texto_corregido.replace(chr(10), '<br>')}</p>
-                                        </div>
-                                    </section>
-                                    
-                                    <section>
-                                        <h2>Análisis contextual</h2>
-                                        
-                                        <h3>Puntuaciones</h3>
-                                        <table class="puntuaciones">
-                                            <tr>
-                                                <th>Coherencia</th>
-                                                <th>Cohesión</th>
-                                                <th>Registro</th>
-                                                <th>Adecuación cultural</th>
-                                            </tr>
-                                            <tr>
-                                                <td>{analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A')}/10</td>
-                                            </tr>
-                                        </table>
-                                    </section>
-                                    
-                                    <section>
-                                        <h2>Consejo final</h2>
-                                        <div class="consejo">
-                                            <p>{consejo_final}</p>
-                                        </div>
-                                    </section>
-                                    
-                                    <div class="footer">
-                                        <p>Textocorrector ELE - Informe generado el {fecha} - Todos los derechos reservados</p>
-                                    </div>
-                                </div>
-                            </body>
-                            </html>
-                            """
-                            
-                            # Convertir a bytes para descargar
-                            html_bytes = html_content.encode()
-                            
-                            # Botón de descarga
-                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                            st.download_button(
-                                label="📥 Descargar página HTML",
-                                data=html_bytes,
-                                file_name=nombre_archivo,
-                                mime="text/html",
-                            )
-                            
-                            # Opción para previsualizar
-                            with st.expander("Previsualizar HTML"):
-                                st.markdown(f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
+# Corregir botón HTML
+# En la pestaña export_tab2
+with export_tab2:
+    st.write("Exporta este informe como página web (HTML)")
+    
+    # Generar el HTML directamente sin necesidad de un botón adicional
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Informe de corrección - {nombre}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+            .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
+            h1 {{ color: #2c3e50; }}
+            h2 {{ color: #3498db; margin-top: 30px; }}
+            h3 {{ color: #2980b9; }}
+            .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
+            .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
+            .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
+            .fragmento {{ color: #dc3545; }}
+            .correccion {{ color: #28a745; }}
+            .explicacion {{ color: #17a2b8; font-style: italic; }}
+            .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
+            .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+            .puntuaciones th {{ background-color: #f2f2f2; }}
+            .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
+            .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Informe de corrección textual</h1>
+            
+            <section>
+                <h2>Información general</h2>
+                <p><strong>Nombre:</strong> {nombre}</p>
+                <p><strong>Nivel:</strong> {nivel}</p>
+                <p><strong>Fecha:</strong> {fecha}</p>
+            </section>
+            
+            <section>
+                <h2>Texto original</h2>
+                <div class="original">
+                    <p>{texto.replace(chr(10), '<br>')}</p>
+                </div>
                 
-                with export_tab3:
-                    st.write("Exporta los datos del análisis en formato CSV")
-                    
-                    if st.button("Generar CSV"):
-                        with st.spinner("Generando archivo CSV..."):
-                            # Crear CSV en memoria
-                            csv_buffer = StringIO()
-                            
-                            # Encabezados
-                            csv_buffer.write("Categoría,Dato\n")
-                            csv_buffer.write(f"Nombre,{nombre}\n")
-                            csv_buffer.write(f"Nivel,{nivel}\n")
-                            csv_buffer.write(f"Fecha,{fecha}\n")
-                            csv_buffer.write(f"Errores Gramática,{num_gramatica}\n")
-                            csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
-                            csv_buffer.write(f"Errores Puntuación,{num_puntuacion}\n")
-                            csv_buffer.write(f"Errores Estructura,{num_estructura}\n")
-                            csv_buffer.write(f"Total Errores,{total_errores}\n")
-                            csv_buffer.write(f"Puntuación Coherencia,{puntuacion_coherencia}\n")
-                            csv_buffer.write(f"Puntuación Cohesión,{puntuacion_cohesion}\n")
-                            csv_buffer.write(f"Puntuación Registro,{puntuacion_registro}\n")
-                            csv_buffer.write(f"Puntuación Adecuación Cultural,{puntuacion_adecuacion}\n")
-                            
-                            csv_bytes = csv_buffer.getvalue().encode()
-                            
-                            # Botón de descarga
-                            nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                            st.download_button(
-                                label="📥 Descargar CSV",
-                                data=csv_bytes,
-                                file_name=nombre_archivo,
-                                mime="text/csv",
-                            )
+                <h2>Texto corregido</h2>
+                <div class="corregido">
+                    <p>{texto_corregido.replace(chr(10), '<br>')}</p>
+                </div>
+            </section>
+            
+            <section>
+                <h2>Análisis contextual</h2>
+                
+                <h3>Puntuaciones</h3>
+                <table class="puntuaciones">
+                    <tr>
+                        <th>Coherencia</th>
+                        <th>Cohesión</th>
+                        <th>Registro</th>
+                        <th>Adecuación cultural</th>
+                    </tr>
+                    <tr>
+                        <td>{analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A')}/10</td>
+                        <td>{analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A')}/10</td>
+                        <td>{analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A')}/10</td>
+                        <td>{analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A')}/10</td>
+                    </tr>
+                </table>
+            </section>
+            
+            <section>
+                <h2>Consejo final</h2>
+                <div class="consejo">
+                    <p>{consejo_final}</p>
+                </div>
+            </section>
+            
+            <div class="footer">
+                <p>Textocorrector ELE - Informe generado el {fecha} - Todos los derechos reservados</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Convertir a bytes para descargar
+    html_bytes = html_content.encode()
+    
+    # Botón de descarga
+    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+    st.download_button(
+        label="📥 Descargar página HTML",
+        data=html_bytes,
+        file_name=nombre_archivo,
+        mime="text/html",
+        key="html_download"
+    )
+    
+    # Opción para previsualizar
+    with st.expander("Previsualizar HTML"):
+        st.markdown(f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
+
+# Corregir botón CSV
+with export_tab3:
+    st.write("Exporta los datos del análisis en formato CSV")
+    
+    # Crear CSV en memoria directamente sin necesidad de un botón adicional
+    csv_buffer = StringIO()
+    
+    # Encabezados
+    csv_buffer.write("Categoría,Dato\n")
+    csv_buffer.write(f"Nombre,{nombre}\n")
+    csv_buffer.write(f"Nivel,{nivel}\n")
+    csv_buffer.write(f"Fecha,{fecha}\n")
+    csv_buffer.write(f"Errores Gramática,{num_gramatica}\n")
+    csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
+    csv_buffer.write(f"Errores Puntuación,{num_puntuacion}\n")
+    csv_buffer.write(f"Errores Estructura,{num_estructura}\n")
+    csv_buffer.write(f"Total Errores,{total_errores}\n")
+    csv_buffer.write(f"Puntuación Coherencia,{puntuacion_coherencia}\n")
+    csv_buffer.write(f"Puntuación Cohesión,{puntuacion_cohesion}\n")
+    csv_buffer.write(f"Puntuación Registro,{puntuacion_registro}\n")
+    csv_buffer.write(f"Puntuación Adecuación Cultural,{puntuacion_adecuacion}\n")
+    
+    csv_bytes = csv_buffer.getvalue().encode()
+    
+    # Botón de descarga
+    nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+    st.download_button(
+        label="📥 Descargar CSV",
+        data=csv_bytes,
+        file_name=nombre_archivo,
+        mime="text/csv",
+        key="csv_download"
+    )
                 
 
             except Exception as e:
