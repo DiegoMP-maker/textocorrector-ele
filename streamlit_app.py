@@ -41,13 +41,10 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    
-    # NUEVO: Menú desplegable para seleccionar el idioma
     idioma = st.selectbox(
         "Selecciona lenguaje para la corrección",
         ["Español", "Francés", "Inglés"]
     )
-    
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
@@ -55,54 +52,56 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
         
-        prompt = f'''
+        # Instrucciones principales de salida:
+        # 1) Saludo, tipo de texto, errores y texto corregido en el idioma elegido
+        # 2) Consejo final siempre en español
+        system_message = f"""
+Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
+
+**INSTRUCCIONES IMPORTANTES**:
+- El usuario ha seleccionado el idioma de corrección: {idioma}.
+- Debes producir toda la respuesta (saludo, tipo de texto, errores detectados, texto corregido) en {idioma}, aunque el texto original esté en otro idioma.
+- Únicamente el consejo final irá siempre en español.
+- Ajusta tu registro y explicaciones al nivel indicado por el alumno (A1-C2), pero en {idioma}.
+
+Estructura de salida obligatoria:
+1. **Saludo personalizado** (en {idioma}).
+2. **Tipo de texto y justificación** (en {idioma}).
+3. **Errores detectados** (en {idioma}), categorizados en:
+   - Gramática
+   - Léxico
+   - Puntuación
+   - Estructura textual
+   Cada error:
+     - Fragmento erróneo
+     - Corrección propuesta
+     - Explicación breve
+4. **Texto corregido completo** (en {idioma}), reescrito con correcciones y buen registro.
+5. **Consejo final** (en español), empieza con "Consejo final:" y acaba antes de la frase siguiente.
+6. **Cierre técnico** con la frase "Fin de texto corregido."
+
+No añadas explicaciones fuera de estas secciones.
+"""
+
+        # Mensaje de usuario con la información adicional
+        user_message = f"""
 Texto del alumno:
-"""
+\"\"\"
 {texto}
-"""
+\"\"\"
 Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
-'''
-
-        system_message = f"""Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica. Tu misión es corregir textos escritos por estudiantes de español de nivel A2 a C1 de forma eficaz, clara y empática.
-
-Actúas con precisión lingüística, estructura metódica y orientación personalizada.
-
-Cuando recibas un texto, sigue siempre esta estructura de salida:
-
-1. **Saludo personalizado**: Dirígete al alumno por su nombre, si está disponible. Saluda con calidez y cercanía, como lo haría un buen profesor.
-
-2. **Tipo de texto y justificación**: Indica el tipo textual (correo formal, narración, descripción, etc.) y explica brevemente por qué.
-
-3. **Errores detectados**: Agrupa los errores en las siguientes categorías. Dentro de cada categoría, usa esta estructura:
-   - Fragmento erróneo entre comillas.
-   - Corrección propuesta.
-   - Explicación breve y accesible para el nivel del alumno.
-
-   Categorías:
-   - **Gramática**
-   - **Léxico**
-   - **Puntuación**
-   - **Estructura textual**
-
-4. **Texto corregido completo**: Reescribe el texto corregido de forma natural, respetando el estilo del alumno pero mejorando coherencia, registro y corrección lingüística. Debe estar en {idioma}.
-
-5. **Consejo final motivador**: Escribe un consejo final breve, personal y empático, como si fueras Diego. Comienza con "Consejo final:" y finaliza con un mensaje alentador. Este consejo siempre debe estar en español.
-
-6. **Cierre técnico**: Termina siempre con la frase: "Fin de texto corregido."
-
-Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias fuera de las secciones indicadas.
 """
 
         try:
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
-                model="gpt-4-turbo",
+                model="gpt-4",  # Usa "gpt-4" o "gpt-3.5-turbo" según tu suscripción
                 temperature=0.5,
                 messages=[
                     {"role": "system", "content": system_message},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": user_message}
                 ]
             )
 
@@ -115,7 +114,7 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
             sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion])
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # --- EXTRAER CONSEJO FINAL CON REGEX ROBUSTO ---
+            # --- EXTRAER CONSEJO FINAL ---
             match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
             if match:
                 consejo = match.group(1).strip()
@@ -124,7 +123,7 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
                 st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
 
             # --- AUDIO CON ELEVENLABS ---
-            st.markdown("**🔊 Consejo leído en voz alta:**")
+            st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
                 headers = {
@@ -135,8 +134,8 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
                     "text": consejo,
                     "model_id": "eleven_multilingual_v2",
                     "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.8
+                        "stability": 0.3,
+                        "similarity_boost": 0.9
                     }
                 }
                 response_audio = requests.post(url, headers=headers, json=data)
