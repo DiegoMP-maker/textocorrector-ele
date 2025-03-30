@@ -52,38 +52,35 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
         
-        # Instrucciones principales de salida:
-        # 1) Saludo, tipo de texto, errores y texto corregido en el idioma elegido
-        # 2) Consejo final siempre en español
+        # Instrucciones para el modelo:
+        # - Produce el saludo, el análisis, la detección de errores y demás secciones en el idioma seleccionado (si es francés o inglés).
+        # - Sin embargo, la sección "Texto corregido completo:" se debe dejar en español, sin traducir.
+        # - El "Consejo final:" también se debe producir en español.
         system_message = f"""
-Eres Diego, un profesor experto en enseñanza de español como lengua extranjera (ELE), con formación filológica y gran sensibilidad pedagógica.
+Eres Diego, profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
-**INSTRUCCIONES IMPORTANTES**:
-- El usuario ha seleccionado el idioma de corrección: {idioma}.
-- Debes producir toda la respuesta (saludo, tipo de texto, errores detectados, texto corregido) en {idioma}, aunque el texto original esté en otro idioma.
-- Únicamente el consejo final irá siempre en español.
-- Ajusta tu registro y explicaciones al nivel indicado por el alumno (A1-C2), pero en {idioma}.
-
+INSTRUCCIONES:
+- El alumno ha seleccionado el idioma de corrección: {idioma}.
+- Produce las secciones **Saludo personalizado**, **Tipo de texto y justificación** y **Errores detectados** (con sus categorías) en {idioma}.
+- Para la sección **Texto corregido completo:**, DEJA el texto en español sin traducir.
+- El **Consejo final:** debe escribirse en español.
+- Finaliza siempre con la frase "Fin de texto corregido."
+    
 Estructura de salida obligatoria:
 1. **Saludo personalizado** (en {idioma}).
 2. **Tipo de texto y justificación** (en {idioma}).
-3. **Errores detectados** (en {idioma}), categorizados en:
+3. **Errores detectados** (en {idioma}) – agrupa en:
    - Gramática
    - Léxico
    - Puntuación
    - Estructura textual
-   Cada error:
-     - Fragmento erróneo
-     - Corrección propuesta
-     - Explicación breve
-4. **Texto corregido completo** (en {idioma}), reescrito con correcciones y buen registro.
-5. **Consejo final** (en español), empieza con "Consejo final:" y acaba antes de la frase siguiente.
-6. **Cierre técnico** con la frase "Fin de texto corregido."
-
+   Para cada error: muestra el fragmento erróneo, la corrección propuesta y una breve explicación.
+4. **Texto corregido completo:** [Deja esta sección en español, sin traducir]
+5. **Consejo final:** (en español), que comience con "Consejo final:" y que sea breve, personal y motivador.
+6. **Cierre técnico:** La salida debe terminar con "Fin de texto corregido."
 No añadas explicaciones fuera de estas secciones.
 """
 
-        # Mensaje de usuario con la información adicional
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -97,7 +94,7 @@ Idioma de corrección: {idioma}
         try:
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
-                model="gpt-4",  # Usa "gpt-4" o "gpt-3.5-turbo" según tu suscripción
+                model="gpt-4",  # O usa "gpt-3.5-turbo" según tu suscripción
                 temperature=0.5,
                 messages=[
                     {"role": "system", "content": system_message},
@@ -134,8 +131,8 @@ Idioma de corrección: {idioma}
                     "text": consejo,
                     "model_id": "eleven_multilingual_v2",
                     "voice_settings": {
-                        "stability": 0.3,
-                        "similarity_boost": 0.9
+                        "stability": 0.5,
+                        "similarity_boost": 0.8
                     }
                 }
                 response_audio = requests.post(url, headers=headers, json=data)
