@@ -51,34 +51,20 @@ with st.form("formulario"):
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        
-        # Instrucciones para el modelo:
-        # - Produce el saludo, el análisis, la detección de errores y demás secciones en el idioma seleccionado (si es francés o inglés).
-        # - Sin embargo, la sección "Texto corregido completo:" se debe dejar en español, sin traducir.
-        # - El "Consejo final:" también se debe producir en español.
-        system_message = f"""
-Eres Diego, profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
-INSTRUCCIONES:
-- El alumno ha seleccionado el idioma de corrección: {idioma}.
-- Produce las secciones **Saludo personalizado**, **Tipo de texto y justificación** y **Errores detectados** (con sus categorías) en {idioma}.
-- Para la sección **Texto corregido completo:**, DEJA el texto en español sin traducir.
-- El **Consejo final:** debe escribirse en español.
-- Finaliza siempre con la frase "Fin de texto corregido."
-    
-Estructura de salida obligatoria:
-1. **Saludo personalizado** (en {idioma}).
-2. **Tipo de texto y justificación** (en {idioma}).
-3. **Errores detectados** (en {idioma}) – agrupa en:
-   - Gramática
-   - Léxico
-   - Puntuación
-   - Estructura textual
-   Para cada error: muestra el fragmento erróneo, la corrección propuesta y una breve explicación.
-4. **Texto corregido completo:** [Deja esta sección en español, sin traducir]
-5. **Consejo final:** (en español), que comience con "Consejo final:" y que sea breve, personal y motivador.
-6. **Cierre técnico:** La salida debe terminar con "Fin de texto corregido."
-No añadas explicaciones fuera de estas secciones.
+        system_message = f"""
+Eres Diego, un profesor experto en ELE. 
+Sigue siempre esta estructura:
+1. Saludo personalizado
+2. Tipo de texto y justificación
+3. Errores detectados (Gramática, Léxico, Puntuación, Estructura textual)
+4. Texto corregido completo (en español, si así se indica)
+5. Consejo final (en español) iniciando con "Consejo final:"
+6. Cierre técnico con "Fin de texto corregido."
+        
+- El usuario selecciona el idioma para la corrección y errores detectados: {idioma}.
+- El consejo final siempre en español.
+- No añadas contenido adicional.
 """
 
         user_message = f"""
@@ -94,7 +80,7 @@ Idioma de corrección: {idioma}
         try:
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
-                model="gpt-4",  # O usa "gpt-3.5-turbo" según tu suscripción
+                model="gpt-4",
                 temperature=0.5,
                 messages=[
                     {"role": "system", "content": system_message},
@@ -102,22 +88,36 @@ Idioma de corrección: {idioma}
                 ]
             )
 
-            correccion = response.choices[0].message.content
+            correccion_original = response.choices[0].message.content
 
-            st.subheader("📘 Corrección")
-            st.markdown(correccion)
-
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-            sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion])
-            st.success("✅ Corrección guardada en Google Sheets.")
-
-            # --- EXTRAER CONSEJO FINAL ---
-            match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
+            # 1) Extraemos el consejo del texto original para el audio.
+            match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion_original, re.DOTALL)
             if match:
                 consejo = match.group(1).strip()
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
-                st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
+
+            # 2) Evitamos que la voz lea la frase "Consejo final:"
+            #    (por si el modelo la repitiera dentro del texto capturado).
+            consejo = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
+
+            # 3) Limpiamos el texto mostrado para no incluir la línea "6. Cierre técnico"
+            #    pero conservamos "Fin de texto corregido."
+            correccion_limpia = re.sub(
+                r"(?im)^\s*\d+\.\s*Cierre técnico.*$", 
+                "", 
+                correccion_original
+            ).strip()
+
+            # Mostramos la corrección limpia (sin la línea 6. Cierre técnico).
+            st.subheader("📘 Corrección")
+            st.markdown(correccion_limpia)
+
+            # Registramos todo (con la línea 6 incluida) en Google Sheets,
+            # o si prefieres, registra la versión limpia.
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+            sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_original])
+            st.success("✅ Corrección guardada en Google Sheets.")
 
             # --- AUDIO CON ELEVENLABS ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
@@ -131,8 +131,8 @@ Idioma de corrección: {idioma}
                     "text": consejo,
                     "model_id": "eleven_multilingual_v2",
                     "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.8
+                        "stability": 0.3,
+                        "similarity_boost": 0.9
                     }
                 }
                 response_audio = requests.post(url, headers=headers, json=data)
@@ -143,7 +143,7 @@ Idioma de corrección: {idioma}
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
             # --- DESCARGA EN TXT ---
-            feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
+            feedback_txt = f"Texto original:\n{texto}\n\n{correccion_limpia}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
