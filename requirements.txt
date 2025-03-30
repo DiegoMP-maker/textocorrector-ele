@@ -5,3 +5,10 @@ gspread
 oauth2client
 reportlab
 pydub
+pandas
+matplotlib
+altair
+google-auth
+python-docx
+qrcode
+pillow
