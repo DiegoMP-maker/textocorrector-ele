@@ -955,23 +955,40 @@ Contexto cultural: {contexto_cultural}
                 tab1, tab2, tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
                 
                 with tab1:
-                    st.write("Exporta este informe como documento Word (DOCX)")
+    st.write("Exporta este informe como documento Word (DOCX)")
+    
+    if st.button("Generar DOCX"):
+        with st.spinner("Generando documento Word..."):
+            try:
+                docx_buffer = generar_informe_docx(
+                    nombre, nivel, fecha, texto, texto_corregido,
+                    errores_obj, analisis_contextual, consejo_final
+                )
+                
+                # Verificar que el buffer tiene contenido
+                buffer_size = docx_buffer.getbuffer().nbytes
+                st.write(f"Tamaño del buffer DOCX: {buffer_size} bytes")
+                
+                if buffer_size > 0:
+                    # Asegurarnos de que el buffer está en la posición correcta
+                    docx_buffer.seek(0)
                     
-                    if st.button("Generar DOCX"):
-                        with st.spinner("Generando documento Word..."):
-                            docx_buffer = generar_informe_docx(
-                                nombre, nivel, fecha, texto, texto_corregido,
-                                errores_obj, analisis_contextual, consejo_final
-                            )
-                            
-                            # Botón de descarga
-                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                            st.download_button(
-                                label="📥 Descargar documento Word",
-                                data=docx_buffer,
-                                file_name=nombre_archivo,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            )
+                    # Botón de descarga
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                    download_button = st.download_button(
+                        label="📥 Descargar documento Word",
+                        data=docx_buffer,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="docx_download"  # Añadir una key única
+                    )
+                    st.write(f"Botón de descarga creado: {download_button}")
+                else:
+                    st.error("El buffer del documento Word está vacío.")
+            except Exception as e:
+                st.error(f"Error al generar el documento Word: {e}")
+                import traceback
+                st.code(traceback.format_exc())
                 
                 with tab2:
                     st.write("Exporta este informe como página web (HTML)")
