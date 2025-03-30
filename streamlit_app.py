@@ -139,7 +139,9 @@ Idioma de corrección: {idioma}
             total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
             try:
-                hoja_seguimiento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").worksheet("Seguimiento")
+                documento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8")
+st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
+hoja_seguimiento = documento.worksheet("Seguimiento")
                 datos_seguimiento = [
                     nombre,
                     nivel,
