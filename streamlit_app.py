@@ -58,7 +58,7 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
     ]
     for _ in range(max_retries):
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",
             temperature=0.5,
             messages=messages
         )
