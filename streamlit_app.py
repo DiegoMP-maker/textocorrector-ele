@@ -41,16 +41,20 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma = st.selectbox("Selecciona el idioma de la corrección y errores detectados", [
-        "Español", "Francés", "Inglés"
-    ])
+    
+    # NUEVO: Menú desplegable para seleccionar el idioma
+    idioma = st.selectbox(
+        "Selecciona lenguaje para la corrección",
+        ["Español", "Francés", "Inglés"]
+    )
+    
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-
+        
         prompt = f'''
 Texto del alumno:
 """
