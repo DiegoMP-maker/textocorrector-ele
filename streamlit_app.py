@@ -84,6 +84,7 @@ Texto del alumno:
             # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
             if "Consejo final:" in correccion:
                 consejo = correccion.split("Consejo final:", 1)[-1].strip()
+                st.write(f"📢 Consejo detectado: {consejo}")  # debug temporal
 
                 if consejo:
                     with st.spinner("Generando audio con ElevenLabs..."):
@@ -101,6 +102,8 @@ Texto del alumno:
                             }
                         }
                         response_audio = requests.post(url, headers=headers, json=data)
+
+                        st.write(f"Respuesta ElevenLabs: {response_audio.status_code}")  # debug temporal
 
                         if response_audio.ok:
                             audio_bytes = BytesIO(response_audio.content)
