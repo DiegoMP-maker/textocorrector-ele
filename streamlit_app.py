@@ -52,10 +52,6 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        # 1) Instrucciones al modelo:
-        # - La corrección y errores en el idioma seleccionado (salvo el consejo final, en español).
-        # - No incluir "6. Cierre técnico" ni numerar ese apartado. 
-        # - Terminar siempre con "Fin de texto corregido." en una nueva línea.
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
@@ -79,19 +75,18 @@ Además:
 
         user_message = f"""
 Texto del alumno:
-\"\"\"
+"""
 {texto}
-\"\"\"
+"""
 Nivel: {nivel}
 Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 """
 
         try:
-            # 2) Llamada a la API de OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
-                model="gpt-4",  # o "gpt-3.5-turbo" según tu suscripción
+                model="gpt-4",
                 temperature=0.5,
                 messages=[
                     {"role": "system", "content": system_message},
@@ -101,21 +96,15 @@ Idioma de corrección: {idioma}
 
             correccion_original = response.choices[0].message.content
 
-            # 3) POSPROCESAMIENTO:
-            # A) Eliminar cualquier línea que contenga "6. Cierre técnico"
-            #    en caso de que GPT desobedezca.
             correccion_sin_linea6 = re.sub(
-                r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?", 
-                "", 
+                r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
+                "",
                 correccion_original
             )
 
-            # B) Localizar el consejo final
-            #    Buscamos desde "Consejo final:" hasta "Fin de texto corregido" o fin de string
-            #    con re.DOTALL para capturar saltos de línea.
             match = re.search(
-                r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", 
-                correccion_sin_linea6, 
+                r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
+                correccion_sin_linea6,
                 re.DOTALL
             )
             if match:
@@ -123,22 +112,48 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
-            # C) Evitar que la voz lea literalmente "Consejo final:" u otra frase no deseada.
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
-
-            # D) Mostramos la corrección limpia (sin "6. Cierre técnico") 
-            #    pero dejamos "Fin de texto corregido." 
             correccion_limpia = correccion_sin_linea6.strip()
 
             st.subheader("📘 Corrección")
             st.markdown(correccion_limpia)
 
-            # 4) Guardar en Google Sheets (puedes elegir guardar la versión original o la limpia)
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # 5) Generar audio con ElevenLabs solo del consejo
+            # --- ANÁLISIS DE ERRORES PARA LA HOJA DE SEGUIMIENTO ---
+            def contar_errores_por_categoria(correccion, categoria):
+                patron = rf"(?i)\*\*{categoria}\*\*(.*?)(\*\*|Consejo final:|Fin de texto corregido|$)"
+                match = re.search(patron, correccion, re.DOTALL)
+                if not match:
+                    return 0
+                bloque = match.group(1)
+                errores = re.findall(r'“[^”]+”|"[^"]+"', bloque)
+                return len(errores)
+
+            num_gramatica = contar_errores_por_categoria(correccion_limpia, "Gramática")
+            num_lexico = contar_errores_por_categoria(correccion_limpia, "Léxico")
+            num_puntuacion = contar_errores_por_categoria(correccion_limpia, "Puntuación")
+            num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
+            total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+
+            try:
+                hoja_seguimiento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").worksheet("Seguimiento")
+                hoja_seguimiento.append_row([
+                    nombre,
+                    nivel,
+                    fecha,
+                    num_gramatica,
+                    num_lexico,
+                    num_puntuacion,
+                    num_estructura,
+                    total_errores,
+                    consejo
+                ])
+            except Exception as e:
+                st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
+
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -161,7 +176,6 @@ Idioma de corrección: {idioma}
                 else:
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-            # 6) Descarga en TXT
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion_limpia}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
