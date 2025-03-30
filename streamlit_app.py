@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import gspread
 import requests
+import re
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
@@ -47,7 +48,6 @@ with st.form("formulario"):
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
-        # Construcción del prompt dinámico
         prompt = f'''
 Texto del alumno:
 """
@@ -111,11 +111,12 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
         sheet.append_row([nombre, nivel, fecha, texto, correccion])
         st.success("✅ Corrección guardada en Google Sheets.")
 
-        # --- EXTRAER EL CONSEJO FINAL ---
+        # --- EXTRAER CONSEJO FINAL CON REGEX ROBUSTO ---
         consejo = ""
-        if "Consejo final:" in correccion and "Fin de texto corregido" in correccion:
-            consejo = correccion.split("Consejo final:", 1)[1].split("Fin de texto corregido", 1)[0].strip()
-        if not consejo:
+        match = re.search(r"Consejo final:\s*(.*?)\s*Fin de texto corregido", correccion, re.DOTALL)
+        if match:
+            consejo = match.group(1).strip()
+        else:
             consejo = "No se encontró un consejo final claro en la corrección."
             st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
 
