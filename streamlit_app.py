@@ -948,38 +948,38 @@ Contexto cultural: {contexto_cultural}
                 # 1. Mostrar recomendaciones personalizadas
                 mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key)
                 
-                # 2. Opciones de exportación
+# 2. Opciones de exportación
                 st.header("📊 Exportar informe")
                 
-               # Opciones de exportación en pestañas
-tab1, tab2, tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
+                # Opciones de exportación en pestañas
+                export_tab1, export_tab2, export_tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
 
-with tab1:
-    st.write("Exporta este informe como documento Word (DOCX)")
-    
-    # Generar el buffer por adelantado
-    docx_buffer = None
-    try:
-        docx_buffer = generar_informe_docx(
-            nombre, nivel, fecha, texto, texto_corregido,
-            errores_obj, analisis_contextual, consejo_final
-        )
-    except Exception as e:
-        st.error(f"Error al generar el documento Word: {e}")
-    
-    # Si el buffer se generó correctamente, mostrar el botón de descarga
-    if docx_buffer is not None:
-        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-        if st.download_button(
-            label="📥 Descargar documento Word",
-            data=docx_buffer,
-            file_name=nombre_archivo,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="docx_download"
-        ):
-            st.success("✅ Documento Word descargado correctamente.")
+                with export_tab1:
+                    st.write("Exporta este informe como documento Word (DOCX)")
+                    
+                    # Generar el buffer por adelantado
+                    docx_buffer = None
+                    try:
+                        docx_buffer = generar_informe_docx(
+                            nombre, nivel, fecha, texto, texto_corregido,
+                            errores_obj, analisis_contextual, consejo_final
+                        )
+                    except Exception as e:
+                        st.error(f"Error al generar el documento Word: {e}")
+                    
+                    # Si el buffer se generó correctamente, mostrar el botón de descarga
+                    if docx_buffer is not None:
+                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                        if st.download_button(
+                            label="📥 Descargar documento Word",
+                            data=docx_buffer,
+                            file_name=nombre_archivo,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key="docx_download"
+                        ):
+                            st.success("✅ Documento Word descargado correctamente.")
                 
-                with tab2:
+                with export_tab2:
                     st.write("Exporta este informe como página web (HTML)")
                     
                     if st.button("Generar HTML"):
@@ -1084,7 +1084,7 @@ with tab1:
                             with st.expander("Previsualizar HTML"):
                                 st.markdown(f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
                 
-                with tab3:
+                with export_tab3:
                     st.write("Exporta los datos del análisis en formato CSV")
                     
                     if st.button("Generar CSV"):
@@ -1119,22 +1119,9 @@ with tab1:
                             )
                 
                 # Descarga en TXT (original)
-                feedback_txt = (
-                    f"Texto original:\n{texto}\n\n"
-                    f"Saludo:\n{saludo}\n\n"
-                    f"Tipo de texto:\n{tipo_texto_detectado}\n\n"
-                    f"Errores:\n{json.dumps(errores_obj, indent=2, ensure_ascii=False)}\n\n"
-                    f"Texto corregido:\n{texto_corregido}\n\n"
-                    f"Análisis contextual:\n{json.dumps(analisis_contextual, indent=2, ensure_ascii=False)}\n\n"
-                    f"Consejo final:\n{consejo_final}\n\n"
-                    f"{fin}"
-                )
-                txt_buffer = BytesIO()
-                txt_buffer.write(feedback_txt.encode("utf-8"))
-                txt_buffer.seek(0)
                 st.download_button(
                     label="📝 Descargar corrección completa en TXT",
-                    data=txt_buffer,
+                    data=feedback_txt.encode("utf-8"),
                     file_name=f"correccion_{nombre}.txt",
                     mime="text/plain"
                 )
@@ -1143,3 +1130,135 @@ with tab1:
                 st.error(f"Error al generar la corrección o guardar: {e}")
                 import traceback
                 st.code(traceback.format_exc())
+
+# --- PESTAÑA 2: VER PROGRESO ---
+with tab_progreso:
+    st.header("Seguimiento del progreso")
+    
+    nombre_estudiante = st.text_input("Nombre del estudiante para ver progreso:", key="nombre_progreso")
+    
+    if nombre_estudiante:
+        with st.spinner("Cargando datos de progreso..."):
+            try:
+                df = obtener_historial_estudiante(nombre_estudiante, tracking_sheet)
+                if df is not None and not df.empty:
+                    mostrar_progreso(df)
+                    
+                    # Mostrar tabla con historial completo
+                    with st.expander("Ver datos completos"):
+                        st.dataframe(df)
+                    
+                    # Consejo basado en tendencias
+                    if len(df) >= 2:
+                        st.subheader("Consejo basado en tendencias")
+                        
+                        # Calcular tendencias simples
+                        df['Fecha'] = pd.to_datetime(df['Fecha'])
+                        df = df.sort_values('Fecha')
+                        
+                        # Extraer primera y última entrada para comparar
+                        primera = df.iloc[0]
+                        ultima = df.iloc[-1]
+                        
+                        # Comparar total de errores
+                        dif_errores = ultima['Total Errores'] - primera['Total Errores']
+                        
+                        if dif_errores < 0:
+                            st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                        elif dif_errores > 0:
+                            st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                        else:
+                            st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                        
+                        # Identificar área con mayor progreso y área que necesita más trabajo
+                        categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                        difs = {}
+                        for cat in categorias:
+                            difs[cat] = ultima[cat] - primera[cat]
+                        
+                        mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
+                        peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
+                        
+                        if mejor_area and difs[mejor_area] < 0:
+                            st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                        
+                        if peor_area and difs[peor_area] > 0:
+                            st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                else:
+                    st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+            except Exception as e:
+                st.error(f"Error al obtener historial: {e}")
+                st.info("Detalles para depuración:")
+                st.code(str(e))
+
+# --- PESTAÑA 3: HISTORIAL ---
+with tab_historial:
+    st.header("Historial de correcciones")
+    
+    try:
+        # Obtener todas las correcciones
+        correcciones = corrections_sheet.get_all_records()
+        
+        if correcciones:
+            # Convertir a dataframe
+            df_correcciones = pd.DataFrame(correcciones)
+            
+            # Filtrar columnas relevantes
+            if 'nombre' in df_correcciones.columns and 'nivel' in df_correcciones.columns and 'fecha' in df_correcciones.columns:
+                df_display = df_correcciones[['nombre', 'nivel', 'fecha']]
+                
+                # Mostrar tabla de historial
+                st.dataframe(df_display)
+                
+                # Opciones para ver detalles
+                if st.checkbox("Ver detalles de una corrección"):
+                    # Extraer nombres únicos
+                    nombres = sorted(df_correcciones['nombre'].unique().tolist())
+                    
+                    # Selector de nombre
+                    nombre_select = st.selectbox("Selecciona un nombre:", nombres)
+                    
+                    # Filtrar por nombre
+                    correcciones_filtradas = df_correcciones[df_correcciones['nombre'] == nombre_select]
+                    
+                    # Extraer fechas para este nombre
+                    fechas = correcciones_filtradas['fecha'].tolist()
+                    
+                    # Selector de fecha
+                    fecha_select = st.selectbox("Selecciona una fecha:", fechas)
+                    
+                    # Mostrar corrección seleccionada
+                    correccion = correcciones_filtradas[correcciones_filtradas['fecha'] == fecha_select].iloc[0]
+                    
+                    # Mostrar detalles
+                    st.subheader(f"Corrección para {nombre_select} ({fecha_select})")
+                    
+                    # Pestañas para texto original y datos
+                    tab_original, tab_datos = st.tabs(["Texto original", "Datos de corrección"])
+                    
+                    with tab_original:
+                        st.write(correccion.get('texto', 'No disponible'))
+                    
+                    with tab_datos:
+                        try:
+                            # Intentar parsear el JSON de la respuesta
+                            raw_output = correccion.get('raw_output', '{}')
+                            data_json = json.loads(raw_output)
+                            
+                            # Mostrar campos específicos
+                            if 'texto_corregido' in data_json:
+                                st.subheader("Texto corregido")
+                                st.write(data_json['texto_corregido'])
+                            
+                            if 'consejo_final' in data_json:
+                                st.subheader("Consejo final")
+                                st.info(data_json['consejo_final'])
+                        except json.JSONDecodeError:
+                            st.warning("No se pudieron cargar los datos de corrección en formato estructurado.")
+                            st.code(raw_output[:500] + "...")  # Mostrar parte del texto crudo
+            else:
+                st.warning("El formato de los datos no coincide con lo esperado.")
+        else:
+            st.info("No hay correcciones guardadas en el historial.")
+    except Exception as e:
+        st.error(f"Error al cargar el historial: {e}")
