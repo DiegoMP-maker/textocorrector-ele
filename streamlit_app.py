@@ -24,7 +24,7 @@ client_gsheets = gspread.authorize(creds)
 
 # IDs de los documentos
 CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"  # Historial_Correcciones_ELE
-TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"      # Seguimiento
+TRACKING_DOC_ID    = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
 
 # --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
 try:
@@ -60,7 +60,7 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
         {"role": "system", "content": system_msg},
         {"role": "user", "content": user_msg}
     ]
-    for intento in range(max_retries):
+    for _ in range(max_retries):
         response = client.chat.completions.create(
             model="gpt-4",
             temperature=0.5,
@@ -92,29 +92,31 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=2):
                 )
             }
             messages.append(correction_message)
+
     raise ValueError("No se pudo obtener un JSON válido tras varios reintentos.")
 
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Instrucciones: El output debe ser un JSON válido con la siguiente estructura.
-        # La salida debe estar en el idioma seleccionado (para saludo, tipo_texto, errores y texto_corregido),
-        # mientras que "consejo_final" debe estar en español.
+        # Instrucciones: 
+        # 1) Secciones en el idioma indicado (saludo, tipo_texto, errores, texto_corregido).
+        # 2) "consejo_final" siempre en español.
+        # 3) Errores agrupados por categorías (cada categoría con una lista de errores).
         system_message = f"""
 Eres Diego, un profesor experto en ELE.
 Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
 
 {{
-  "saludo": "string",  // En {idioma}
-  "tipo_texto": "string",  // En {idioma}
+  "saludo": "string",                // en {idioma}
+  "tipo_texto": "string",            // en {idioma}
   "errores": {{
        "Gramática": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
              "explicacion": "string"
-           }},
-           ... // Lista de errores de Gramática
+           }}
+           // más errores de Gramática
        ],
        "Léxico": [
            {{
@@ -122,6 +124,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
+           // más errores de Léxico
        ],
        "Puntuación": [
            {{
@@ -129,6 +132,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
+           // más errores de Puntuación
        ],
        "Estructura textual": [
            {{
@@ -136,10 +140,11 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
              "correccion": "string",
              "explicacion": "string"
            }}
+           // más errores de Estructura textual
        ]
   }},
-  "texto_corregido": "string",  // En {idioma}
-  "consejo_final": "string",  // En español
+  "texto_corregido": "string",       // en {idioma}
+  "consejo_final": "string",         // en español
   "fin": "Fin de texto corregido."
 }}
 
@@ -162,32 +167,36 @@ Idioma de corrección: {idioma}
             # Extraer campos del JSON
             saludo = data_json.get("saludo", "")
             tipo_texto = data_json.get("tipo_texto", "")
-            errores = data_json.get("errores", {})
+            errores_obj = data_json.get("errores", {})
             texto_corregido = data_json.get("texto_corregido", "")
             consejo_final = data_json.get("consejo_final", "")
             fin = data_json.get("fin", "")
 
+            # MOSTRAR RESULTADOS
             st.subheader("Saludo")
             st.write(saludo)
+
             st.subheader("Tipo de texto y justificación")
             st.write(tipo_texto)
+
             st.subheader("Errores detectados")
-            if not errores:
+            if not errores_obj:
                 st.write("No se han detectado errores.")
             else:
-                # Para cada categoría, mostrar una sola vez el título y luego la lista de errores
-                for categoria, lista in errores.items():
+                # Mostrar cada categoría una sola vez
+                for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
+                    lista_errores = errores_obj.get(categoria, [])
                     st.markdown(f"**{categoria}**")
-                    if not lista:
-                        st.write("  - No se han detectado errores en esta categoría.")
+                    if not lista_errores:
+                        st.write("  - Sin errores en esta categoría.")
                     else:
-                        for err in lista:
+                        for err in lista_errores:
                             st.write(f"  - Fragmento erróneo: {err.get('fragmento_erroneo','')}")
                             st.write(f"    Corrección: {err.get('correccion','')}")
                             st.write(f"    Explicación: {err.get('explicacion','')}")
                     st.write("---")
 
-            st.subheader("Texto corregido completo (en español)")
+            st.subheader("Texto corregido completo (en español o en el idioma solicitado)")
             st.write(texto_corregido)
 
             st.subheader("Consejo final (en español)")
@@ -200,11 +209,10 @@ Idioma de corrección: {idioma}
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
             # --- CONTEO DE ERRORES ---
-            # Dado que errores es un objeto con claves de categorías, sumamos la longitud de cada lista.
-            num_gramatica = len(errores.get("Gramática", []))
-            num_lexico = len(errores.get("Léxico", []))
-            num_puntuacion = len(errores.get("Puntuación", []))
-            num_estructura = len(errores.get("Estructura textual", []))
+            num_gramatica = len(errores_obj.get("Gramática", []))
+            num_lexico = len(errores_obj.get("Léxico", []))
+            num_puntuacion = len(errores_obj.get("Puntuación", []))
+            num_estructura = len(errores_obj.get("Estructura textual", []))
             total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
             # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
@@ -265,7 +273,7 @@ Idioma de corrección: {idioma}
                 f"Texto original:\n{texto}\n\n"
                 f"Saludo:\n{saludo}\n\n"
                 f"Tipo de texto:\n{tipo_texto}\n\n"
-                f"Errores:\n{json.dumps(errores, indent=2)}\n\n"
+                f"Errores:\n{json.dumps(errores_obj, indent=2)}\n\n"
                 f"Texto corregido:\n{texto_corregido}\n\n"
                 f"Consejo final:\n{consejo_final}\n\n"
                 f"{fin}"
