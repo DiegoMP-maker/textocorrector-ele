@@ -430,12 +430,19 @@ def mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idi
             ejercicios = ejercicios_data.get("ejercicios", [])
             
             for i, ejercicio in enumerate(ejercicios):
+                # Usar st.expander para el ejercicio principal
                 with st.expander(f"{ejercicio.get('titulo', f'Ejercicio {i+1}')}"):
-                    st.markdown(f"**{ejercicio.get('tipo', 'Actividad')}**")
-                    st.markdown(f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
-                    st.markdown("---")
-                    st.markdown(ejercicio.get('contenido', ''))
-                    with st.expander("Ver solución"):
+                    # Crear pestañas para ejercicio y solución
+                    ejercicio_tab, solucion_tab = st.tabs(["Ejercicio", "Solución"])
+                    
+                    with ejercicio_tab:
+                        st.markdown(f"**{ejercicio.get('tipo', 'Actividad')}**")
+                        st.markdown(f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
+                        st.markdown("---")
+                        st.markdown(ejercicio.get('contenido', ''))
+                    
+                    with solucion_tab:
+                        st.markdown(f"#### Solución del ejercicio:")
                         st.markdown(ejercicio.get('solucion', ''))
 
 # Función para generar informe en formato Word (DOCX)
