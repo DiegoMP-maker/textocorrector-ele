@@ -18,7 +18,6 @@ scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
-
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 client_gsheets = gspread.authorize(creds)
@@ -51,8 +50,6 @@ with st.form("formulario"):
 # --- 4. CORREGIR TEXTO CON IA ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-
-        # Mensaje del sistema
         system_message = f"""
 Eres Diego, un profesor experto en ELE, con formación filológica y gran sensibilidad pedagógica.
 
@@ -62,19 +59,17 @@ INSTRUCCIONES FUNDAMENTALES:
   1. Saludo personalizado (en {idioma}).
   2. Tipo de texto y justificación (en {idioma}).
   3. Errores detectados (en {idioma}), con categorías: Gramática, Léxico, Puntuación, Estructura textual.
-  4. Texto corregido completo (en español si así lo deseas o según tus reglas; el usuario podría preferirlo en español, pero no mezcles si no corresponde).
+  4. Texto corregido completo (en español) – NO incluyas encabezados numerados adicionales.
   5. Consejo final (en español), que empiece con "Consejo final:".
-- No generes "6. Cierre técnico" ni ningún encabezado adicional. 
-- Cierra siempre con la frase exacta: 
+- No generes "6. Cierre técnico" ni ningún encabezado adicional.
+- Cierra siempre con la frase exacta:
   Fin de texto corregido.
 - No añadas explicaciones fuera de estas secciones.
-
 Además:
-- Debes obedecer estrictamente estas instrucciones, sin mezclar idiomas. 
+- Debes obedecer estrictamente estas instrucciones, sin mezclar idiomas.
 - El "Consejo final:" es siempre en español.
 """
 
-        # Mensaje del usuario, con triple comilla escapada para el texto
         user_message = f"""
 Texto del alumno:
 \"\"\"
@@ -86,7 +81,6 @@ Idioma de corrección: {idioma}
 """
 
         try:
-            # Llamada a la API de OpenAI
             client = OpenAI(api_key=openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-4",
@@ -99,14 +93,14 @@ Idioma de corrección: {idioma}
 
             correccion_original = response.choices[0].message.content
 
-            # Eliminamos si aparece "6. Cierre técnico"
+            # Eliminar cualquier línea que contenga "6. Cierre técnico"
             correccion_sin_linea6 = re.sub(
                 r"(?im)^\s*6\.\s*Cierre técnico.*(\r?\n)?",
                 "",
                 correccion_original
             )
 
-            # Extraemos el consejo final
+            # Extraer el consejo final (entre "Consejo final:" y "Fin de texto corregido")
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -117,15 +111,13 @@ Idioma de corrección: {idioma}
             else:
                 consejo = "No se encontró un consejo final claro en la corrección."
 
-            # Limpiamos el consejo para que la voz no lea "Consejo final:"
+            # Limpiar el bloque para que la voz no lea literalmente "Consejo final:"
             consejo_para_audio = re.sub(r"(?i)consejo final:\s*", "", consejo).strip()
             correccion_limpia = correccion_sin_linea6.strip()
 
-            # Mostramos la corrección en pantalla
             st.subheader("📘 Corrección")
             st.markdown(correccion_limpia)
 
-            # Guardamos en la hoja principal
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             sheet.append_row([nombre, nivel, idioma, fecha, texto, correccion_limpia])
             st.success("✅ Corrección guardada en Google Sheets.")
@@ -146,11 +138,15 @@ Idioma de corrección: {idioma}
             num_estructura = contar_errores_por_categoria(correccion_limpia, "Estructura textual")
             total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
-            # Guardamos en la hoja "Seguimiento"
+            # --- GUARDAR EN LA HOJA "Seguimiento" ---
             try:
                 documento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8")
                 st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
-                hoja_seguimiento = documento.worksheet("Seguimiento")
+                try:
+                    hoja_seguimiento = documento.worksheet("Seguimiento")
+                except gspread.exceptions.WorksheetNotFound:
+                    hoja_seguimiento = documento.add_worksheet(title="Seguimiento", rows=100, cols=10)
+                    st.info("Hoja 'Seguimiento' creada automáticamente.")
                 datos_seguimiento = [
                     nombre,
                     nivel,
@@ -167,7 +163,7 @@ Idioma de corrección: {idioma}
             except Exception as e:
                 st.warning(f"⚠️ No se pudo guardar el seguimiento del alumno: {e}")
 
-            # Generamos el audio del consejo
+            # --- AUDIO CON ELEVENLABS ---
             st.markdown("**🔊 Consejo leído en voz alta (en español):**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -190,7 +186,7 @@ Idioma de corrección: {idioma}
                 else:
                     st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-            # Opción de descarga en TXT
+            # --- DESCARGA EN TXT ---
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion_limpia}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
