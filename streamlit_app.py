@@ -117,10 +117,35 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
 
     raise ValueError("No se pudo obtener un JSON válido tras varios reintentos.")
 
+# --- DEFINICIÓN DE LAS CATEGORÍAS DE ERROR EN MÚLTIPLES IDIOMAS ---
+CATEGORIAS = {
+    "Español": {
+        "gramatica": "Gramática",
+        "lexico": "Léxico",
+        "puntuacion": "Puntuación",
+        "estructura": "Estructura textual"
+    },
+    "Francés": {
+        "gramatica": "Grammaire",
+        "lexico": "Lexique",
+        "puntuacion": "Ponctuation",
+        "estructura": "Structure textuelle"
+    },
+    "Inglés": {
+        "gramatica": "Grammar",
+        "lexico": "Vocabulary",
+        "puntuacion": "Punctuation",
+        "estructura": "Text structure"
+    }
+}
+
 # --- 4. CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO ---
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
-        # Instrucciones para el modelo de IA
+        # Seleccionar las categorías en el idioma elegido
+        categorias_idioma = CATEGORIAS[idioma]
+        
+        # Instrucciones para el modelo de IA - Ahora incluye las categorías traducidas
         system_message = f"""
 Eres Diego, un profesor experto en ELE.
 Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON válido, sin texto adicional, con la siguiente estructura EXACTA:
@@ -129,7 +154,7 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
   "saludo": "string",                // en {idioma}
   "tipo_texto": "string",            // en {idioma}
   "errores": {{
-       "Gramática": [
+       "{categorias_idioma['gramatica']}": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
@@ -137,21 +162,21 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
            }}
            // más errores de Gramática (o [] si ninguno)
        ],
-       "Léxico": [
+       "{categorias_idioma['lexico']}": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
              "explicacion": "string"  // en {idioma}
            }}
        ],
-       "Puntuación": [
+       "{categorias_idioma['puntuacion']}": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
              "explicacion": "string"  // en {idioma}
            }}
        ],
-       "Estructura textual": [
+       "{categorias_idioma['estructura']}": [
            {{
              "fragmento_erroneo": "string",
              "correccion": "string",
@@ -166,8 +191,8 @@ Cuando corrijas un texto, DEBES devolver la respuesta únicamente en un JSON vá
 
 IMPORTANTE: 
 - "saludo", "tipo_texto", "texto_corregido" y TODAS las explicaciones de cada error deben estar en el idioma {idioma} (ya sea Español, Francés o Inglés según la elección del usuario).
+- Los nombres de las categorías de errores DEBEN estar en {idioma} como se muestra arriba.
 - Solo "consejo_final" siempre debe estar en español, independientemente del idioma elegido.
-- Los nombres de las categorías ("Gramática", "Léxico", etc.) se mantienen en español.
 - No devuelvas ningún texto extra fuera de este JSON.
 """
         user_message = f"""
@@ -180,6 +205,7 @@ Nombre del alumno: {nombre}
 Idioma de corrección: {idioma}
 
 Por favor, asegúrate de que la corrección y explicaciones estén en el idioma: {idioma}.
+Las categorías de errores deben estar en {idioma}.
 Solo el consejo final debe estar siempre en español.
 """
 
@@ -200,7 +226,7 @@ Solo el consejo final debe estar siempre en español.
                     "saludo": "Saludo",
                     "tipo_texto": "Tipo de texto y justificación",
                     "errores": "Errores detectados",
-                    "texto_corregido": "Texto corregido completo",
+                    "texto_corregido": "Texto corregido completo (en el idioma solicitado)",
                     "consejo_final": "Consejo final (en español)",
                     "sin_errores": "Sin errores en esta categoría.",
                     "fragmento": "Fragmento erróneo",
@@ -211,7 +237,7 @@ Solo el consejo final debe estar siempre en español.
                     "saludo": "Salutation",
                     "tipo_texto": "Type de texte et justification",
                     "errores": "Erreurs détectées",
-                    "texto_corregido": "Texte corrigé complet",
+                    "texto_corregido": "Texte corrigé complet (dans la langue demandée)",
                     "consejo_final": "Conseil final (en espagnol)",
                     "sin_errores": "Pas d'erreurs dans cette catégorie.",
                     "fragmento": "Fragment erroné",
@@ -222,7 +248,7 @@ Solo el consejo final debe estar siempre en español.
                     "saludo": "Greeting",
                     "tipo_texto": "Text type and justification",
                     "errores": "Detected errors",
-                    "texto_corregido": "Complete corrected text",
+                    "texto_corregido": "Complete corrected text (in the requested language)",
                     "consejo_final": "Final advice (in Spanish)",
                     "sin_errores": "No errors in this category.",
                     "fragmento": "Error fragment",
@@ -246,9 +272,16 @@ Solo el consejo final debe estar siempre en español.
                         "Aucune erreur détectée." if idioma == "Francés" else 
                         "No errors detected.")
             else:
-                for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
-                    lista_errores = errores_obj.get(categoria, [])
-                    st.markdown(f"**{categoria}**")
+                # Usamos las categorías en el idioma seleccionado
+                for categoria_key, categoria_nombre in [
+                    ('gramatica', categorias_idioma['gramatica']),
+                    ('lexico', categorias_idioma['lexico']),
+                    ('puntuacion', categorias_idioma['puntuacion']),
+                    ('estructura', categorias_idioma['estructura'])
+                ]:
+                    # Buscamos la categoría en el JSON de respuesta
+                    lista_errores = errores_obj.get(categoria_nombre, [])
+                    st.markdown(f"**{categoria_nombre}**")
                     if not lista_errores:
                         st.write(f"  - {traducciones['sin_errores']}")
                     else:
@@ -271,10 +304,11 @@ Solo el consejo final debe estar siempre en español.
             st.success("✅ Corrección guardada en Historial_Correcciones_ELE.")
 
             # --- CONTEO DE ERRORES ---
-            num_gramatica = len(errores_obj.get("Gramática", []))
-            num_lexico = len(errores_obj.get("Léxico", []))
-            num_puntuacion = len(errores_obj.get("Puntuación", []))
-            num_estructura = len(errores_obj.get("Estructura textual", []))
+            # Usar las categorías del idioma seleccionado para contar errores
+            num_gramatica = len(errores_obj.get(categorias_idioma['gramatica'], []))
+            num_lexico = len(errores_obj.get(categorias_idioma['lexico'], []))
+            num_puntuacion = len(errores_obj.get(categorias_idioma['puntuacion'], []))
+            num_estructura = len(errores_obj.get(categorias_idioma['estructura'], []))
             total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
 
             # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
@@ -303,13 +337,13 @@ Solo el consejo final debe estar siempre en español.
                     st.subheader(resumen_titulo)
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Gramática", num_gramatica)
+                        st.metric(categorias_idioma['gramatica'], num_gramatica)
                     with col2:
-                        st.metric("Léxico", num_lexico)
+                        st.metric(categorias_idioma['lexico'], num_lexico)
                     with col3:
-                        st.metric("Puntuación", num_puntuacion)
+                        st.metric(categorias_idioma['puntuacion'], num_puntuacion)
                     with col4:
-                        st.metric("Estructura", num_estructura)
+                        st.metric(categorias_idioma['estructura'], num_estructura)
                     st.metric(total_texto, total_errores)
                     
                 except NameError:
