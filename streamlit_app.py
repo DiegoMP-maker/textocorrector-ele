@@ -51,8 +51,9 @@ Eres un profesor de español como lengua extranjera (ELE), experto y empático. 
    - La corrección correspondiente.
    - Una explicación breve.
 3. Reescribe el texto corregido adaptando el registro al tipo textual.
-4. Da un consejo final personalizado para el alumno llamado {nombre}.
-
+4. Da un consejo final personalizado para el alumno llamado {nombre}, iniciando con "Consejo final:".
+5. Al final del texto corregido, añade siempre la línea "Fin de texto corregido".
+        
 Texto del alumno:
 """
 {texto}
@@ -60,8 +61,8 @@ Texto del alumno:
 '''
 
         try:
+            # Nota: si usas el wrapper oficial de openai, deberás adaptar estas líneas.
             client = OpenAI(api_key=openai_api_key)
-
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 temperature=0.5,
@@ -81,31 +82,15 @@ Texto del alumno:
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
-            # --- AUDIO AUTOMÁTICO DEL CONSEJO FINAL ---
+            # --- EXTRAER EL CONSEJO FINAL ---
             consejo = ""
-            encabezados_posibles = [
-                "Consejo final:",
-                "Consejo personalizado:",
-                f"Consejo final para {nombre}:",
-                f"Consejo personalizado para {nombre}:"
-            ]
-            for encabezado in encabezados_posibles:
-                if encabezado in correccion:
-                    partes = correccion.split(encabezado)
-                    if len(partes) > 1:
-                        # Buscar la primera línea no vacía tras el encabezado
-                        for linea in partes[1].split("\n"):
-                            linea = linea.strip()
-                            if linea:
-                                consejo = linea
-                                break
-                        if consejo:
-                            break
-
+            if "Consejo final:" in correccion and "Fin de texto corregido" in correccion:
+                consejo = correccion.split("Consejo final:", 1)[1].split("Fin de texto corregido", 1)[0].strip()
             if not consejo:
                 consejo = "No se encontró un consejo final claro en la corrección."
                 st.info("ℹ️ No se encontró el consejo final en el texto corregido; se usará un mensaje alternativo.")
 
+            # --- AUDIO CON ELEVENLABS ---
             st.markdown("**🔊 Consejo leído en voz alta:**")
             with st.spinner("Generando audio con ElevenLabs..."):
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
@@ -126,15 +111,20 @@ Texto del alumno:
                     audio_bytes = BytesIO(response_audio.content)
                     st.audio(audio_bytes, format="audio/mpeg")
                 else:
-                    st.warning("⚠️ No se pudo reproducir el consejo con ElevenLabs.")
+                    st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
 
-            # DESCARGA EN TXT
+            # --- DESCARGA EN TXT ---
             feedback_txt = f"Texto original:\n{texto}\n\n{correccion}"
             txt_buffer = BytesIO()
             txt_buffer.write(feedback_txt.encode("utf-8"))
             txt_buffer.seek(0)
 
-            st.download_button("📝 Descargar corrección en TXT", data=txt_buffer, file_name=f"correccion_{nombre}.txt", mime="text/plain")
+            st.download_button(
+                "📝 Descargar corrección en TXT",
+                data=txt_buffer,
+                file_name=f"correccion_{nombre}.txt",
+                mime="text/plain"
+            )
 
         except Exception as e:
             st.error(f"Error al generar la corrección o guardar: {e}")
