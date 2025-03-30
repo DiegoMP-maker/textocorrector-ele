@@ -22,8 +22,11 @@ creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 client_gsheets = gspread.authorize(creds)
 
+# Usamos el nuevo ID del documento de Google Sheets
+DOCUMENT_ID = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"
+
 try:
-    sheet = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8").sheet1
+    sheet = client_gsheets.open_by_key(DOCUMENT_ID).sheet1
     st.success("✅ Conectado a Google Sheets correctamente.")
 except Exception as e:
     st.error("❌ Error al conectar con Google Sheets. Revisa los permisos o el ID del documento.")
@@ -100,7 +103,7 @@ Idioma de corrección: {idioma}
                 correccion_original
             )
 
-            # Extraer el consejo final (entre "Consejo final:" y "Fin de texto corregido")
+            # Extraer el bloque del consejo final (entre "Consejo final:" y "Fin de texto corregido")
             match = re.search(
                 r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)",
                 correccion_sin_linea6,
@@ -140,7 +143,7 @@ Idioma de corrección: {idioma}
 
             # --- GUARDAR EN LA HOJA "Seguimiento" ---
             try:
-                documento = client_gsheets.open_by_key("1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8")
+                documento = client_gsheets.open_by_key(DOCUMENT_ID)
                 st.info(f"Hojas disponibles: {[hoja.title for hoja in documento.worksheets()]}")
                 try:
                     hoja_seguimiento = documento.worksheet("Seguimiento")
