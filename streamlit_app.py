@@ -88,7 +88,7 @@ Cuando recibas un texto, sigue siempre esta estructura de salida:
 
 4. **Texto corregido completo**: Reescribe el texto corregido de forma natural, respetando el estilo del alumno pero mejorando coherencia, registro y corrección lingüística. Usa un nivel adecuado al que tenga el alumno (A2, B1, B2, C1).
 
-5. **Consejo final motivador**: Escribe un consejo final breve, personal y empático, como si fueras Diego. Comienza con "Consejo final:". Incluye un punto positivo del texto y una recomendación para mejorar. Sé cálido y alentador, como un buen profesor que se interesa por el progreso del alumno.
+5. **Consejo final motivador**: Escribe un consejo final breve, personal y empático, como si fueras Diego. Comienza con "Consejo final:" y finaliza con un mensaje alentador. Recuerda incluir al menos un aspecto positivo y una recomendación para mejorar.
 
 6. **Cierre técnico**: Termina siempre con la frase: "Fin de texto corregido."
 
@@ -112,8 +112,8 @@ Usa un estilo claro, directo y ordenado. No añadas explicaciones innecesarias f
         st.success("✅ Corrección guardada en Google Sheets.")
 
         # --- EXTRAER CONSEJO FINAL CON REGEX ROBUSTO ---
-        consejo = ""
-        match = re.search(r"Consejo final:\s*(.+?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
+        # Se actualiza la regex para ser insensible a mayúsculas/minúsculas y capturar todo el bloque
+        match = re.search(r"(?i)Consejo final:\s*(.*?)\s*(?:Fin de texto corregido|$)", correccion, re.DOTALL)
         if match:
             consejo = match.group(1).strip()
         else:
