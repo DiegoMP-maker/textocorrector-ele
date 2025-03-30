@@ -40,7 +40,7 @@ with st.form("formulario"):
         "Nivel intermedio (B1-B2)",
         "Nivel avanzado (C1-C2)"
     ])
-    idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
+    idioma = st.selectbox("Idioma de las explicaciones de errores (no afecta el texto corregido en español)", ["Español", "Francés", "Inglés"])
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
@@ -50,8 +50,7 @@ encabezados = {
         "saludo": "Saludo",
         "tipo_texto": "Tipo de texto y justificación",
         "errores": "Errores detectados",
-        "texto_corregido": "Texto corregido en español (propuesta ideal)",
-        "consejo_final": "Consejo final (en español)",
+        "texto_corregido": "Texto corregido (en español)",
         "fragmento": "Fragmento erróneo",
         "correccion": "Corrección",
         "explicacion": "Explicación",
@@ -85,6 +84,7 @@ encabezados = {
 if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
+        # Traducciones aplicadas solo a las explicaciones de errores, no al texto corregido final
         traducciones = encabezados[idioma]
 
         prompt = f'''
