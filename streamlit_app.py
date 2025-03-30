@@ -35,6 +35,11 @@ st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback."
 
 with st.form("formulario"):
     nombre = st.text_input("¿Cómo te llamas?")
+    nivel = st.selectbox("¿Cuál es tu nivel?", [
+        "Nivel principiante (A1-A2)",
+        "Nivel intermedio (B1-B2)",
+        "Nivel avanzado (C1-C2)"
+    ])
     texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
     enviar = st.form_submit_button("Corregir")
 
@@ -43,14 +48,14 @@ if enviar and nombre and texto:
     with st.spinner("Corrigiendo con IA…"):
 
         prompt = f'''
-Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes entre A2 y C1, con el siguiente enfoque:
+Eres un profesor de español como lengua extranjera (ELE), experto y empático. Tu tarea es CORREGIR textos escritos por estudiantes de {nivel} según el MCER, con el siguiente enfoque:
 
 1. Indica claramente el TIPO DE TEXTO (carta formal, mensaje informal, correo profesional, narración, descripción, etc.) y justifica brevemente por qué.
 2. Clasifica los errores en secciones: Gramática, Léxico, Puntuación, Estructura textual. Dentro de cada sección, presenta:
    - El fragmento erróneo entre comillas.
    - La corrección correspondiente.
    - Una explicación breve.
-3. Reescribe el texto corregido adaptando el registro al tipo textual.
+3. Reescribe el texto corregido adaptando el registro al tipo textual y teniendo en cuenta el nivel del alumno.
 4. Da un consejo final personalizado para el alumno llamado {nombre}, iniciando con "Consejo final:".
 5. Al final del texto corregido, añade siempre la línea "Fin de texto corregido".
         
@@ -78,7 +83,7 @@ Texto del alumno:
             st.markdown(correccion)
 
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
-            sheet.append_row([nombre, fecha, texto, correccion])
+            sheet.append_row([nombre, nivel, fecha, texto, correccion])
 
             st.success("✅ Corrección guardada en Google Sheets.")
 
