@@ -1194,62 +1194,83 @@ with tab_historial:
             # Convertir a dataframe
             df_correcciones = pd.DataFrame(correcciones)
             
-            # Filtrar columnas relevantes
-            if 'nombre' in df_correcciones.columns and 'nivel' in df_correcciones.columns and 'fecha' in df_correcciones.columns:
-                df_display = df_correcciones[['nombre', 'nivel', 'fecha']]
+            # Normalizar nombres de columnas para la verificación (convertir a minúsculas)
+            df_columns_lower = [col.lower() for col in df_correcciones.columns]
+            
+            # Filtrar columnas relevantes (verificando de forma más flexible)
+            if 'nombre' in df_columns_lower or 'Nombre' in df_correcciones.columns:
+                # Determinar los nombres reales de las columnas
+                nombre_col = 'Nombre' if 'Nombre' in df_correcciones.columns else 'nombre'
+                nivel_col = 'Nivel' if 'Nivel' in df_correcciones.columns else 'nivel'
+                fecha_col = 'Fecha' if 'Fecha' in df_correcciones.columns else 'fecha'
                 
-                # Mostrar tabla de historial
-                st.dataframe(df_display)
-                
-                # Opciones para ver detalles
-                if st.checkbox("Ver detalles de una corrección"):
-                    # Extraer nombres únicos
-                    nombres = sorted(df_correcciones['nombre'].unique().tolist())
+                # Verificar que todas las columnas existan
+                if nombre_col in df_correcciones.columns and nivel_col in df_correcciones.columns and fecha_col in df_correcciones.columns:
+                    df_display = df_correcciones[[nombre_col, nivel_col, fecha_col]]
                     
-                    # Selector de nombre
-                    nombre_select = st.selectbox("Selecciona un nombre:", nombres)
+                    # Mostrar tabla de historial
+                    st.dataframe(df_display)
                     
-                    # Filtrar por nombre
-                    correcciones_filtradas = df_correcciones[df_correcciones['nombre'] == nombre_select]
-                    
-                    # Extraer fechas para este nombre
-                    fechas = correcciones_filtradas['fecha'].tolist()
-                    
-                    # Selector de fecha
-                    fecha_select = st.selectbox("Selecciona una fecha:", fechas)
-                    
-                    # Mostrar corrección seleccionada
-                    correccion = correcciones_filtradas[correcciones_filtradas['fecha'] == fecha_select].iloc[0]
-                    
-                    # Mostrar detalles
-                    st.subheader(f"Corrección para {nombre_select} ({fecha_select})")
-                    
-                    # Pestañas para texto original y datos
-                    tab_original, tab_datos = st.tabs(["Texto original", "Datos de corrección"])
-                    
-                    with tab_original:
-                        st.write(correccion.get('texto', 'No disponible'))
-                    
-                    with tab_datos:
-                        try:
-                            # Intentar parsear el JSON de la respuesta
-                            raw_output = correccion.get('raw_output', '{}')
-                            data_json = json.loads(raw_output)
-                            
-                            # Mostrar campos específicos
-                            if 'texto_corregido' in data_json:
-                                st.subheader("Texto corregido")
-                                st.write(data_json['texto_corregido'])
-                            
-                            if 'consejo_final' in data_json:
-                                st.subheader("Consejo final")
-                                st.info(data_json['consejo_final'])
-                        except json.JSONDecodeError:
-                            st.warning("No se pudieron cargar los datos de corrección en formato estructurado.")
-                            st.code(raw_output[:500] + "...")  # Mostrar parte del texto crudo
+                    # Opciones para ver detalles
+                    if st.checkbox("Ver detalles de una corrección"):
+                        # Extraer nombres únicos
+                        nombres = sorted(df_correcciones[nombre_col].unique().tolist())
+                        
+                        # Selector de nombre
+                        nombre_select = st.selectbox("Selecciona un nombre:", nombres)
+                        
+                        # Filtrar por nombre
+                        correcciones_filtradas = df_correcciones[df_correcciones[nombre_col] == nombre_select]
+                        
+                        # Extraer fechas para este nombre
+                        fechas = correcciones_filtradas[fecha_col].tolist()
+                        
+                        # Selector de fecha
+                        fecha_select = st.selectbox("Selecciona una fecha:", fechas)
+                        
+                        # Mostrar corrección seleccionada
+                        correccion = correcciones_filtradas[correcciones_filtradas[fecha_col] == fecha_select].iloc[0]
+                        
+                        # Mostrar detalles
+                        st.subheader(f"Corrección para {nombre_select} ({fecha_select})")
+                        
+                        # Pestañas para texto original y datos
+                        tab_original, tab_datos = st.tabs(["Texto original", "Datos de corrección"])
+                        
+                        with tab_original:
+                            texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
+                            if texto_col in correccion:
+                                st.write(correccion.get(texto_col, 'No disponible'))
+                            else:
+                                st.warning("No se pudo encontrar el texto original.")
+                        
+                        with tab_datos:
+                            try:
+                                # Intentar parsear el JSON de la respuesta
+                                raw_output_col = 'raw_output' if 'raw_output' in df_correcciones.columns else 'Raw_output'
+                                if raw_output_col in correccion:
+                                    raw_output = correccion.get(raw_output_col, '{}')
+                                    data_json = json.loads(raw_output)
+                                    
+                                    # Mostrar campos específicos
+                                    if 'texto_corregido' in data_json:
+                                        st.subheader("Texto corregido")
+                                        st.write(data_json['texto_corregido'])
+                                    
+                                    if 'consejo_final' in data_json:
+                                        st.subheader("Consejo final")
+                                        st.info(data_json['consejo_final'])
+                                else:
+                                    st.warning("No se encontraron datos de corrección.")
+                            except json.JSONDecodeError:
+                                st.warning("No se pudieron cargar los datos de corrección en formato estructurado.")
+                                st.code(raw_output[:500] + "...")  # Mostrar parte del texto crudo
+                else:
+                    st.warning("Algunas columnas necesarias no se encuentran en los datos. Columnas disponibles: " + ", ".join(df_correcciones.columns))
             else:
-                st.warning("El formato de los datos no coincide con lo esperado.")
+                st.warning("El formato de los datos no coincide con lo esperado. Columnas disponibles: " + ", ".join(df_correcciones.columns))
         else:
             st.info("No hay correcciones guardadas en el historial.")
     except Exception as e:
         st.error(f"Error al cargar el historial: {e}")
+        st.code(str(e))  # Mostrar el error para depuración
