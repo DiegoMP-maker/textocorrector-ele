@@ -116,17 +116,43 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
 
 # Obtener historial para análisis del progreso
 def obtener_historial_estudiante(nombre, tracking_sheet):
-    # Obtener todos los datos sin especificar encabezados
-    todos_datos = tracking_sheet.get_all_records()
-    
-    # Filtrar por nombre (usar la clave exacta como aparece en la hoja)
-    datos_estudiante = [row for row in todos_datos if str(row.get('Nombre', '')).strip() == nombre]
-    
-    # Convertir a DataFrame
-    if datos_estudiante:
-        df = pd.DataFrame(datos_estudiante)
-        return df
-    return None
+    try:
+        # Obtener todos los datos
+        todos_datos = tracking_sheet.get_all_records()
+        
+        if not todos_datos:
+            return None
+        
+        # Verificar las columnas que existen
+        columnas = list(todos_datos[0].keys()) if todos_datos else []
+        nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
+        
+        if not nombre_col:
+            print(f"Advertencia: No se encontró la columna 'Nombre'. Columnas disponibles: {columnas}")
+            return None
+        
+        # Búsqueda más flexible de nombre (ignorando mayúsculas/minúsculas y espacios extra)
+        datos_estudiante = [
+            row for row in todos_datos 
+            if nombre_col in row and 
+            str(row[nombre_col]).strip().lower() == nombre.strip().lower()
+        ]
+        
+        # Debug
+        print(f"Buscando: '{nombre}', Nombre col: '{nombre_col}', Resultados encontrados: {len(datos_estudiante)}")
+        if not datos_estudiante:
+            # Mostrar los primeros nombres disponibles para depuración
+            nombres_disponibles = [row.get(nombre_col, '') for row in todos_datos[:5]]
+            print(f"Nombres disponibles (muestra): {nombres_disponibles}")
+        
+        # Convertir a DataFrame
+        if datos_estudiante:
+            df = pd.DataFrame(datos_estudiante)
+            return df
+        return None
+    except Exception as e:
+        print(f"Error en obtener_historial_estudiante: {e}")
+        return None
 
 # Función para mostrar gráficos de progreso
 def mostrar_progreso(df):
@@ -1129,37 +1155,49 @@ with tab_progreso:
     nombre_estudiante = st.text_input("Nombre del estudiante para ver progreso:", key="nombre_progreso")
     
     if nombre_estudiante:
-        with st.spinner("Cargando datos de progreso..."):
+# En la sección de la pestaña de progreso, después de la línea:
+# if nombre_estudiante:
+with st.spinner("Cargando datos de progreso..."):
+    try:
+        df = obtener_historial_estudiante(nombre_estudiante, tracking_sheet)
+        if df is not None and not df.empty:
+            mostrar_progreso(df)
+            
+            # Resto del código...
+        else:
+            st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+            
+            # Nuevo código para mostrar nombres disponibles
             try:
-                df = obtener_historial_estudiante(nombre_estudiante, tracking_sheet)
-                if df is not None and not df.empty:
-                    mostrar_progreso(df)
+                todos_datos = tracking_sheet.get_all_records()
+                if todos_datos:
+                    columnas = list(todos_datos[0].keys())
+                    nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
                     
-                    # Mostrar tabla con historial completo
-                    with st.expander("Ver datos completos"):
-                        st.dataframe(df)
-                    
-                    # Consejo basado en tendencias
-                    if len(df) >= 2:
-                        st.subheader("Consejo basado en tendencias")
+                    if nombre_col:
+                        nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip() 
+                                                     for row in todos_datos if row.get(nombre_col)))
                         
-                        # Calcular tendencias simples
-                        df['Fecha'] = pd.to_datetime(df['Fecha'])
-                        df = df.sort_values('Fecha')
-                        
-                        # Extraer primera y última entrada para comparar
-                        primera = df.iloc[0]
-                        ultima = df.iloc[-1]
-                        
-                        # Comparar total de errores
-                        dif_errores = ultima['Total Errores'] - primera['Total Errores']
-                        
-                        if dif_errores < 0:
-                            st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                        elif dif_errores > 0:
-                            st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                        else:
-                            st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                        if nombres_disponibles:
+                            st.write("Nombres disponibles en el historial:")
+                            nombres_botones = []
+                            
+                            # Dividir en filas de 3 botones
+                            for i in range(0, len(nombres_disponibles), 3):
+                                fila = nombres_disponibles[i:i+3]
+                                cols = st.columns(3)
+                                for j, nombre in enumerate(fila):
+                                    if cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
+                                        # Este truco con st.experimental_set_query_params permite "recordar" 
+                                        # el nombre seleccionado después de hacer clic
+                                        st.experimental_set_query_params(nombre_seleccionado=nombre)
+                                        st.rerun()
+            except Exception as e:
+                st.error(f"Error al listar nombres disponibles: {e}")
+    except Exception as e:
+        st.error(f"Error al obtener historial: {e}")
+        st.info("Detalles para depuración:")
+        st.code(str(e))
                         
                         # Identificar área con mayor progreso y área que necesita más trabajo
                         categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
