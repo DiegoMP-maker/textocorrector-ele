@@ -91,6 +91,7 @@ class RealTimeWritingAssistant:
         return None
 
     def render_text_editor_with_assistance(self, key="writing_area", height=250, default_value=""):
+        # Inicializar session_state si es necesario
         if key not in st.session_state:
             st.session_state[key] = default_value
 
@@ -99,6 +100,7 @@ class RealTimeWritingAssistant:
         
         nivel = st.session_state.get('nivel_estudiante', "intermedio")
         
+        # Checkbox para activar/desactivar el asistente
         enable_assistant = st.checkbox(
             "Activar asistente de escritura en tiempo real", 
             value=st.session_state.writing_assistant_enabled,
@@ -107,14 +109,18 @@ class RealTimeWritingAssistant:
         
         st.session_state.writing_assistant_enabled = enable_assistant
         
+        # CORRECIÓN AQUÍ: Obtener el valor actual antes de renderizar el widget
+        current_value = st.session_state[key]
+        
+        # Renderizar el text_area
         text = st.text_area(
             "Escribe tu texto aquí:", 
             height=height, 
             key=key,
-            value=st.session_state[key]
+            value=current_value  # Usar el valor actual
         )
         
-        st.session_state[key] = text
+        # El valor se actualizará automáticamente en session_state por Streamlit
         
         if enable_assistant and text:
             with st.spinner("Analizando texto..."):
