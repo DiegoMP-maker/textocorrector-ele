@@ -1171,42 +1171,50 @@ with tab_progreso:
                     with st.expander("Ver datos completos"):
                         st.dataframe(df)
                     
-# Consejo basado en tendencias
-if len(df) >= 2:
-    st.subheader("Consejo basado en tendencias")
-    
-    # Calcular tendencias simples
-    df[fecha_col] = pd.to_datetime(df[fecha_col])
-    df = df.sort_values(fecha_col)
-    
-    # Extraer primera y última entrada para comparar
-    primera = df.iloc[0]
-    ultima = df.iloc[-1]
-    
-    # Comparar total de errores
-    dif_errores = ultima['Total Errores'] - primera['Total Errores']
-    
-    if dif_errores < 0:
-        st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-    elif dif_errores > 0:
-        st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-    else:
-        st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
-    
-    # Identificar área con mayor progreso y área que necesita más trabajo
-    categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
-    difs = {}
-    for cat in categorias:
-        difs[cat] = ultima[cat] - primera[cat]
-    
-    mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
-    peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
-    
-    if mejor_area and difs[mejor_area] < 0:
-        st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
-    
-    if peor_area and difs[peor_area] > 0:
-        st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                    # Verificar si existe la columna Fecha
+                    fecha_col = None
+                    for col in df.columns:
+                        if col.lower() == 'fecha':
+                            fecha_col = col
+                            break
+                    
+                    if fecha_col is not None:
+                        # Consejo basado en tendencias
+                        if len(df) >= 2:
+                            st.subheader("Consejo basado en tendencias")
+                            
+                            # Calcular tendencias simples
+                            df[fecha_col] = pd.to_datetime(df[fecha_col])
+                            df = df.sort_values(fecha_col)
+                            
+                            # Extraer primera y última entrada para comparar
+                            primera = df.iloc[0]
+                            ultima = df.iloc[-1]
+                            
+                            # Comparar total de errores
+                            dif_errores = ultima['Total Errores'] - primera['Total Errores']
+                            
+                            if dif_errores < 0:
+                                st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                            elif dif_errores > 0:
+                                st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                            else:
+                                st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                            
+                            # Identificar área con mayor progreso y área que necesita más trabajo
+                            categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                            difs = {}
+                            for cat in categorias:
+                                difs[cat] = ultima[cat] - primera[cat]
+                            
+                            mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
+                            peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
+                            
+                            if mejor_area and difs[mejor_area] < 0:
+                                st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                            
+                            if peor_area and difs[peor_area] > 0:
+                                st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
                 else:
                     st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
                     
@@ -1230,7 +1238,7 @@ if len(df) >= 2:
                                         fila = nombres_disponibles[i:i+3]
                                         cols = st.columns(3)
                                         for j, nombre in enumerate(fila):
-                                            if cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
+                                            if j < len(fila) and cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
                                                 st.experimental_set_query_params(nombre_seleccionado=nombre)
                                                 st.rerun()
                     except Exception as e:
@@ -1239,8 +1247,6 @@ if len(df) >= 2:
                 st.error(f"Error al obtener historial: {e}")
                 st.info("Detalles para depuración:")
                 st.code(str(e))
-                        
-# Identificar área con mayor progreso y área que necesita más trabajo
                      
 
 # --- PESTAÑA 3: HISTORIAL ---
