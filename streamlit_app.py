@@ -1155,49 +1155,84 @@ with tab_progreso:
     nombre_estudiante = st.text_input("Nombre del estudiante para ver progreso:", key="nombre_progreso")
     
     if nombre_estudiante:
-# En la sección de la pestaña de progreso, después de la línea:
-# if nombre_estudiante:
-with st.spinner("Cargando datos de progreso..."):
-    try:
-        df = obtener_historial_estudiante(nombre_estudiante, tracking_sheet)
-        if df is not None and not df.empty:
-            mostrar_progreso(df)
-            
-            # Resto del código...
-        else:
-            st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
-            
-            # Nuevo código para mostrar nombres disponibles
+        with st.spinner("Cargando datos de progreso..."):
             try:
-                todos_datos = tracking_sheet.get_all_records()
-                if todos_datos:
-                    columnas = list(todos_datos[0].keys())
-                    nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
+                df = obtener_historial_estudiante(nombre_estudiante, tracking_sheet)
+                if df is not None and not df.empty:
+                    mostrar_progreso(df)
                     
-                    if nombre_col:
-                        nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip() 
-                                                     for row in todos_datos if row.get(nombre_col)))
+                    # Mostrar tabla con historial completo
+                    with st.expander("Ver datos completos"):
+                        st.dataframe(df)
+                    
+                    # Consejo basado en tendencias
+                    if len(df) >= 2:
+                        st.subheader("Consejo basado en tendencias")
                         
-                        if nombres_disponibles:
-                            st.write("Nombres disponibles en el historial:")
-                            nombres_botones = []
+                        # Calcular tendencias simples
+                        df['Fecha'] = pd.to_datetime(df['Fecha'])
+                        df = df.sort_values('Fecha')
+                        
+                        # Extraer primera y última entrada para comparar
+                        primera = df.iloc[0]
+                        ultima = df.iloc[-1]
+                        
+                        # Comparar total de errores
+                        dif_errores = ultima['Total Errores'] - primera['Total Errores']
+                        
+                        if dif_errores < 0:
+                            st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                        elif dif_errores > 0:
+                            st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                        else:
+                            st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                        
+                        # Identificar área con mayor progreso y área que necesita más trabajo
+                        categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                        difs = {}
+                        for cat in categorias:
+                            difs[cat] = ultima[cat] - primera[cat]
+                        
+                        mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
+                        peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
+                        
+                        if mejor_area and difs[mejor_area] < 0:
+                            st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                        
+                        if peor_area and difs[peor_area] > 0:
+                            st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                else:
+                    st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+                    
+                    # Nuevo código para mostrar nombres disponibles
+                    try:
+                        todos_datos = tracking_sheet.get_all_records()
+                        if todos_datos:
+                            columnas = list(todos_datos[0].keys())
+                            nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
                             
-                            # Dividir en filas de 3 botones
-                            for i in range(0, len(nombres_disponibles), 3):
-                                fila = nombres_disponibles[i:i+3]
-                                cols = st.columns(3)
-                                for j, nombre in enumerate(fila):
-                                    if cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
-                                        # Este truco con st.experimental_set_query_params permite "recordar" 
-                                        # el nombre seleccionado después de hacer clic
-                                        st.experimental_set_query_params(nombre_seleccionado=nombre)
-                                        st.rerun()
+                            if nombre_col:
+                                nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip() 
+                                                             for row in todos_datos if row.get(nombre_col)))
+                                
+                                if nombres_disponibles:
+                                    st.write("Nombres disponibles en el historial:")
+                                    nombres_botones = []
+                                    
+                                    # Dividir en filas de 3 botones
+                                    for i in range(0, len(nombres_disponibles), 3):
+                                        fila = nombres_disponibles[i:i+3]
+                                        cols = st.columns(3)
+                                        for j, nombre in enumerate(fila):
+                                            if cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
+                                                st.experimental_set_query_params(nombre_seleccionado=nombre)
+                                                st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al listar nombres disponibles: {e}")
             except Exception as e:
-                st.error(f"Error al listar nombres disponibles: {e}")
-    except Exception as e:
-        st.error(f"Error al obtener historial: {e}")
-        st.info("Detalles para depuración:")
-        st.code(str(e))
+                st.error(f"Error al obtener historial: {e}")
+                st.info("Detalles para depuración:")
+                st.code(str(e))
                         
                         # Identificar área con mayor progreso y área que necesita más trabajo
                         categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
