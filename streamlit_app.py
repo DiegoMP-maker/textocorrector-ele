@@ -186,11 +186,29 @@ def mostrar_progreso(df):
     
     st.altair_chart(chart_errores, use_container_width=True)
     
-    # Gráfico de tipos de errores
+# Gráfico de tipos de errores
+# Usar exactamente los nombres de columnas que vemos en la tabla
+columnas_errores = [
+    'Errores Gramática',
+    'Errores Léxico',
+    'Errores Puntuación',
+    'Errores Estructura'
+]
+
+# Encontrar las columnas que realmente existen en el DataFrame
+columnas_errores_existentes = [col for col in columnas_errores if col in df.columns]
+
+# Si no hay columnas de errores, mostrar un mensaje
+if not columnas_errores_existentes:
+    st.warning("No se encontraron columnas de tipos de errores en los datos.")
+    # Mostrar columnas disponibles para depuración
+    st.write("Columnas disponibles:", list(df.columns))
+else:
+    # Usar solo las columnas que existen
     tipos_error_df = pd.melt(
         df, 
         id_vars=[fecha_col], 
-        value_vars=['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura'],
+        value_vars=columnas_errores_existentes,
         var_name='Tipo de Error', 
         value_name='Cantidad'
     )
