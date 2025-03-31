@@ -620,6 +620,7 @@ with tab_corregir:
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
 
+    # Formulario de corrección
     with st.form("formulario"):
         nombre = st.text_input("Nombre y apellido:")
         if nombre and " " not in nombre:
@@ -632,30 +633,30 @@ with tab_corregir:
         ])
         
         idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        tipo_texto = st.selectbox("Tipo de texto", [
-            "General/No especificado",
-            "Académico",
-            "Profesional/Laboral",
-            "Informal/Cotidiano",
-            "Creativo/Literario"
-        ])
-    
-    with col2:
-        contexto_cultural = st.selectbox("Contexto cultural", [
-            "General/Internacional",
-            "España",
-            "Latinoamérica",
-            "Contexto académico",
-            "Contexto empresarial"
-        ])
-    
-    texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
-    info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
-    
-    enviar = st.form_submit_button("Corregir")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_texto = st.selectbox("Tipo de texto", [
+                "General/No especificado",
+                "Académico",
+                "Profesional/Laboral",
+                "Informal/Cotidiano",
+                "Creativo/Literario"
+            ])
+        
+        with col2:
+            contexto_cultural = st.selectbox("Contexto cultural", [
+                "General/Internacional",
+                "España",
+                "Latinoamérica",
+                "Contexto académico",
+                "Contexto empresarial"
+            ])
+        
+        texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
+        info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
+        
+        enviar = st.form_submit_button("Corregir")
     
     # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
     if enviar and nombre and texto:
@@ -1000,7 +1001,7 @@ Contexto cultural: {contexto_cultural}
                 # 1. Mostrar recomendaciones personalizadas
                 mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key)
                 
-# 2. Opciones de exportación
+                # 2. Opciones de exportación
                 st.header("📊 Exportar informe")
                 
                 # Opciones de exportación en pestañas
