@@ -673,10 +673,10 @@ with tab_corregir:
             ])
         
         # Integrar asistente de escritura en tiempo real
-        texto = writing_assistant.render_text_editor_with_assistance(
-              key="texto_correccion",
-              height=250,
-            default_value=""
+         texto = st.text_area(
+               "Escribe tu texto aquí:", 
+                height=250,
+                 key="texto_correccion"
          )
         info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
         
@@ -1397,11 +1397,11 @@ with tab_herramientas:
     
     # --- Subpestaña 1: Editor asistido ---
     with herramienta_tabs[0]:
-        st.subheader("Editor de texto con asistencia en tiempo real")
+        st.subheader("Editor de texto con asistencia")
         st.markdown("""
-        Usa este editor para practicar tu escritura en español con asistencia en tiempo real.
-        Activa o desactiva el asistente según tus preferencias.
-        """)
+           Usa este editor para practicar tu escritura en español con asistencia.
+            Escribe tu texto y haz clic en "Verificar texto" para recibir sugerencias.
+    """)
         
         # Nivel para editor asistido
         nivel_editor = st.selectbox(
@@ -1413,9 +1413,10 @@ with tab_herramientas:
         
         # Usar el asistente de escritura
         texto_practica = writing_assistant.render_text_editor_with_assistance(
-            key="texto_practica",
-            height=350,
-            default_value="Comienza a escribir aquí para practicar tu español..."
+                key="texto_practica",
+                 height=350,
+                 default_value="Comienza a escribir aquí para practicar tu español...",
+                 with_assistant=True
         )
         
         # Botones de acción
