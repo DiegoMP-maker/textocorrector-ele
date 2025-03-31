@@ -632,7 +632,7 @@ with tab_corregir:
         """)
         
 # Formulario de corrección
-with st.form("formulario"):
+with st.form("formulario", clear_on_submit=True):
     nombre = st.text_input("Nombre y apellido:")
     if nombre and " " not in nombre:
         st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
@@ -664,13 +664,16 @@ with st.form("formulario"):
             "Contexto empresarial"
         ])
     
-    # Mapeo de niveles para el asistente
+    # Mapeo de niveles antes de establecer el estado de sesión
     nivel_map = {
         "Nivel principiante (A1-A2)": "principiante",
         "Nivel intermedio (B1-B2)": "intermedio", 
         "Nivel avanzado (C1-C2)": "avanzado"
     }
-    st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    
+    # Establecer el nivel de estudiante antes de renderizar el área de texto
+    st.session_state.nivel_estudiante = nivel_estudiante
     
     # Área de texto con asistencia en tiempo real
     texto = writing_assistant.render_text_editor_with_assistance(
@@ -681,11 +684,12 @@ with st.form("formulario"):
     
     info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
     
-    # Botón de envío del formulario
+    # Botón de envío
     enviar = st.form_submit_button("Corregir")
 
-# Procesar corrección cuando se envía el formulario
+# Procesar corrección después del formulario
 if enviar and nombre and texto:
+    # Resto del código de procesamiento...
     # Mapeo de niveles para instrucciones más específicas
     nivel_map = {
         "Nivel principiante (A1-A2)": {
