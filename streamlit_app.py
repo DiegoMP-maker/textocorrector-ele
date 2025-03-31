@@ -16,6 +16,9 @@ import base64
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 
+# Importar el asistente de escritura en tiempo real
+from real_time_writing_assistant import RealTimeWritingAssistant
+
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 elevenlabs_api_key = st.secrets["ELEVENLABS_API_KEY"]
@@ -65,6 +68,15 @@ except Exception as e:
     st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
 # --- FUNCIONES AUXILIARES ---
+
+# --- INICIALIZACIÓN DEL ASISTENTE DE ESCRITURA ---
+@st.cache_resource
+def init_writing_assistant():
+    """Inicializar el asistente de escritura en tiempo real (singleton)"""
+    return RealTimeWritingAssistant(openai_api_key)
+
+# Inicializar asistente
+writing_assistant = init_writing_assistant()
 
 # Función para obtener JSON de la IA con reintentos
 def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
@@ -403,7 +415,6 @@ def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, id
     except Exception as e:
         st.error(f"Error al generar ejercicios: {str(e)}")
         return {"ejercicios": [{"titulo": "Error en la generación", "instrucciones": "No se pudieron generar ejercicios personalizados", "contenido": "", "solucion": ""}]}
-
 # Función para obtener recursos recomendados según errores
 def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
     recursos_recomendados = []
@@ -604,21 +615,21 @@ st.title("📝 Textocorrector ELE")
 st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
 # Pestañas principales
-tab_corregir, tab_progreso, tab_historial = st.tabs(["📝 Corregir texto", "📊 Ver progreso", "📚 Historial"])
+tab_corregir, tab_progreso, tab_historial, tab_herramientas = st.tabs(["📝 Corregir texto", "📊 Ver progreso", "📚 Historial", "🛠️ Herramientas"])
 
 # --- PESTAÑA 1: CORREGIR TEXTO ---
 with tab_corregir:
     with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
         st.markdown("""
-        Esta versión mejorada del Textocorrector incluye:
-        
-        - **Análisis de coherencia**: Evalúa si las ideas están conectadas de manera lógica y si el texto tiene sentido en su conjunto.
-        - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
-        - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
-        - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
-        
-        Las correcciones se adaptan automáticamente al nivel del estudiante.
-        """)
+    Esta versión mejorada del Textocorrector incluye:
+    - **Análisis de coherencia**: Evalúa si las ideas están conectadas de manera lógica y si el texto tiene sentido en su conjunto.
+    - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
+    - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
+    - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
+    - **Asistente de escritura en tiempo real**: Recibe sugerencias mientras escribes (activable/desactivable).
+    
+    Las correcciones se adaptan automáticamente al nivel del estudiante.
+""")
 
     # Formulario de corrección
     with st.form("formulario"):
@@ -631,7 +642,15 @@ with tab_corregir:
             "Nivel intermedio (B1-B2)",
             "Nivel avanzado (C1-C2)"
         ])
-        
+
+        # Guardar nivel en formato simplificado para el asistente
+        nivel_map = {
+             "Nivel principiante (A1-A2)": "principiante",
+              "Nivel intermedio (B1-B2)": "intermedio", 
+            "Nivel avanzado (C1-C2)": "avanzado"
+        }
+        st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio") 
+
         idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
         
         col1, col2 = st.columns(2)
@@ -653,7 +672,12 @@ with tab_corregir:
                 "Contexto empresarial"
             ])
         
-        texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
+        # Integrar asistente de escritura en tiempo real
+        texto = writing_assistant.render_text_editor_with_assistance(
+              key="texto_correccion",
+              height=250,
+            default_value=""
+         )
         info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
         
         enviar = st.form_submit_button("Corregir")
@@ -1364,6 +1388,108 @@ with tab_historial:
     except Exception as e:
         st.error(f"Error al cargar el historial: {e}")
         st.code(str(e))  # Mostrar el error para depuración
+
+# --- PESTAÑA 4: HERRAMIENTAS (NUEVA) ---
+with tab_herramientas:
+    st.header("🛠️ Herramientas de escritura")
+    
+    herramienta_tabs = st.tabs(["📝 Editor asistido", "📊 Análisis de complejidad", "📚 Biblioteca de recursos"])
+    
+    # --- Subpestaña 1: Editor asistido ---
+    with herramienta_tabs[0]:
+        st.subheader("Editor de texto con asistencia en tiempo real")
+        st.markdown("""
+        Usa este editor para practicar tu escritura en español con asistencia en tiempo real.
+        Activa o desactiva el asistente según tus preferencias.
+        """)
+        
+        # Nivel para editor asistido
+        nivel_editor = st.selectbox(
+            "Nivel de español:", 
+            ["principiante", "intermedio", "avanzado"],
+            key="nivel_editor"
+        )
+        st.session_state.nivel_estudiante = nivel_editor
+        
+        # Usar el asistente de escritura
+        texto_practica = writing_assistant.render_text_editor_with_assistance(
+            key="texto_practica",
+            height=350,
+            default_value="Comienza a escribir aquí para practicar tu español..."
+        )
+        
+        # Botones de acción
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Guardar como borrador"):
+                if 'borradores' not in st.session_state:
+                    st.session_state.borradores = []
+                
+                if texto_practica and len(texto_practica.strip()) > 10:
+                    from datetime import datetime
+                    nuevo_borrador = {
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "texto": texto_practica,
+                        "nivel": nivel_editor
+                    }
+                    st.session_state.borradores.append(nuevo_borrador)
+                    st.success("✅ Borrador guardado correctamente.")
+                else:
+                    st.warning("⚠️ El texto es demasiado corto para guardarlo.")
+        
+        with col2:
+            if st.button("Limpiar editor"):
+                st.session_state.texto_practica = ""
+                st.experimental_rerun()
+        
+        # Mostrar borradores guardados
+        if 'borradores' in st.session_state and st.session_state.borradores:
+            with st.expander("Borradores guardados", expanded=False):
+                for i, borrador in enumerate(st.session_state.borradores):
+                    st.markdown(f"**Borrador {i+1}** - {borrador['fecha']} (Nivel: {borrador['nivel']})")
+                    st.text_area(f"Texto del borrador {i+1}", 
+                                value=borrador['texto'], 
+                                height=100,
+                                key=f"borrador_{i}",
+                                disabled=True)
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("Cargar", key=f"load_{i}"):
+                            st.session_state.texto_practica = borrador['texto']
+                            st.experimental_rerun()
+                    with col2:
+                        if st.button("Eliminar", key=f"delete_{i}"):
+                            st.session_state.borradores.pop(i)
+                            st.experimental_rerun()
+                    st.divider()
+    
+    # --- Subpestaña 2: Análisis de complejidad ---
+    with herramienta_tabs[1]:
+        st.subheader("Próximamente: Análisis de complejidad textual")
+        st.markdown("""
+        Esta herramienta te permitirá analizar la complejidad de tus textos, evaluando:
+        
+        - Riqueza léxica y variedad de vocabulario
+        - Complejidad sintáctica
+        - Uso de conectores y elementos cohesivos
+        - Adecuación al nivel objetivo
+        
+        ¡Próximamente disponible!
+        """)
+    
+    # --- Subpestaña 3: Biblioteca de recursos ---
+    with herramienta_tabs[2]:
+        st.subheader("Próximamente: Biblioteca de recursos")
+        st.markdown("""
+        Accede a una biblioteca de recursos para mejorar tu escritura:
+        
+        - Modelos de textos por género y nivel
+        - Plantillas para diferentes contextos comunicativos
+        - Guías de estructura textual
+        - Listas de vocabulario y conectores recomendados
+        
+        ¡Próximamente disponible!
+        """)
 
 
 
