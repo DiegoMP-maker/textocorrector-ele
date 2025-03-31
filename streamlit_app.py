@@ -15,6 +15,7 @@ import qrcode
 import base64
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
+from real_time_writing_assistant import RealTimeWritingAssistant
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -599,12 +600,21 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido,
     
     return docx_buffer
 
+# --- INICIALIZACIÓN DEL ASISTENTE DE ESCRITURA ---
+@st.cache_resource
+def init_writing_assistant():
+    """Inicializar el asistente de escritura en tiempo real (singleton)"""
+    return RealTimeWritingAssistant(openai_api_key)
+
+# Inicializar asistente
+writing_assistant = init_writing_assistant()
+
 # --- 3. ESTRUCTURA DE LA APLICACIÓN ---
 st.title("📝 Textocorrector ELE")
 st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
 # Pestañas principales
-tab_corregir, tab_progreso, tab_historial = st.tabs(["📝 Corregir texto", "📊 Ver progreso", "📚 Historial"])
+tab_corregir, tab_progreso, tab_historial, tab_herramientas = st.tabs(["📝 Corregir texto", "📊 Ver progreso", "📚 Historial", "🛠️ Herramientas"])
 
 # --- PESTAÑA 1: CORREGIR TEXTO ---
 with tab_corregir:
@@ -616,10 +626,11 @@ with tab_corregir:
         - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
         - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
         - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
+        - **Asistente de escritura en tiempo real**: Recibe sugerencias mientras escribes (activable/desactivable).
         
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
-
+        
     # Formulario de corrección
     with st.form("formulario"):
         nombre = st.text_input("Nombre y apellido:")
@@ -653,10 +664,42 @@ with tab_corregir:
                 "Contexto empresarial"
             ])
         
-        texto = st.text_area("Escribe tu texto para corregirlo:", height=250)
-        info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
-        
-        enviar = st.form_submit_button("Corregir")
+# Guardar nivel en formato simplificado para el asistente
+nivel_map = {
+    "Nivel principiante (A1-A2)": "principiante",
+    "Nivel intermedio (B1-B2)": "intermedio", 
+    "Nivel avanzado (C1-C2)": "avanzado"
+}
+st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+
+# Integrar asistente de escritura en tiempo real
+texto = writing_assistant.render_text_editor_with_assistance(
+    key="texto_correccion",
+    height=250,
+    default_value=""
+)
+info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
+enviar = st.form_submit_button("Corregir")
+
+# CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
+if enviar and nombre and texto:
+    # Mapeo de niveles para instrucciones más específicas
+    nivel_map = {
+        "Nivel principiante (A1-A2)": {
+            "descripcion": "principiante (A1-A2)",
+            "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
+        },
+        "Nivel intermedio (B1-B2)": {
+            "descripcion": "intermedio (B1-B2)",
+            "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
+        },
+        "Nivel avanzado (C1-C2)": {
+            "descripcion": "avanzado (C1-C2)",
+            "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
+        }
+    }
+    
+    nivel_info = nivel_map.get(nivel, nivel_map["Nivel intermedio (B1-B2)"])
     
     # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
     if enviar and nombre and texto:
@@ -1364,3 +1407,105 @@ with tab_historial:
     except Exception as e:
         st.error(f"Error al cargar el historial: {e}")
         st.code(str(e))  # Mostrar el error para depuración
+
+# --- PESTAÑA 4: HERRAMIENTAS (NUEVA) ---
+with tab_herramientas:
+    st.header("🛠️ Herramientas de escritura")
+    
+    herramienta_tabs = st.tabs(["📝 Editor asistido", "📊 Análisis de complejidad", "📚 Biblioteca de recursos"])
+    
+    # --- Subpestaña 1: Editor asistido ---
+    with herramienta_tabs[0]:
+        st.subheader("Editor de texto con asistencia en tiempo real")
+        st.markdown("""
+        Usa este editor para practicar tu escritura en español con asistencia en tiempo real.
+        Activa o desactiva el asistente según tus preferencias.
+        """)
+        
+        # Nivel para editor asistido
+        nivel_editor = st.selectbox(
+            "Nivel de español:", 
+            ["principiante", "intermedio", "avanzado"],
+            key="nivel_editor"
+        )
+        st.session_state.nivel_estudiante = nivel_editor
+        
+        # Usar el asistente de escritura
+        texto_practica = writing_assistant.render_text_editor_with_assistance(
+            key="texto_practica",
+            height=350,
+            default_value="Comienza a escribir aquí para practicar tu español..."
+        )
+        
+        # Botones de acción
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Guardar como borrador"):
+                if 'borradores' not in st.session_state:
+                    st.session_state.borradores = []
+                
+                if texto_practica and len(texto_practica.strip()) > 10:
+                    from datetime import datetime
+                    nuevo_borrador = {
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "texto": texto_practica,
+                        "nivel": nivel_editor
+                    }
+                    st.session_state.borradores.append(nuevo_borrador)
+                    st.success("✅ Borrador guardado correctamente.")
+                else:
+                    st.warning("⚠️ El texto es demasiado corto para guardarlo.")
+        
+        with col2:
+            if st.button("Limpiar editor"):
+                st.session_state.texto_practica = ""
+                st.experimental_rerun()
+        
+        # Mostrar borradores guardados
+        if 'borradores' in st.session_state and st.session_state.borradores:
+            with st.expander("Borradores guardados", expanded=False):
+                for i, borrador in enumerate(st.session_state.borradores):
+                    st.markdown(f"**Borrador {i+1}** - {borrador['fecha']} (Nivel: {borrador['nivel']})")
+                    st.text_area(f"Texto del borrador {i+1}", 
+                                value=borrador['texto'], 
+                                height=100,
+                                key=f"borrador_{i}",
+                                disabled=True)
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("Cargar", key=f"load_{i}"):
+                            st.session_state.texto_practica = borrador['texto']
+                            st.experimental_rerun()
+                    with col2:
+                        if st.button("Eliminar", key=f"delete_{i}"):
+                            st.session_state.borradores.pop(i)
+                            st.experimental_rerun()
+                    st.divider()
+    
+    # --- Subpestaña 2: Análisis de complejidad ---
+    with herramienta_tabs[1]:
+        st.subheader("Próximamente: Análisis de complejidad textual")
+        st.markdown("""
+        Esta herramienta te permitirá analizar la complejidad de tus textos, evaluando:
+        
+        - Riqueza léxica y variedad de vocabulario
+        - Complejidad sintáctica
+        - Uso de conectores y elementos cohesivos
+        - Adecuación al nivel objetivo
+        
+        ¡Próximamente disponible!
+        """)
+    
+    # --- Subpestaña 3: Biblioteca de recursos ---
+    with herramienta_tabs[2]:
+        st.subheader("Próximamente: Biblioteca de recursos")
+        st.markdown("""
+        Accede a una biblioteca de recursos para mejorar tu escritura:
+        
+        - Modelos de textos por género y nivel
+        - Plantillas para diferentes contextos comunicativos
+        - Guías de estructura textual
+        - Listas de vocabulario y conectores recomendados
+        
+        ¡Próximamente disponible!
+        """)
