@@ -5,7 +5,7 @@ import time
 from openai import OpenAI
 
 class RealTimeWritingAssistant:
-    def __init__(self, api_key, debounce_time=1.0):
+    def __init__(self, api_key, debounce_time=0.5):  # Reducido a 0.5 segundos
         self.client = OpenAI(api_key=api_key)
         self.debounce_time = debounce_time
         self.last_text = ""
@@ -13,16 +13,24 @@ class RealTimeWritingAssistant:
         self.suggestions_cache = {}
         
     def get_text_with_highlighting(self, text, nivel="intermedio"):
-        if len(text.strip()) < 15 or text == self.last_text:
+        # Reducir el número mínimo de caracteres a 10
+        if len(text.strip()) < 10:  
             return None
         
+        # Verificar si ha pasado suficiente tiempo desde la última verificación
         current_time = time.time()
         if current_time - self.last_check_time < self.debounce_time:
             return None
             
+        # Si el texto no ha cambiado, usar la versión en caché
+        if text == self.last_text and text in self.suggestions_cache:
+            return self.suggestions_cache[text]
+            
+        # Actualizar tiempo y texto de la última verificación
         self.last_check_time = current_time
         self.last_text = text
         
+        # Verificar si ya tenemos este texto en caché
         if text in self.suggestions_cache:
             return self.suggestions_cache[text]
         
@@ -34,6 +42,7 @@ class RealTimeWritingAssistant:
             - Adapta tu análisis al nivel {nivel} del estudiante
             - Enfócate solo en los errores más importantes o patrones recurrentes
             - Sé conciso en las sugerencias
+            - Analiza incluso textos cortos o incompletos, dando sugerencias inmediatas
             
             Responde ÚNICAMENTE en formato JSON con esta estructura:
             {{
@@ -60,10 +69,11 @@ class RealTimeWritingAssistant:
             }}
             """
             
+            # Configurar para respuesta rápida
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 temperature=0.3,
-                max_tokens=500,
+                max_tokens=300,  # Reducido para respuestas más rápidas
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text}
@@ -109,7 +119,11 @@ class RealTimeWritingAssistant:
         
         st.session_state.writing_assistant_enabled = enable_assistant
         
-        # CORRECIÓN AQUÍ: Obtener el valor actual antes de renderizar el widget
+        # Mostrar una nota para informar al usuario
+        if enable_assistant:
+            st.caption("El asistente analizará tu texto mientras escribes. Escribe al menos 10 caracteres para activarlo.")
+        
+        # Obtener el valor actual antes de renderizar el widget
         current_value = st.session_state[key]
         
         # Renderizar el text_area
@@ -117,24 +131,42 @@ class RealTimeWritingAssistant:
             "Escribe tu texto aquí:", 
             height=height, 
             key=key,
-            value=current_value  # Usar el valor actual
+            value=current_value,
+            on_change=self._text_changed,  # Registrar cambio
+            args=(key,)  # Pasar el key como argumento
         )
         
-        # El valor se actualizará automáticamente en session_state por Streamlit
+        # Mostrar el estado de "analizando" para hacerlo más interactivo
+        analyzing_key = f"analyzing_{key}"
+        if analyzing_key not in st.session_state:
+            st.session_state[analyzing_key] = False
         
         if enable_assistant and text:
-            with st.spinner("Analizando texto..."):
+            # Un contenedor para mostrar feedback
+            feedback_container = st.container()
+            
+            with feedback_container:
+                # Decidir si mostrar indicador de análisis o resultados
+                if st.session_state.get(analyzing_key, False):
+                    with st.spinner("Analizando texto..."):
+                        # Aquí simularíamos el análisis
+                        pass
+                
+                # Obtener feedback
                 feedback = self.get_text_with_highlighting(text, nivel)
                 
+                # Ya no estamos analizando
+                st.session_state[analyzing_key] = False
+                
                 if feedback:
-                    with st.container():
+                    total_sugerencias = (
+                        len(feedback.get("errores", [])) + 
+                        len(feedback.get("patrones", [])) + 
+                        len(feedback.get("vocabulario", []))
+                    )
+                    
+                    if total_sugerencias > 0:
                         col1, col2 = st.columns([3, 1])
-                        
-                        total_sugerencias = (
-                            len(feedback.get("errores", [])) + 
-                            len(feedback.get("patrones", [])) + 
-                            len(feedback.get("vocabulario", []))
-                        )
                         
                         with col1:
                             st.markdown(f"### Sugerencias ({total_sugerencias})")
@@ -167,8 +199,16 @@ class RealTimeWritingAssistant:
                             with st.expander("Mejoras de vocabulario", expanded=False):
                                 for vocab in feedback["vocabulario"]:
                                     st.markdown(f"**{vocab['palabra']}** → *{', '.join(vocab['alternativas'])}*")
+                    else:
+                        st.caption("No se han detectado errores o sugerencias.")
     
         return text
+    
+    def _text_changed(self, key):
+        """Callback cuando el texto cambia"""
+        # Marcar que estamos analizando
+        analyzing_key = f"analyzing_{key}"
+        st.session_state[analyzing_key] = True
 
 if __name__ == "__main__":
     st.title("Prueba del Asistente de Escritura")
