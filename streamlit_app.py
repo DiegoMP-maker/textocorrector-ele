@@ -686,8 +686,8 @@ with tab_corregir:
         # Botón de envío del formulario
         enviar = st.form_submit_button("Corregir")
 
-    # Procesar corrección después del formulario
-    if enviar and nombre and texto:
+# Procesar corrección después del formulario
+if enviar and nombre and texto:
     # Mapeo de niveles para instrucciones más específicas
     nivel_map = {
         "Nivel principiante (A1-A2)": {
@@ -705,6 +705,8 @@ with tab_corregir:
     }
     
     nivel_info = nivel_map.get(nivel, nivel_map["Nivel intermedio (B1-B2)"])
+    
+    with st.spinner("Analizando texto y generando corrección contextual..."):
     
     # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
     if enviar and nombre and texto:
