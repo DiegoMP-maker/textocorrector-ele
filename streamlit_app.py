@@ -1180,7 +1180,7 @@ with tab_progreso:
     
     nombre_estudiante = st.text_input("Nombre y apellido del estudiante para ver progreso:", key="nombre_progreso")
     if nombre_estudiante and " " not in nombre_estudiante:
-    st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+        st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
     
     if nombre_estudiante:
         with st.spinner("Cargando datos de progreso..."):
