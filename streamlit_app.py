@@ -631,57 +631,60 @@ with tab_corregir:
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
         
-    # Formulario de corrección
-    with st.form("formulario"):
-        nombre = st.text_input("Nombre y apellido:")
-        if nombre and " " not in nombre:
-            st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
-        
-        nivel = st.selectbox("¿Cuál es tu nivel?", [
-            "Nivel principiante (A1-A2)",
-            "Nivel intermedio (B1-B2)",
-            "Nivel avanzado (C1-C2)"
+# Formulario de corrección
+with st.form("formulario"):
+    nombre = st.text_input("Nombre y apellido:")
+    if nombre and " " not in nombre:
+        st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+    
+    nivel = st.selectbox("¿Cuál es tu nivel?", [
+        "Nivel principiante (A1-A2)",
+        "Nivel intermedio (B1-B2)",
+        "Nivel avanzado (C1-C2)"
+    ])
+    
+    idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        tipo_texto = st.selectbox("Tipo de texto", [
+            "General/No especificado",
+            "Académico",
+            "Profesional/Laboral",
+            "Informal/Cotidiano",
+            "Creativo/Literario"
         ])
-        
-        idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            tipo_texto = st.selectbox("Tipo de texto", [
-                "General/No especificado",
-                "Académico",
-                "Profesional/Laboral",
-                "Informal/Cotidiano",
-                "Creativo/Literario"
-            ])
-        
-        with col2:
-            contexto_cultural = st.selectbox("Contexto cultural", [
-                "General/Internacional",
-                "España",
-                "Latinoamérica",
-                "Contexto académico",
-                "Contexto empresarial"
-            ])
-        
-# Guardar nivel en formato simplificado para el asistente
-nivel_map = {
-    "Nivel principiante (A1-A2)": "principiante",
-    "Nivel intermedio (B1-B2)": "intermedio", 
-    "Nivel avanzado (C1-C2)": "avanzado"
-}
-st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    
+    with col2:
+        contexto_cultural = st.selectbox("Contexto cultural", [
+            "General/Internacional",
+            "España",
+            "Latinoamérica",
+            "Contexto académico",
+            "Contexto empresarial"
+        ])
+    
+    # Mapeo de niveles para el asistente
+    nivel_map = {
+        "Nivel principiante (A1-A2)": "principiante",
+        "Nivel intermedio (B1-B2)": "intermedio", 
+        "Nivel avanzado (C1-C2)": "avanzado"
+    }
+    st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    
+    # Área de texto con asistencia en tiempo real
+    texto = writing_assistant.render_text_editor_with_assistance(
+        key="texto_correccion",
+        height=250,
+        default_value=""
+    )
+    
+    info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
+    
+    # Botón de envío del formulario
+    enviar = st.form_submit_button("Corregir")
 
-# Integrar asistente de escritura en tiempo real
-texto = writing_assistant.render_text_editor_with_assistance(
-    key="texto_correccion",
-    height=250,
-    default_value=""
-)
-info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100)
-enviar = st.form_submit_button("Corregir")
-
-# CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
+# Procesar corrección cuando se envía el formulario
 if enviar and nombre and texto:
     # Mapeo de niveles para instrucciones más específicas
     nivel_map = {
