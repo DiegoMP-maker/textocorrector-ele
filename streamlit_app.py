@@ -621,7 +621,9 @@ with tab_corregir:
         """)
 
     with st.form("formulario"):
-        nombre = st.text_input("¿Cómo te llamas?")
+        nombre = st.text_input("Nombre y apellido:")
+        if nombre and " " not in nombre:
+    st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
         
         nivel = st.selectbox("¿Cuál es tu nivel?", [
             "Nivel principiante (A1-A2)",
@@ -1176,7 +1178,9 @@ Contexto cultural: {contexto_cultural}
 with tab_progreso:
     st.header("Seguimiento del progreso")
     
-    nombre_estudiante = st.text_input("Nombre del estudiante para ver progreso:", key="nombre_progreso")
+    nombre_estudiante = st.text_input("Nombre y apellido del estudiante para ver progreso:", key="nombre_progreso")
+    if nombre_estudiante and " " not in nombre_estudiante:
+    st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
     
     if nombre_estudiante:
         with st.spinner("Cargando datos de progreso..."):
