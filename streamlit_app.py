@@ -1234,7 +1234,7 @@ with tab_progreso:
                 st.info("Detalles para depuración:")
                 st.code(str(e))
                         
-                        # Identificar área con mayor progreso y área que necesita más trabajo
+# Identificar área con mayor progreso y área que necesita más trabajo
                         categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
                         difs = {}
                         for cat in categorias:
@@ -1250,6 +1250,29 @@ with tab_progreso:
                             st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
                 else:
                     st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+                    
+                    # Mostrar nombres disponibles en el historial
+                    try:
+                        todos_datos = tracking_sheet.get_all_records()
+                        if todos_datos:
+                            columnas = list(todos_datos[0].keys())
+                            nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
+                            
+                            if nombre_col:
+                                nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip() 
+                                                        for row in todos_datos if row.get(nombre_col)))
+                                
+                                if nombres_disponibles:
+                                    st.write("Nombres disponibles en el historial:")
+                                    for i in range(0, len(nombres_disponibles), 3):
+                                        fila = nombres_disponibles[i:i+3]
+                                        cols = st.columns(3)
+                                        for j, nombre in enumerate(fila):
+                                            if j < len(fila) and cols[j].button(nombre, key=f"btn_{nombre}_{i+j}"):
+                                                st.info(f"Seleccionaste: {nombre}")
+                                                st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al listar nombres disponibles: {e}")
             except Exception as e:
                 st.error(f"Error al obtener historial: {e}")
                 st.info("Detalles para depuración:")
