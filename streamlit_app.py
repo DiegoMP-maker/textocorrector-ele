@@ -707,25 +707,14 @@ if enviar and nombre and texto:
     nivel_info = nivel_map.get(nivel, nivel_map["Nivel intermedio (B1-B2)"])
     
     with st.spinner("Analizando texto y generando corrección contextual..."):
-    
-    # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
-    if enviar and nombre and texto:
-        with st.spinner("Analizando texto y generando corrección contextual..."):
-            # Mapeo de niveles para instrucciones más específicas
-            nivel_map = {
-                "Nivel principiante (A1-A2)": {
-                    "descripcion": "principiante (A1-A2)",
-                    "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
-                },
-                "Nivel intermedio (B1-B2)": {
-                    "descripcion": "intermedio (B1-B2)",
-                    "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
-                },
-                "Nivel avanzado (C1-C2)": {
-                    "descripcion": "avanzado (C1-C2)",
-                    "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
-                }
-            }
+        # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
+        if enviar and nombre and texto:
+            # Instrucciones para el modelo de IA con análisis contextual avanzado
+            system_message = f"""
+    Eres Diego, un profesor experto en ELE (Español como Lengua Extranjera) especializado en análisis lingüístico contextual.
+    Tu objetivo es corregir textos adaptando tu feedback al nivel {nivel_info['descripcion']} del estudiante.
+    {nivel_info['enfoque']}
+
             
             nivel_info = nivel_map.get(nivel, nivel_map["Nivel intermedio (B1-B2)"])
             
