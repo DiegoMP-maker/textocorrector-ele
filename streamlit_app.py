@@ -631,8 +631,8 @@ with tab_corregir:
     Las correcciones se adaptan automáticamente al nivel del estudiante.
 """)
 
-    # Formulario de corrección
-    with st.form("formulario"):
+# Formulario de corrección
+with st.form("formulario"):
     nombre = st.text_input("Nombre y apellido:")
     if nombre and " " not in nombre:
         st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
