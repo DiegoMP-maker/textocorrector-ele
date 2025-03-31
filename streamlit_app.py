@@ -149,22 +149,24 @@ def mostrar_progreso(df):
         st.warning("No hay suficientes datos para mostrar el progreso.")
         return
 
+    # Imprimir columnas disponibles para depuración
+    st.write("Columnas disponibles:", list(df.columns))
+    
     # Verificar si existe la columna Fecha
     fecha_col = None
-    # Buscar la columna de fecha (considerando mayúsculas/minúsculas)
+    # Buscar la columna de fecha de manera más flexible
     for col in df.columns:
-        if col.lower() == 'fecha':
+        if 'fecha' in col.lower().strip():
             fecha_col = col
             break
     
     if fecha_col is None:
         st.error("Error: No se encontró la columna 'Fecha' en los datos.")
-        st.write("Columnas disponibles:", list(df.columns))
         return
         
     # Asegurarse de que la columna Fecha está en formato datetime
     try:
-        df[fecha_col] = pd.to_datetime(df[fecha_col], format='%Y-%m-%d %H:%M', errors='coerce')
+        df[fecha_col] = pd.to_datetime(df[fecha_col], errors='coerce')
         df = df.sort_values(fecha_col)
     except Exception as e:
         st.error(f"Error al convertir la columna {fecha_col} a formato de fecha: {str(e)}")
