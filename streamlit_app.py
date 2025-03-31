@@ -123,27 +123,17 @@ def obtener_historial_estudiante(nombre, tracking_sheet):
         if not todos_datos:
             return None
         
-        # Verificar las columnas que existen
-        columnas = list(todos_datos[0].keys()) if todos_datos else []
-        nombre_col = next((col for col in columnas if col.lower() == 'nombre'), None)
+        # Crear una versión limpia del nombre buscado
+        nombre_buscar = nombre.strip().lower()
         
-        if not nombre_col:
-            print(f"Advertencia: No se encontró la columna 'Nombre'. Columnas disponibles: {columnas}")
-            return None
-        
-        # Búsqueda más flexible de nombre (ignorando mayúsculas/minúsculas y espacios extra)
-        datos_estudiante = [
-            row for row in todos_datos 
-            if nombre_col in row and 
-            str(row[nombre_col]).strip().lower() == nombre.strip().lower()
-        ]
-        
-        # Debug
-        print(f"Buscando: '{nombre}', Nombre col: '{nombre_col}', Resultados encontrados: {len(datos_estudiante)}")
-        if not datos_estudiante:
-            # Mostrar los primeros nombres disponibles para depuración
-            nombres_disponibles = [row.get(nombre_col, '') for row in todos_datos[:5]]
-            print(f"Nombres disponibles (muestra): {nombres_disponibles}")
+        # Buscar en todos los registros con un enfoque más flexible
+        datos_estudiante = []
+        for row in todos_datos:
+            for key, value in row.items():
+                if 'nombre' in key.lower() and value:  # Buscar en cualquier columna que tenga 'nombre'
+                    if str(value).strip().lower() == nombre_buscar:
+                        datos_estudiante.append(row)
+                        break
         
         # Convertir a DataFrame
         if datos_estudiante:
@@ -153,7 +143,6 @@ def obtener_historial_estudiante(nombre, tracking_sheet):
     except Exception as e:
         print(f"Error en obtener_historial_estudiante: {e}")
         return None
-
 # Función para mostrar gráficos de progreso
 def mostrar_progreso(df):
     if df is None or df.empty:
