@@ -620,16 +620,18 @@ with tab_corregir:
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
 
-    with st.form("formulario"):
-        nombre = st.text_input("Nombre y apellido:")
-        if nombre and " " not in nombre:
-    st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
-        
-        nivel = st.selectbox("¿Cuál es tu nivel?", [
-            "Nivel principiante (A1-A2)",
-            "Nivel intermedio (B1-B2)",
-            "Nivel avanzado (C1-C2)"
-        ])
+with st.form("formulario"):
+    nombre = st.text_input("Nombre y apellido:")
+    if nombre and " " not in nombre:
+        st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+    
+    nivel = st.selectbox("¿Cuál es tu nivel?", [
+        "Nivel principiante (A1-A2)",
+        "Nivel intermedio (B1-B2)",
+        "Nivel avanzado (C1-C2)"
+    ])
+    
+    # Resto del formulario...
         
         idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"])
         
