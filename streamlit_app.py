@@ -149,18 +149,35 @@ def mostrar_progreso(df):
         st.warning("No hay suficientes datos para mostrar el progreso.")
         return
 
+    # Verificar si existe la columna Fecha
+    fecha_col = None
+    # Buscar la columna de fecha (considerando mayúsculas/minúsculas)
+    for col in df.columns:
+        if col.lower() == 'fecha':
+            fecha_col = col
+            break
+    
+    if fecha_col is None:
+        st.error("Error: No se encontró la columna 'Fecha' en los datos.")
+        st.write("Columnas disponibles:", list(df.columns))
+        return
+        
     # Asegurarse de que la columna Fecha está en formato datetime
-    df['Fecha'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d %H:%M', errors='coerce')
-    df = df.sort_values('Fecha')
+    try:
+        df[fecha_col] = pd.to_datetime(df[fecha_col], format='%Y-%m-%d %H:%M', errors='coerce')
+        df = df.sort_values(fecha_col)
+    except Exception as e:
+        st.error(f"Error al convertir la columna {fecha_col} a formato de fecha: {str(e)}")
+        return
     
     # Gráfico de errores a lo largo del tiempo
     st.subheader("Progreso en la reducción de errores")
     
     # Crear un gráfico con Altair para total de errores
     chart_errores = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X('Fecha:T', title='Fecha'),
+        x=alt.X(f'{fecha_col}:T', title='Fecha'),
         y=alt.Y('Total Errores:Q', title='Total Errores'),
-        tooltip=['Fecha:T', 'Total Errores:Q', 'Nivel:N']
+        tooltip=[f'{fecha_col}:T', 'Total Errores:Q', 'Nivel:N']
     ).properties(
         title='Evolución de errores totales a lo largo del tiempo'
     ).interactive()
@@ -170,17 +187,17 @@ def mostrar_progreso(df):
     # Gráfico de tipos de errores
     tipos_error_df = pd.melt(
         df, 
-        id_vars=['Fecha'], 
+        id_vars=[fecha_col], 
         value_vars=['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura'],
         var_name='Tipo de Error', 
         value_name='Cantidad'
     )
     
     chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
-        x=alt.X('Fecha:T', title='Fecha'),
+        x=alt.X(f'{fecha_col}:T', title='Fecha'),
         y=alt.Y('Cantidad:Q', title='Cantidad'),
         color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
-        tooltip=['Fecha:T', 'Tipo de Error:N', 'Cantidad:Q']
+        tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
     ).properties(
         title='Evolución por tipo de error'
     ).interactive()
@@ -1154,42 +1171,42 @@ with tab_progreso:
                     with st.expander("Ver datos completos"):
                         st.dataframe(df)
                     
-                    # Consejo basado en tendencias
-                    if len(df) >= 2:
-                        st.subheader("Consejo basado en tendencias")
-                        
-                        # Calcular tendencias simples
-                        df['Fecha'] = pd.to_datetime(df['Fecha'])
-                        df = df.sort_values('Fecha')
-                        
-                        # Extraer primera y última entrada para comparar
-                        primera = df.iloc[0]
-                        ultima = df.iloc[-1]
-                        
-                        # Comparar total de errores
-                        dif_errores = ultima['Total Errores'] - primera['Total Errores']
-                        
-                        if dif_errores < 0:
-                            st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                        elif dif_errores > 0:
-                            st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                        else:
-                            st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
-                        
-                        # Identificar área con mayor progreso y área que necesita más trabajo
-                        categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
-                        difs = {}
-                        for cat in categorias:
-                            difs[cat] = ultima[cat] - primera[cat]
-                        
-                        mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
-                        peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
-                        
-                        if mejor_area and difs[mejor_area] < 0:
-                            st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
-                        
-                        if peor_area and difs[peor_area] > 0:
-                            st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+# Consejo basado en tendencias
+if len(df) >= 2:
+    st.subheader("Consejo basado en tendencias")
+    
+    # Calcular tendencias simples
+    df[fecha_col] = pd.to_datetime(df[fecha_col])
+    df = df.sort_values(fecha_col)
+    
+    # Extraer primera y última entrada para comparar
+    primera = df.iloc[0]
+    ultima = df.iloc[-1]
+    
+    # Comparar total de errores
+    dif_errores = ultima['Total Errores'] - primera['Total Errores']
+    
+    if dif_errores < 0:
+        st.success(f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+    elif dif_errores > 0:
+        st.warning(f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+    else:
+        st.info("El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+    
+    # Identificar área con mayor progreso y área que necesita más trabajo
+    categorias = ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+    difs = {}
+    for cat in categorias:
+        difs[cat] = ultima[cat] - primera[cat]
+    
+    mejor_area = min(difs.items(), key=lambda x: x[1])[0] if difs else None
+    peor_area = max(difs.items(), key=lambda x: x[1])[0] if difs else None
+    
+    if mejor_area and difs[mejor_area] < 0:
+        st.success(f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+    
+    if peor_area and difs[peor_area] > 0:
+        st.warning(f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
                 else:
                     st.info(f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
                     
