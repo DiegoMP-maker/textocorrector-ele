@@ -149,9 +149,6 @@ def mostrar_progreso(df):
         st.warning("No hay suficientes datos para mostrar el progreso.")
         return
 
-    # Imprimir columnas disponibles para depuración
-    st.write("Columnas disponibles:", list(df.columns))
-    
     # Verificar si existe la columna Fecha
     fecha_col = None
     # Buscar la columna de fecha de manera más flexible
@@ -162,6 +159,7 @@ def mostrar_progreso(df):
     
     if fecha_col is None:
         st.error("Error: No se encontró la columna 'Fecha' en los datos.")
+        st.write("Columnas disponibles:", list(df.columns))
         return
         
     # Asegurarse de que la columna Fecha está en formato datetime
@@ -186,44 +184,43 @@ def mostrar_progreso(df):
     
     st.altair_chart(chart_errores, use_container_width=True)
     
-# Gráfico de tipos de errores
-# Primero verificar qué columnas de errores existen realmente en el DataFrame
-posibles_columnas_errores = [
-    'Errores Gramática', 'Errores Gramática ', 'Errores Gramatica',
-    'Errores Léxico', 'Errores Léxico ', 'Errores Lexico',
-    'Errores Puntuación', 'Errores Puntuación ', 'Errores Puntuacion',
-    'Errores Estructura', 'Errores Estructura ', 'Errores Estructura textual'
-]
+    # Gráfico de tipos de errores
+    # Usar exactamente los nombres de columnas que vemos en la tabla
+    columnas_errores = [
+        'Errores Gramática',
+        'Errores Léxico',
+        'Errores Puntuación',
+        'Errores Estructura'
+    ]
 
-# Encontrar las columnas que realmente existen en el DataFrame
-columnas_errores_existentes = [col for col in posibles_columnas_errores if col in df.columns]
+    # Encontrar las columnas que realmente existen en el DataFrame
+    columnas_errores_existentes = [col for col in columnas_errores if col in df.columns]
 
-# Si no hay columnas de errores, mostrar un mensaje
-if not columnas_errores_existentes:
-    st.warning("No se encontraron columnas de tipos de errores en los datos.")
-else:
-    # Mostrar qué columnas se están utilizando
-    st.write("Columnas de errores encontradas:", columnas_errores_existentes)
-    
-    # Usar solo las columnas que existen
-    tipos_error_df = pd.melt(
-        df, 
-        id_vars=[fecha_col], 
-        value_vars=columnas_errores_existentes,
-        var_name='Tipo de Error', 
-        value_name='Cantidad'
-    )
-    
-    chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
-        x=alt.X(f'{fecha_col}:T', title='Fecha'),
-        y=alt.Y('Cantidad:Q', title='Cantidad'),
-        color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
-        tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
-    ).properties(
-        title='Evolución por tipo de error'
-    ).interactive()
-    
-    st.altair_chart(chart_tipos, use_container_width=True)
+    # Si no hay columnas de errores, mostrar un mensaje
+    if not columnas_errores_existentes:
+        st.warning("No se encontraron columnas de tipos de errores en los datos.")
+        # Mostrar columnas disponibles para depuración
+        st.write("Columnas disponibles:", list(df.columns))
+    else:
+        # Usar solo las columnas que existen
+        tipos_error_df = pd.melt(
+            df, 
+            id_vars=[fecha_col], 
+            value_vars=columnas_errores_existentes,
+            var_name='Tipo de Error', 
+            value_name='Cantidad'
+        )
+        
+        chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
+            x=alt.X(f'{fecha_col}:T', title='Fecha'),
+            y=alt.Y('Cantidad:Q', title='Cantidad'),
+            color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
+            tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
+        ).properties(
+            title='Evolución por tipo de error'
+        ).interactive()
+        
+        st.altair_chart(chart_tipos, use_container_width=True)
     
     # Gráfico de radar para habilidades contextuales (última entrada)
     if 'Puntuación Coherencia' in df.columns and len(df) > 0:
