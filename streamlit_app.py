@@ -116,8 +116,14 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
 
 # Obtener historial para análisis del progreso
 def obtener_historial_estudiante(nombre, tracking_sheet):
-    # Obtener todos los datos
-    todos_datos = tracking_sheet.get_all_records()
+    # Definir los encabezados esperados
+    expected_headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
+                      "Errores Puntuación", "Errores Estructura", "Total Errores", 
+                      "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
+                      "Puntuación Adecuación Cultural", "Consejo Final"]
+    
+    # Obtener todos los datos con los encabezados esperados
+    todos_datos = tracking_sheet.get_all_records(expected_headers=expected_headers)
     
     # Filtrar por nombre
     datos_estudiante = [row for row in todos_datos if row.get('Nombre') == nombre]
