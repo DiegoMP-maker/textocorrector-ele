@@ -116,17 +116,11 @@ def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
 
 # Obtener historial para análisis del progreso
 def obtener_historial_estudiante(nombre, tracking_sheet):
-    # Definir los encabezados esperados
-    expected_headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
-                      "Errores Puntuación", "Errores Estructura", "Total Errores", 
-                      "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
-                      "Puntuación Adecuación Cultural", "Consejo Final"]
+    # Obtener todos los datos sin especificar encabezados
+    todos_datos = tracking_sheet.get_all_records()
     
-    # Obtener todos los datos con los encabezados esperados
-    todos_datos = tracking_sheet.get_all_records(expected_headers=expected_headers)
-    
-    # Filtrar por nombre
-    datos_estudiante = [row for row in todos_datos if row.get('Nombre') == nombre]
+    # Filtrar por nombre (usar la clave exacta como aparece en la hoja)
+    datos_estudiante = [row for row in todos_datos if str(row.get('Nombre', '')).strip() == nombre]
     
     # Convertir a DataFrame
     if datos_estudiante:
