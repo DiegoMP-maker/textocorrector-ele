@@ -1396,133 +1396,133 @@ with tab_herramientas:
     
     herramienta_tabs = st.tabs(["📝 Editor asistido", "📊 Análisis de complejidad", "📚 Biblioteca de recursos"])
     
-
-# --- Subpestaña 1: Editor asistido ---
-with herramienta_tabs[0]:
-    st.subheader("Editor de texto con asistencia")
-    st.markdown("""
-    Usa este editor para practicar tu escritura en español con asistencia.
-    Escribe tu texto y haz clic en "Verificar texto" para recibir sugerencias.
-    """)
-    
-    # Crear un contenedor para el editor
-    editor_container = st.container()
-    
-    with editor_container:
-        # Nivel para editor asistido
-        nivel_editor = st.selectbox(
-            "Nivel de español:", 
-            ["principiante", "intermedio", "avanzado"],
-            key="nivel_editor"
-        )
-        st.session_state.nivel_estudiante = nivel_editor
+    # --- Subpestaña 1: Editor asistido ---
+    with herramienta_tabs[0]:
+        st.subheader("Editor de texto con asistencia")
+        st.markdown("""
+        Usa este editor para practicar tu escritura en español con asistencia.
+        Escribe tu texto y haz clic en "Verificar texto" para recibir sugerencias.
+        """)
         
-        # Nombre para guardar borradores (opcional)
-        nombre_borrador = st.text_input("Nombre (opcional, para guardar borradores):", key="nombre_borrador")
+        # Crear un contenedor para el editor
+        editor_container = st.container()
         
-        # Texto para practicar
-        texto_area = st.text_area(
-            "Escribe tu texto aquí:",
-            height=350,
-            key="texto_practica",
-            value=st.session_state.get("texto_practica", "Comienza a escribir aquí para practicar tu español...")
-        )
-        
-        # Guardar el texto en la session state
-        st.session_state.texto_practica = texto_area
-        
-        # Botón de verificación
-        if st.button("Verificar texto", key="verificar_texto"):
-            if len(texto_area.strip()) < 10:
-                st.warning("El texto es demasiado corto. Escribe al menos 10 caracteres para verificar.")
-            else:
-                with st.spinner("Analizando texto..."):
-                    feedback = writing_assistant.get_text_with_highlighting(texto_area, nivel_editor)
-                    
-                    if feedback:
-                        total_sugerencias = (
-                            len(feedback.get("errores", [])) + 
-                            len(feedback.get("patrones", [])) + 
-                            len(feedback.get("vocabulario", []))
-                        )
-                        
-                        if total_sugerencias > 0:
-                            st.markdown(f"### Sugerencias ({total_sugerencias})")
-                            
-                            if feedback.get("errores", []):
-                                with st.expander("Correcciones sugeridas", expanded=True):
-                                    for i, error in enumerate(feedback["errores"]):
-                                        st.markdown(f"**{error['tipo']}**: ")
-                                        col1, col2 = st.columns([1, 1])
-                                        with col1:
-                                            st.error(f"{error['fragmento']}")
-                                        with col2:
-                                            st.success(f"{error['sugerencia']}")
-                                        st.info(f"💡 {error['explicacion']}")
-                                        if i < len(feedback["errores"]) - 1:
-                                            st.divider()
-                            
-                            if feedback.get("patrones", []):
-                                with st.expander("Patrones recurrentes", expanded=False):
-                                    for patron in feedback["patrones"]:
-                                        st.markdown(f"**{patron['patron']}**")
-                                        st.info(f"✏️ {patron['sugerencia']}")
-                                        st.divider()
-                            
-                            if feedback.get("vocabulario", []):
-                                with st.expander("Mejoras de vocabulario", expanded=False):
-                                    for vocab in feedback["vocabulario"]:
-                                        st.markdown(f"**{vocab['palabra']}** → *{', '.join(vocab['alternativas'])}*")
-                        else:
-                            st.success("¡Bien hecho! No se han detectado errores o sugerencias en tu texto.")
-        
-        # Botones de acción
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Guardar como borrador", key="guardar_borrador"):
-                if 'borradores' not in st.session_state:
-                    st.session_state.borradores = []
-                
-                if texto_area and len(texto_area.strip()) > 10:
-                    from datetime import datetime
-                    nuevo_borrador = {
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "texto": texto_area,
-                        "nivel": nivel_editor,
-                        "nombre": nombre_borrador if nombre_borrador else "Sin nombre"
-                    }
-                    st.session_state.borradores.append(nuevo_borrador)
-                    st.success("✅ Borrador guardado correctamente.")
+        with editor_container:
+            # Nivel para editor asistido
+            nivel_editor = st.selectbox(
+                "Nivel de español:", 
+                ["principiante", "intermedio", "avanzado"],
+                key="nivel_editor"
+            )
+            st.session_state.nivel_estudiante = nivel_editor
+            
+            # Nombre para guardar borradores (opcional)
+            nombre_borrador = st.text_input("Nombre (opcional, para guardar borradores):", key="nombre_borrador")
+            
+            # Inicializar el valor en session_state si no existe
+            if "texto_practica" not in st.session_state:
+                st.session_state.texto_practica = "Comienza a escribir aquí para practicar tu español..."
+            
+            # Texto para practicar
+            texto_area = st.text_area(
+                "Escribe tu texto aquí:",
+                height=350,
+                key="texto_practica",
+                value=st.session_state.texto_practica
+            )
+            
+            # Botón de verificación
+            if st.button("Verificar texto", key="verificar_texto"):
+                if len(texto_area.strip()) < 10:
+                    st.warning("El texto es demasiado corto. Escribe al menos 10 caracteres para verificar.")
                 else:
-                    st.warning("⚠️ El texto es demasiado corto para guardarlo.")
+                    with st.spinner("Analizando texto..."):
+                        feedback = writing_assistant.get_text_with_highlighting(texto_area, nivel_editor)
+                        
+                        if feedback:
+                            total_sugerencias = (
+                                len(feedback.get("errores", [])) + 
+                                len(feedback.get("patrones", [])) + 
+                                len(feedback.get("vocabulario", []))
+                            )
+                            
+                            if total_sugerencias > 0:
+                                st.markdown(f"### Sugerencias ({total_sugerencias})")
+                                
+                                if feedback.get("errores", []):
+                                    with st.expander("Correcciones sugeridas", expanded=True):
+                                        for i, error in enumerate(feedback["errores"]):
+                                            st.markdown(f"**{error['tipo']}**: ")
+                                            col1, col2 = st.columns([1, 1])
+                                            with col1:
+                                                st.error(f"{error['fragmento']}")
+                                            with col2:
+                                                st.success(f"{error['sugerencia']}")
+                                            st.info(f"💡 {error['explicacion']}")
+                                            if i < len(feedback["errores"]) - 1:
+                                                st.divider()
+                                
+                                if feedback.get("patrones", []):
+                                    with st.expander("Patrones recurrentes", expanded=False):
+                                        for patron in feedback["patrones"]:
+                                            st.markdown(f"**{patron['patron']}**")
+                                            st.info(f"✏️ {patron['sugerencia']}")
+                                            st.divider()
+                                
+                                if feedback.get("vocabulario", []):
+                                    with st.expander("Mejoras de vocabulario", expanded=False):
+                                        for vocab in feedback["vocabulario"]:
+                                            st.markdown(f"**{vocab['palabra']}** → *{', '.join(vocab['alternativas'])}*")
+                            else:
+                                st.success("¡Bien hecho! No se han detectado errores o sugerencias en tu texto.")
+            
+            # Botones de acción
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Guardar como borrador", key="guardar_borrador"):
+                    if 'borradores' not in st.session_state:
+                        st.session_state.borradores = []
+                    
+                    if texto_area and len(texto_area.strip()) > 10:
+                        from datetime import datetime
+                        nuevo_borrador = {
+                            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "texto": texto_area,
+                            "nivel": nivel_editor,
+                            "nombre": nombre_borrador if nombre_borrador else "Sin nombre"
+                        }
+                        st.session_state.borradores.append(nuevo_borrador)
+                        st.success("✅ Borrador guardado correctamente.")
+                    else:
+                        st.warning("⚠️ El texto es demasiado corto para guardarlo.")
+            
+            with col2:
+                if st.button("Limpiar editor", key="limpiar_editor"):
+                    st.session_state.texto_practica = ""
+                    st.experimental_rerun()
         
-        with col2:
-            if st.button("Limpiar editor", key="limpiar_editor"):
-                st.session_state.texto_practica = ""
-                st.experimental_rerun()
-    
-    # Mostrar borradores guardados
-    if 'borradores' in st.session_state and st.session_state.borradores:
-        with st.expander("Borradores guardados", expanded=False):
-            for i, borrador in enumerate(st.session_state.borradores):
-                st.markdown(f"**Borrador {i+1}** - {borrador['fecha']} - {borrador.get('nombre', 'Sin nombre')} (Nivel: {borrador['nivel']})")
-                st.text_area(
-                    f"Texto del borrador {i+1}", 
-                    value=borrador['texto'], 
-                    height=100,
-                    key=f"borrador_{i}",
-                    disabled=True
-                )
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.button("Cargar", key=f"load_{i}"):
-                        st.session_state.texto_practica = borrador['texto']
-                        st.experimental_rerun()
-                with col2:
-                    if st.button("Eliminar", key=f"delete_{i}"):
-                        st.session_state.borradores.pop(i)
-                        st.experimental_rerun()
-                st.divider()
+        # Mostrar borradores guardados
+        if 'borradores' in st.session_state and st.session_state.borradores:
+            with st.expander("Borradores guardados", expanded=False):
+                for i, borrador in enumerate(st.session_state.borradores):
+                    st.markdown(f"**Borrador {i+1}** - {borrador['fecha']} - {borrador.get('nombre', 'Sin nombre')} (Nivel: {borrador['nivel']})")
+                    st.text_area(
+                        f"Texto del borrador {i+1}", 
+                        value=borrador['texto'], 
+                        height=100,
+                        key=f"borrador_{i}",
+                        disabled=True
+                    )
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("Cargar", key=f"load_{i}"):
+                            st.session_state.texto_practica = borrador['texto']
+                            st.experimental_rerun()
+                    with col2:
+                        if st.button("Eliminar", key=f"delete_{i}"):
+                            st.session_state.borradores.pop(i)
+                            st.experimental_rerun()
+                    st.divider()
     
     # --- Subpestaña 2: Análisis de complejidad ---
     with herramienta_tabs[1]:
@@ -1551,7 +1551,6 @@ with herramienta_tabs[0]:
         
         ¡Próximamente disponible!
         """)
-
 
 
 
