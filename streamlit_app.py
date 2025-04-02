@@ -276,6 +276,55 @@ def mostrar_progreso(df):
         plt.title("Habilidades contextuales (última evaluación)")
         st.pyplot(fig)
 
+# Función para generar consignas de escritura
+def generar_consigna_escritura(nivel_actual, tipo_consigna):
+    """
+    Genera una consigna de escritura adaptada al nivel del estudiante
+    y el tipo de texto solicitado.
+    
+    Args:
+        nivel_actual (str): Nivel del estudiante (principiante, intermedio, avanzado)
+        tipo_consigna (str): Tipo de texto a generar
+        
+    Returns:
+        str: Consigna de escritura generada
+    """
+    # Construir prompt mejorado para OpenAI
+    prompt_consigna = f"""
+    Eres un profesor experto en la enseñanza de español como lengua extranjera. 
+    Crea una consigna de escritura adaptada al nivel {nivel_actual} para el tipo de texto: {tipo_consigna}.
+
+    Tu respuesta debe tener este formato exacto:
+    1. Un título atractivo y claro
+    2. Instrucciones precisas que incluyan:
+       - Situación o contexto
+       - Tarea específica a realizar
+       - Extensión requerida (número de palabras apropiado para el nivel)
+       - Elementos que debe incluir el texto
+
+    Adapta la complejidad lingüística y temática al nivel {nivel_actual}:
+    - Para niveles principiante: usa vocabulario básico, estructuras simples y temas cotidianos
+    - Para niveles intermedio: incluye vocabulario más variado, conectores y temas que requieran opinión
+    - Para niveles avanzado: incorpora elementos para expresar matices, argumentación compleja y temas abstractos
+
+    Proporciona solo la consigna, sin explicaciones adicionales ni metacomentarios.
+    """
+    
+    # Llamar a la API
+    client = OpenAI(api_key=openai_api_key)
+    
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        temperature=0.8,
+        messages=[
+            {"role": "system", "content": "Eres un profesor de español experto en diseñar actividades de escritura."},
+            {"role": "user", "content": prompt_consigna}
+        ]
+    )
+    
+    # Obtener resultado
+    return response.choices[0].message.content.strip()
+
 # Base de datos simple de recursos por niveles y categorías
 RECURSOS_DB = {
     "A1-A2": {
@@ -818,7 +867,7 @@ tab_corregir, tab_progreso, tab_historial, tab_examenes, tab_herramientas = st.t
     "🔧 Herramientas complementarias"
 ])
 
-# --- PESTAÑA 1: CORREGIR TEXTO (Con generador de consignas integrado) ---
+# --- PESTAÑA 1: CORREGIR TEXTO ---
 with tab_corregir:
     with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
         st.markdown("""
@@ -832,92 +881,64 @@ with tab_corregir:
     Las correcciones se adaptan automáticamente al nivel del estudiante.
 """)
 
-    # Formulario de corrección con clave única
-    with st.form(key="formulario_corregir"):
-        nombre = st.text_input("Nombre y apellido:", key="nombre_corregir")
-        if nombre and " " not in nombre:
-            st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+    # Nivel y tipo de consigna
+    nombre = st.text_input("Nombre y apellido:", key="nombre_corregir_gral")
+    if nombre and " " not in nombre:
+        st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
         
-        nivel = st.selectbox("¿Cuál es tu nivel?", [
-            "Nivel principiante (A1-A2)",
-            "Nivel intermedio (B1-B2)",
-            "Nivel avanzado (C1-C2)"
-        ], key="nivel_corregir")
+    nivel = st.selectbox("¿Cuál es tu nivel?", [
+        "Nivel principiante (A1-A2)",
+        "Nivel intermedio (B1-B2)",
+        "Nivel avanzado (C1-C2)"
+    ], key="nivel_corregir_gral")
+    
+    # Guardar nivel en formato simplificado para el asistente
+    nivel_map = {
+        "Nivel principiante (A1-A2)": "principiante",
+        "Nivel intermedio (B1-B2)": "intermedio",
+        "Nivel avanzado (C1-C2)": "avanzado"
+    }
+    st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    
+    # NUEVO: Generador de consignas FUERA del formulario
+    with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
+        tipo_consigna = st.selectbox(
+            "Tipo de texto a escribir:",
+            [
+                "Cualquiera (aleatorio)",
+                "Narración",
+                "Correo/Carta formal",
+                "Opinión/Argumentación",
+                "Descripción",
+                "Diálogo"
+            ],
+            key="tipo_consigna_corregir"
+        )
         
-        # Guardar nivel en formato simplificado para el asistente
-        nivel_map = {
-            "Nivel principiante (A1-A2)": "principiante",
-            "Nivel intermedio (B1-B2)": "intermedio",
-            "Nivel avanzado (C1-C2)": "avanzado"
-        }
-        st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
-        
-        # NUEVO: Generador de consignas integrado
-        with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
-            tipo_consigna = st.selectbox(
-                "Tipo de texto a escribir:",
-                [
-                    "Cualquiera (aleatorio)",
-                    "Narración",
-                    "Correo/Carta formal",
-                    "Opinión/Argumentación",
-                    "Descripción",
-                    "Diálogo"
-                ],
-                key="tipo_consigna_corregir"
-            )
+        if st.button("Generar consigna de escritura", key="generar_consigna"):
+            with st.spinner("Generando consigna adaptada a tu nivel..."):
+                # Determinar el nivel para la IA
+                nivel_actual = nivel_map.get(nivel, "intermedio")
+                
+                # Generar la consigna
+                consigna_generada = generar_consigna_escritura(nivel_actual, tipo_consigna)
+                
+                # Guardar en session_state para usarlo en el formulario
+                st.session_state.consigna_actual = consigna_generada
             
-            if st.button("Generar consigna de escritura", key="generar_consigna"):
-                with st.spinner("Generando consigna adaptada a tu nivel..."):
-                    # Determinar el nivel para la IA
-                    nivel_actual = nivel_map.get(nivel, "intermedio")
-                    
-                    # Construir prompt para OpenAI
-                    prompt_consigna = f"""
-                    Genera una consigna de escritura breve para un estudiante de español de nivel {nivel_actual}.
-                    """
-                    
-                    if tipo_consigna != "Cualquiera (aleatorio)":
-                        prompt_consigna += f" La consigna debe ser para escribir un texto de tipo: {tipo_consigna}."
-                        
-                    # Añadir contexto según nivel
-                    if nivel_actual == "principiante":
-                        prompt_consigna += " Debe ser muy sencilla, con vocabulario básico, usando presente y pasado simple principalmente."
-                    elif nivel_actual == "intermedio":
-                        prompt_consigna += " Debe tener complejidad moderada, permitiendo usar diversos tiempos verbales y expresar opiniones."
-                    else:
-                        prompt_consigna += " Debe ser desafiante, permitiendo argumentación compleja, uso de expresiones idiomáticas y matices."
-                    
-                    prompt_consigna += " La consigna debe ser motivadora y creativa, similar a las de los exámenes DELE o SIELE."
-                    
-                    # Llamar a la API
-                    client = OpenAI(api_key=openai_api_key)
-                    response = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        temperature=0.8,
-                        messages=[
-                            {"role": "system", "content": "Eres un profesor de español experto en diseñar actividades de escritura."},
-                            {"role": "user", "content": prompt_consigna}
-                        ]
-                    )
-                    
-                    # Obtener resultado
-                    consigna_generada = response.choices[0].message.content.strip()
-                    
-                    # Guardar en session_state para usarlo en el formulario
-                    st.session_state.consigna_actual = consigna_generada
-                
-                # Mostrar la consigna generada
-                st.success("✨ Consigna generada:")
-                st.info(st.session_state.consigna_actual)
-                
-                # Opcional: botón para usar esta consigna
-                if st.button("Usar esta consigna como contexto", key="usar_consigna"):
-                    # Setear el texto de información adicional
-                    st.session_state.info_adicional_corregir = f"Consigna: {st.session_state.consigna_actual}"
-                    st.rerun()  # Recargar para actualizar el formulario
+            # Mostrar la consigna generada
+            st.success("✨ Consigna generada:")
+            st.info(st.session_state.consigna_actual)
+            
+            # Opción para usar esta consigna
+            if st.button("Usar esta consigna como contexto", key="usar_consigna"):
+                st.session_state.info_adicional_corregir = f"Consigna: {st.session_state.consigna_actual}"
+                st.rerun()  # Recargar para actualizar el formulario
+
+    # Formulario de corrección con clave única (ahora sin el generador de consignas)
+    with st.form(key="formulario_corregir"):
+        # No repetimos nombre y nivel, ya que los capturamos fuera del formulario
         
-        # Continúa el formulario original
         idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"], key="idioma_corregir")
         
         col1, col2 = st.columns(2)
@@ -960,7 +981,7 @@ with tab_corregir:
         if enviar and nombre and texto:
             with st.spinner("Analizando texto y generando corrección contextual..."):
                 # Mapeo de niveles para instrucciones más específicas
-                nivel_map = {
+                nivel_map_instrucciones = {
                     "Nivel principiante (A1-A2)": {
                         "descripcion": "principiante (A1-A2)",
                         "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
@@ -975,7 +996,7 @@ with tab_corregir:
                     }
                 }
                 
-                nivel_info = nivel_map.get(nivel, nivel_map["Nivel intermedio (B1-B2)"])
+                nivel_info = nivel_map_instrucciones.get(nivel, nivel_map_instrucciones["Nivel intermedio (B1-B2)"])
                 
                 # Instrucciones para el modelo de IA con análisis contextual avanzado
                 system_message = f"""
@@ -1147,6 +1168,7 @@ Contexto cultural: {contexto_cultural}
                                             st.divider()
 
                     # Texto corregido
+                    # Texto corregido
                     st.subheader("Texto corregido completo")
                     st.write(texto_corregido)
                     
@@ -1174,8 +1196,8 @@ Contexto cultural: {contexto_cultural}
                     # Mostrar un progreso general
                     st.markdown(f"##### Evaluación global: {promedio_contextual:.1f}/10")
                     st.progress(promedio_contextual / 10)
-
-                # Detalles de coherencia
+                    
+                    # Detalles de coherencia
                     with st.expander("Coherencia textual", expanded=True):
                         st.markdown(f"**Comentario**: {coherencia.get('comentario', '')}")
                         st.markdown("**Sugerencias para mejorar:**")
@@ -1473,7 +1495,7 @@ Contexto cultural: {contexto_cultural}
                     import traceback
                     st.code(traceback.format_exc())
 
-    # --- PESTAÑA 2: VER PROGRESO ---
+  # --- PESTAÑA 2: VER PROGRESO ---
 with tab_progreso:
     st.header("Seguimiento del progreso")
     
@@ -1698,7 +1720,7 @@ with tab_historial:
                     # Mostrar tabla de historial
                     st.dataframe(df_display)
                     
-                   # Opciones para ver detalles
+                    # Opciones para ver detalles
                     if st.checkbox("Ver detalles de una corrección", key="checkbox_historial"):
                         # Extraer nombres únicos
                         nombres = sorted(df_correcciones[nombre_col].unique().tolist())
@@ -1976,7 +1998,7 @@ with tab_examenes:
                 ejemplos = response.choices[0].message.content
                 st.markdown(ejemplos)
 
-    # --- PESTAÑA 5: HERRAMIENTAS COMPLEMENTARIAS (RENOMBRADA) ---
+# --- PESTAÑA 5: HERRAMIENTAS COMPLEMENTARIAS (RENOMBRADA) ---
 with tab_herramientas:
     st.header("🔧 Herramientas complementarias")
     
@@ -2260,6 +2282,5 @@ with tab_herramientas:
                         if "descripcion" in recurso:
                             st.markdown(f"**Descripción:** {recurso.get('descripcion', '')}")
             else:
-                st.info(f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
-
-        
+                st.info(f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")                 
+                    
