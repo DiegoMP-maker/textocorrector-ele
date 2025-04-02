@@ -984,10 +984,7 @@ with tab_corregir:
         # PROCESAMIENTO DEL FORMULARIO 
         if enviar and nombre and texto:
             with st.spinner("Analizando texto y generando corrección contextual..."):
-        
-        # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
-        if enviar and nombre and texto:
-            with st.spinner("Analizando texto y generando corrección contextual..."):
+                # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
                 # Mapeo de niveles para instrucciones más específicas
                 nivel_map_instrucciones = {
                     "Nivel principiante (A1-A2)": {
