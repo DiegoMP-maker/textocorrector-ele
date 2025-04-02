@@ -881,7 +881,7 @@ with tab_corregir:
     Las correcciones se adaptan automáticamente al nivel del estudiante.
 """)
 
-    # Nivel y tipo de consigna
+    # IMPORTANTE: Capturamos nombre y nivel fuera de todo formulario
     nombre = st.text_input("Nombre y apellido:", key="nombre_corregir_gral")
     if nombre and " " not in nombre:
         st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
@@ -900,7 +900,7 @@ with tab_corregir:
     }
     st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
     
-    # NUEVO: Generador de consignas FUERA del formulario
+    # IMPORTANTE: Generador de consignas TOTALMENTE FUERA del formulario
     with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
         tipo_consigna = st.selectbox(
             "Tipo de texto a escribir:",
@@ -933,9 +933,10 @@ with tab_corregir:
             # Opción para usar esta consigna
             if st.button("Usar esta consigna como contexto", key="usar_consigna"):
                 st.session_state.info_adicional_corregir = f"Consigna: {st.session_state.consigna_actual}"
+                st.session_state.usar_consigna_como_texto = True
                 st.rerun()  # Recargar para actualizar el formulario
-
-    # Formulario de corrección con clave única (ahora sin el generador de consignas)
+    
+    # AHORA: Formulario de corrección completamente separado
     with st.form(key="formulario_corregir"):
         # No repetimos nombre y nivel, ya que los capturamos fuera del formulario
         
@@ -962,8 +963,10 @@ with tab_corregir:
         
         # Texto inicial con contenido de la consigna si está disponible
         texto_inicial = ""
-        if "info_adicional_corregir" in st.session_state and "consigna_actual" in st.session_state:
+        if "usar_consigna_como_texto" in st.session_state and st.session_state.usar_consigna_como_texto and "consigna_actual" in st.session_state:
             texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
+            # Reset para no añadirlo cada vez
+            st.session_state.usar_consigna_como_texto = False
         
         # Área de texto para la corrección
         texto = st.text_area(
@@ -975,7 +978,12 @@ with tab_corregir:
         
         info_adicional = st.text_area("Información adicional o contexto (opcional):", height=100, key="info_adicional_corregir")
         
+        # IMPORTANTE: Único tipo de botón permitido dentro de un formulario
         enviar = st.form_submit_button("Corregir")
+        
+        # PROCESAMIENTO DEL FORMULARIO 
+        if enviar and nombre and texto:
+            with st.spinner("Analizando texto y generando corrección contextual..."):
         
         # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
         if enviar and nombre and texto:
