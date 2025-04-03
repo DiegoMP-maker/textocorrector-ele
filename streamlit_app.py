@@ -7,13 +7,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import altair as alt
 import time
+import io
+import base64
+import numpy as np
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from openai import OpenAI
 from io import BytesIO, StringIO
 from PIL import Image
 import qrcode
-import base64
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 
@@ -68,8 +70,6 @@ try:
 except Exception as e:
     st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
 
-# --- FUNCIONES AUXILIARES ---
-
 # --- INICIALIZACIÓN DEL ASISTENTE DE ESCRITURA ---
 @st.cache_resource
 def init_writing_assistant():
@@ -78,6 +78,8 @@ def init_writing_assistant():
 
 # Inicializar asistente
 writing_assistant = init_writing_assistant()
+
+# --- FUNCIONES AUXILIARES ---
 
 # Función para obtener JSON de la IA con reintentos
 def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
@@ -325,343 +327,6 @@ def generar_consigna_escritura(nivel_actual, tipo_consigna):
     # Obtener resultado
     return response.choices[0].message.content.strip()
 
-# Base de datos simple de recursos por niveles y categorías
-RECURSOS_DB = {
-    "A1-A2": {
-        "Gramática": [
-            {"título": "Presente de indicativo", "tipo": "Ficha", "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
-            {"título": "Los artículos en español", "tipo": "Vídeo", "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
-            {"título": "Ser y estar", "tipo": "Ejercicios", "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
-            {"título": "Pretérito indefinido", "tipo": "Explicación", "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
-        ],
-        "Léxico": [
-            {"título": "Vocabulario básico", "tipo": "Ficha", "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
-            {"título": "Alimentos y comidas", "tipo": "Tarjetas", "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
-            {"título": "La ciudad", "tipo": "Podcast", "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
-        ],
-        "Cohesión": [
-            {"título": "Conectores básicos", "tipo": "Guía", "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
-            {"título": "Organizar ideas", "tipo": "Ejercicios", "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
-        ],
-        "Registro": [
-            {"título": "Saludos formales e informales", "tipo": "Vídeo", "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
-            {"título": "Peticiones corteses", "tipo": "Diálogos", "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
-        ]
-    },
-    "B1-B2": {
-        "Gramática": [
-            {"título": "Subjuntivo presente", "tipo": "Guía", "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
-            {"título": "Estilo indirecto", "tipo": "Ejercicios", "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
-        ],
-        "Léxico": [
-            {"título": "Expresiones idiomáticas", "tipo": "Podcast", "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
-            {"título": "Vocabulario académico", "tipo": "Glosario", "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
-        ],
-        "Cohesión": [
-            {"título": "Marcadores discursivos", "tipo": "Guía", "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
-            {"título": "Conectores argumentativos", "tipo": "Ejercicios", "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
-        ],
-        "Registro": [
-            {"título": "Lenguaje formal e informal", "tipo": "Curso", "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
-            {"título": "Comunicación profesional", "tipo": "Ejemplos", "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
-        ]
-    },
-    "C1-C2": {
-        "Gramática": [
-            {"título": "Construcciones pasivas", "tipo": "Análisis", "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
-            {"título": "Subordinadas complejas", "tipo": "Guía", "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
-        ],
-        "Léxico": [
-            {"título": "Lenguaje académico", "tipo": "Corpus", "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
-            {"título": "Variantes dialectales", "tipo": "Curso", "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
-        ],
-        "Cohesión": [
-            {"título": "Estructura textual avanzada", "tipo": "Manual", "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
-            {"título": "Análisis del discurso", "tipo": "Investigación", "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
-        ],
-        "Registro": [
-            {"título": "Pragmática intercultural", "tipo": "Seminario", "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
-            {"título": "Lenguaje literario", "tipo": "Análisis", "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
-        ]
-    }
-}
-
-# Función para generar recomendaciones de ejercicios con IA
-def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
-    client = OpenAI(api_key=openai_api_key)
-    
-    # Preparar datos para el prompt
-    errores_gramatica = errores_obj.get("Gramática", [])
-    errores_lexico = errores_obj.get("Léxico", [])
-    errores_puntuacion = errores_obj.get("Puntuación", [])
-    errores_estructura = errores_obj.get("Estructura textual", [])
-    
-    # Extraer puntos débiles del análisis contextual
-    coherencia = analisis_contextual.get("coherencia", {})
-    cohesion = analisis_contextual.get("cohesion", {})
-    registro = analisis_contextual.get("registro_linguistico", {})
-    
-    # Mapear nivel para el prompt
-    if "principiante" in nivel:
-        nivel_prompt = "A1-A2"
-    elif "intermedio" in nivel:
-        nivel_prompt = "B1-B2"
-    else:
-        nivel_prompt = "C1-C2"
-    
-    # Construir prompt para OpenAI
-    prompt_ejercicios = f"""
-    Basándote en los errores y análisis contextual de un estudiante de español de nivel {nivel_prompt}, 
-    crea 3 ejercicios personalizados que le ayuden a mejorar. El estudiante tiene:
-    
-    - Errores gramaticales: {len(errores_gramatica)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_gramatica[:2]])})
-    - Errores léxicos: {len(errores_lexico)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_lexico[:2]])})
-    - Errores de puntuación: {len(errores_puntuacion)}
-    - Errores de estructura: {len(errores_estructura)}
-    
-    - Puntuación en coherencia: {coherencia.get('puntuacion', 0)}/10
-    - Puntuación en cohesión: {cohesion.get('puntuacion', 0)}/10
-    - Registro lingüístico: {registro.get('tipo_detectado', 'No especificado')}
-    
-    Crea ejercicios breves y específicos en formato JSON con esta estructura:
-    {{
-      "ejercicios": [
-        {{
-          "titulo": "Título del ejercicio",
-          "tipo": "tipo de ejercicio (completar huecos, ordenar frases, etc.)",
-          "instrucciones": "instrucciones claras y breves",
-          "contenido": "el contenido del ejercicio",
-          "solucion": "la solución del ejercicio"
-        }},
-        ...
-      ]
-    }}
-    """
-    
-    # Idioma para las instrucciones
-    if idioma != "Español":
-        prompt_ejercicios += f"\nTraduce las instrucciones y el título al {idioma}, pero mantén el contenido del ejercicio en español."
-    
-    try:
-        # Llamada a la API
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            temperature=0.7,
-            messages=[{"role": "system", "content": "Eres un experto profesor de ELE especializado en crear ejercicios personalizados."}, 
-                      {"role": "user", "content": prompt_ejercicios}]
-        )
-        
-        # Extraer JSON de la respuesta
-        content = response.choices[0].message.content
-        
-        # Buscar JSON en el texto
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            json_str = match.group(0)
-            ejercicios_data = json.loads(json_str)
-            return ejercicios_data
-        else:
-            return {"ejercicios": [{"titulo": "Error en la generación", "instrucciones": "No se pudieron generar ejercicios personalizados", "contenido": "", "solucion": ""}]}
-    
-    except Exception as e:
-        st.error(f"Error al generar ejercicios: {str(e)}")
-        return {"ejercicios": [{"titulo": "Error en la generación", "instrucciones": "No se pudieron generar ejercicios personalizados", "contenido": "", "solucion": ""}]}
-
-# Función para obtener recursos recomendados según errores
-def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
-    recursos_recomendados = []
-    
-    # Determinar el nivel para buscar recursos
-    if "principiante" in nivel:
-        nivel_db = "A1-A2"
-    elif "intermedio" in nivel:
-        nivel_db = "B1-B2"
-    else:
-        nivel_db = "C1-C2"
-    
-    # Verificar errores gramaticales
-    if len(errores_obj.get("Gramática", [])) > 0:
-        recursos_gramatica = RECURSOS_DB.get(nivel_db, {}).get("Gramática", [])
-        if recursos_gramatica:
-            recursos_recomendados.extend(recursos_gramatica[:2])
-    
-    # Verificar errores léxicos
-    if len(errores_obj.get("Léxico", [])) > 0:
-        recursos_lexico = RECURSOS_DB.get(nivel_db, {}).get("Léxico", [])
-        if recursos_lexico:
-            recursos_recomendados.extend(recursos_lexico[:2])
-    
-    # Verificar problemas de cohesión
-    if analisis_contextual.get("cohesion", {}).get("puntuacion", 10) < 7:
-        recursos_cohesion = RECURSOS_DB.get(nivel_db, {}).get("Cohesión", [])
-        if recursos_cohesion:
-            recursos_recomendados.extend(recursos_cohesion[:1])
-    
-    # Verificar problemas de registro
-    if analisis_contextual.get("registro_linguistico", {}).get("puntuacion", 10) < 7:
-        recursos_registro = RECURSOS_DB.get(nivel_db, {}).get("Registro", [])
-        if recursos_registro:
-            recursos_recomendados.extend(recursos_registro[:1])
-    
-    return recursos_recomendados
-
-# UI para mostrar recomendaciones
-def mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
-    st.header("📚 Recomendaciones personalizadas")
-    
-    # Pestañas para diferentes tipos de recomendaciones
-    tab1, tab2 = st.tabs(["📖 Recursos recomendados", "✏️ Ejercicios personalizados"])
-    
-    with tab1:
-        recursos = obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel)
-        
-        if recursos:
-            st.write("Basado en tu análisis, te recomendamos estos recursos:")
-            
-            for i, recurso in enumerate(recursos):
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.markdown(f"**{recurso['título']}**")
-                with col2:
-                    st.write(f"Tipo: {recurso['tipo']}")
-                with col3:
-                    st.write(f"Nivel: {recurso['nivel']}")
-                st.markdown(f"[Ver recurso]({recurso['url']})")
-                if i < len(recursos) - 1:
-                    st.divider()
-        else:
-            st.info("No hay recursos específicos para recomendar en este momento.")
-    
-    with tab2:
-        st.write("Ejercicios personalizados según tus necesidades:")
-        
-        with st.spinner("Generando ejercicios personalizados..."):
-            ejercicios_data = generar_ejercicios_personalizado(
-                errores_obj, analisis_contextual, nivel, idioma, openai_api_key
-            )
-            
-            ejercicios = ejercicios_data.get("ejercicios", [])
-            
-            for i, ejercicio in enumerate(ejercicios):
-                # Usar st.expander para el ejercicio principal
-                with st.expander(f"{ejercicio.get('titulo', f'Ejercicio {i+1}')}"):
-                    # Crear pestañas para ejercicio y solución
-                    ejercicio_tab, solucion_tab = st.tabs(["Ejercicio", "Solución"])
-                    
-                    with ejercicio_tab:
-                        st.markdown(f"**{ejercicio.get('tipo', 'Actividad')}**")
-                        st.markdown(f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
-                        st.markdown("---")
-                        st.markdown(ejercicio.get('contenido', ''))
-                    
-                    with solucion_tab:
-                        st.markdown(f"#### Solución del ejercicio:")
-                        st.markdown(ejercicio.get('solucion', ''))
-
-# Función para generar informe en formato Word (DOCX)
-def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
-                        errores_obj, analisis_contextual, consejo_final):
-    doc = Document()
-    
-    # Estilo del documento
-    doc.styles['Normal'].font.name = 'Calibri'
-    doc.styles['Normal'].font.size = Pt(11)
-    
-    # Título
-    doc.add_heading('Informe de corrección textual', 0)
-    
-    # Información general
-    doc.add_heading('Información general', level=1)
-    doc.add_paragraph(f'Nombre: {nombre}')
-    doc.add_paragraph(f'Nivel: {nivel}')
-    doc.add_paragraph(f'Fecha: {fecha}')
-    
-    # Texto original
-    doc.add_heading('Texto original', level=1)
-    doc.add_paragraph(texto_original)
-    
-    # Texto corregido
-    doc.add_heading('Texto corregido', level=1)
-    doc.add_paragraph(texto_corregido)
-    
-    # Análisis de errores
-    doc.add_heading('Análisis de errores', level=1)
-    
-    for categoria, errores in errores_obj.items():
-        if errores:
-            doc.add_heading(categoria, level=2)
-            for error in errores:
-                p = doc.add_paragraph()
-                p.add_run('Fragmento erróneo: ').bold = True
-                p.add_run(error.get('fragmento_erroneo', '')).font.color.rgb = RGBColor(255, 0, 0)
-                
-                p = doc.add_paragraph()
-                p.add_run('Corrección: ').bold = True
-                p.add_run(error.get('correccion', '')).font.color.rgb = RGBColor(0, 128, 0)
-                
-                p = doc.add_paragraph()
-                p.add_run('Explicación: ').bold = True
-                p.add_run(error.get('explicacion', ''))
-                
-                doc.add_paragraph()  # Espacio
-    
-    # Análisis contextual
-    doc.add_heading('Análisis contextual', level=1)
-    
-    # Tabla de puntuaciones
-    doc.add_heading('Puntuaciones', level=2)
-    table = doc.add_table(rows=1, cols=5)
-    table.style = 'Table Grid'
-    
-    # Encabezados
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Aspecto'
-    hdr_cells[1].text = 'Coherencia'
-    hdr_cells[2].text = 'Cohesión'
-    hdr_cells[3].text = 'Registro'
-    hdr_cells[4].text = 'Adecuación cultural'
-    
-    # Datos
-    row_cells = table.add_row().cells
-    row_cells[0].text = 'Puntuación'
-    row_cells[1].text = str(analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A'))
-    row_cells[2].text = str(analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A'))
-    row_cells[3].text = str(analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A'))
-    row_cells[4].text = str(analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A'))
-    
-    # Consejo final
-    doc.add_heading('Consejo final', level=1)
-    doc.add_paragraph(consejo_final)
-    
-    # Generar QR code (simulado)
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(f"https://textocorrector.ejemplo.com/informe/{nombre.replace(' ', '')}/{fecha.replace(' ', '_')}")
-    qr.make(fit=True)
-    
-    img = qr.make_image(fill_color="black", back_color="white")
-    
-    # Guardar QR como imagen temporal
-    qr_buffer = BytesIO()
-    img.save(qr_buffer)
-    qr_buffer.seek(0)
-    
-    # Añadir la imagen del QR al documento
-    doc.add_heading('Acceso online', level=1)
-    doc.add_paragraph('Escanea este código QR para acceder a este informe online:')
-    doc.add_picture(qr_buffer, width=Inches(2.0))
-    
-    # Guardar el documento en memoria
-    docx_buffer = BytesIO()
-    doc.save(docx_buffer)
-    docx_buffer.seek(0)
-    
-    return docx_buffer
-
 # Función para extraer título de sección del plan de estudio
 def extraer_titulo(texto):
     """
@@ -854,7 +519,700 @@ def obtener_criterios_evaluacion(tipo_examen, nivel_examen):
     # Por defecto, devolvemos criterios genéricos
     return criterios_default
 
-# --- 3. ESTRUCTURA DE LA APLICACIÓN ---
+# Función para generar informe en formato Word (DOCX)
+def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
+                        errores_obj, analisis_contextual, consejo_final):
+    doc = Document()
+    
+    # Estilo del documento
+    doc.styles['Normal'].font.name = 'Calibri'
+    doc.styles['Normal'].font.size = Pt(11)
+    
+    # Título
+    doc.add_heading('Informe de corrección textual', 0)
+    
+    # Información general
+    doc.add_heading('Información general', level=1)
+    doc.add_paragraph(f'Nombre: {nombre}')
+    doc.add_paragraph(f'Nivel: {nivel}')
+    doc.add_paragraph(f'Fecha: {fecha}')
+    
+    # Texto original
+    doc.add_heading('Texto original', level=1)
+    doc.add_paragraph(texto_original)
+    
+    # Texto corregido
+    doc.add_heading('Texto corregido', level=1)
+    doc.add_paragraph(texto_corregido)
+    
+    # Análisis de errores
+    doc.add_heading('Análisis de errores', level=1)
+    
+    for categoria, errores in errores_obj.items():
+        if errores:
+            doc.add_heading(categoria, level=2)
+            for error in errores:
+                p = doc.add_paragraph()
+                p.add_run('Fragmento erróneo: ').bold = True
+                p.add_run(error.get('fragmento_erroneo', '')).font.color.rgb = RGBColor(255, 0, 0)
+                
+                p = doc.add_paragraph()
+                p.add_run('Corrección: ').bold = True
+                p.add_run(error.get('correccion', '')).font.color.rgb = RGBColor(0, 128, 0)
+                
+                p = doc.add_paragraph()
+                p.add_run('Explicación: ').bold = True
+                p.add_run(error.get('explicacion', ''))
+                
+                doc.add_paragraph()  # Espacio
+    
+    # Análisis contextual
+    doc.add_heading('Análisis contextual', level=1)
+    
+    # Tabla de puntuaciones
+    doc.add_heading('Puntuaciones', level=2)
+    table = doc.add_table(rows=1, cols=5)
+    table.style = 'Table Grid'
+    
+    # Encabezados
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'Aspecto'
+    hdr_cells[1].text = 'Coherencia'
+    hdr_cells[2].text = 'Cohesión'
+    hdr_cells[3].text = 'Registro'
+    hdr_cells[4].text = 'Adecuación cultural'
+    
+    # Datos
+    row_cells = table.add_row().cells
+    row_cells[0].text = 'Puntuación'
+    row_cells[1].text = str(analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A'))
+    row_cells[2].text = str(analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A'))
+    row_cells[3].text = str(analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A'))
+    row_cells[4].text = str(analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A'))
+    
+    # Consejo final
+    doc.add_heading('Consejo final', level=1)
+    doc.add_paragraph(consejo_final)
+    
+    # Generar QR code (simulado)
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(f"https://textocorrector.ejemplo.com/informe/{nombre.replace(' ', '')}/{fecha.replace(' ', '_')}")
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Guardar QR como imagen temporal
+    qr_buffer = BytesIO()
+    img.save(qr_buffer)
+    qr_buffer.seek(0)
+    
+    # Añadir la imagen del QR al documento
+    doc.add_heading('Acceso online', level=1)
+    doc.add_paragraph('Escanea este código QR para acceder a este informe online:')
+    doc.add_picture(qr_buffer, width=Inches(2.0))
+    
+    # Guardar el documento en memoria
+    docx_buffer = BytesIO()
+    doc.save(docx_buffer)
+    docx_buffer.seek(0)
+    
+    return docx_buffer
+
+# --- NUEVAS FUNCIONALIDADES ---
+
+# Función para transcribir imágenes de texto manuscrito
+def transcribir_imagen_texto(imagen_bytes, idioma="es"):
+    """
+    Transcribe texto manuscrito de una imagen utilizando la API de OpenAI.
+    
+    Args:
+        imagen_bytes: Bytes de la imagen a transcribir
+        idioma: Código de idioma (es, en, fr)
+        
+    Returns:
+        str: Texto transcrito
+    """
+    client = OpenAI(api_key=openai_api_key)
+    
+    try:
+        # Codificar la imagen en base64
+        encoded_image = base64.b64encode(imagen_bytes).decode('utf-8')
+        
+        # Crear el mensaje para la API de Vision
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"Eres un sistema de OCR especializado en transcribir texto manuscrito en {idioma}. Tu tarea es extraer con precisión el texto presente en la imagen."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Transcribe exactamente el texto manuscrito de esta imagen."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+                    ]
+                }
+            ],
+            max_tokens=1000
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        st.error(f"Error al transcribir la imagen: {str(e)}")
+        return "Error en la transcripción: " + str(e)
+
+# Función para generar imágenes con DALL-E adaptadas al nivel
+def generar_imagen_dalle(tema, nivel, openai_api_key):
+    """
+    Genera una imagen utilizando DALL-E basada en un tema y adaptada al nivel del estudiante.
+    
+    Args:
+        tema (str): Tema para la imagen
+        nivel (str): Nivel de español (principiante, intermedio, avanzado)
+        openai_api_key (str): API key de OpenAI
+        
+    Returns:
+        tuple: URL de la imagen generada, descripción de la imagen
+    """
+    client = OpenAI(api_key=openai_api_key)
+    
+    # Adaptar la complejidad del prompt según el nivel
+    if "principiante" in nivel:
+        complejidad = "simple con objetos y personas claramente identificables"
+    elif "intermedio" in nivel:
+        complejidad = "con detalles moderados y una escena cotidiana con varios elementos"
+    else:
+        complejidad = "detallada con múltiples elementos, que pueda generar descripciones complejas"
+    
+    # Crear el prompt para DALL-E
+    prompt = f"Una escena {complejidad} sobre {tema}. La imagen debe ser clara, bien iluminada, y adecuada para describir en español."
+    
+    try:
+        # Llamar a la API para generar la imagen
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            n=1,
+            size="1024x1024",
+            quality="standard"
+        )
+        
+        # Obtener la URL de la imagen
+        imagen_url = response.data[0].url
+        
+        # Generar una descripción adaptada al nivel
+        descripcion_prompt = f"""
+        Crea una descripción en español de esta imagen generada para un estudiante de nivel {nivel}.
+        
+        La descripción debe:
+        1. Ser apropiada para el nivel {nivel}
+        2. Utilizar vocabulario y estructuras gramaticales de ese nivel
+        3. Incluir entre 3-5 preguntas al final para que el estudiante practique describiendo la imagen
+        
+        Tema de la imagen: {tema}
+        """
+        
+        descripcion_response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": "Eres un profesor de español especializado en crear descripciones y actividades basadas en imágenes."},
+                {"role": "user", "content": descripcion_prompt}
+            ],
+            temperature=0.7
+        )
+        
+        descripcion = descripcion_response.choices[0].message.content
+        
+        return imagen_url, descripcion
+        
+    except Exception as e:
+        st.error(f"Error al generar la imagen: {str(e)}")
+        return None, f"Error: {str(e)}"
+
+# --- BASE DE DATOS DE RECURSOS Y FUNCIONES PARA EJERCICIOS ---
+
+# Base de datos simple de recursos por niveles y categorías
+RECURSOS_DB = {
+    "A1-A2": {
+        "Gramática": [
+            {"título": "Presente de indicativo", "tipo": "Ficha", "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
+            {"título": "Los artículos en español", "tipo": "Vídeo", "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
+            {"título": "Ser y estar", "tipo": "Ejercicios", "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
+            {"título": "Pretérito indefinido", "tipo": "Explicación", "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
+        ],
+        "Léxico": [
+            {"título": "Vocabulario básico", "tipo": "Ficha", "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
+            {"título": "Alimentos y comidas", "tipo": "Tarjetas", "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
+            {"título": "La ciudad", "tipo": "Podcast", "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
+        ],
+        "Cohesión": [
+            {"título": "Conectores básicos", "tipo": "Guía", "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
+            {"título": "Organizar ideas", "tipo": "Ejercicios", "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
+        ],
+        "Registro": [
+            {"título": "Saludos formales e informales", "tipo": "Vídeo", "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
+            {"título": "Peticiones corteses", "tipo": "Diálogos", "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
+        ]
+    },
+    "B1-B2": {
+        "Gramática": [
+            {"título": "Subjuntivo presente", "tipo": "Guía", "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
+            {"título": "Estilo indirecto", "tipo": "Ejercicios", "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
+        ],
+        "Léxico": [
+            {"título": "Expresiones idiomáticas", "tipo": "Podcast", "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
+            {"título": "Vocabulario académico", "tipo": "Glosario", "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
+        ],
+        "Cohesión": [
+            {"título": "Marcadores discursivos", "tipo": "Guía", "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
+            {"título": "Conectores argumentativos", "tipo": "Ejercicios", "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
+        ],
+        "Registro": [
+            {"título": "Lenguaje formal e informal", "tipo": "Curso", "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
+            {"título": "Comunicación profesional", "tipo": "Ejemplos", "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
+        ]
+    },
+    "C1-C2": {
+        "Gramática": [
+            {"título": "Construcciones pasivas", "tipo": "Análisis", "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
+            {"título": "Subordinadas complejas", "tipo": "Guía", "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
+        ],
+        "Léxico": [
+            {"título": "Lenguaje académico", "tipo": "Corpus", "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
+            {"título": "Variantes dialectales", "tipo": "Curso", "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
+        ],
+        "Cohesión": [
+            {"título": "Estructura textual avanzada", "tipo": "Manual", "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
+            {"título": "Análisis del discurso", "tipo": "Investigación", "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
+        ],
+        "Registro": [
+            {"título": "Pragmática intercultural", "tipo": "Seminario", "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
+            {"título": "Lenguaje literario", "tipo": "Análisis", "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
+        ]
+    }
+}
+
+# Función para generar recomendaciones de ejercicios con IA - CORREGIDA
+def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
+    client = OpenAI(api_key=openai_api_key)
+    
+    # Preparar datos para el prompt
+    errores_gramatica = errores_obj.get("Gramática", [])
+    errores_lexico = errores_obj.get("Léxico", [])
+    errores_puntuacion = errores_obj.get("Puntuación", [])
+    errores_estructura = errores_obj.get("Estructura textual", [])
+    
+    # Extraer puntos débiles del análisis contextual
+    coherencia = analisis_contextual.get("coherencia", {})
+    cohesion = analisis_contextual.get("cohesion", {})
+    registro = analisis_contextual.get("registro_linguistico", {})
+    
+    # Mapear nivel para el prompt
+    if "principiante" in nivel:
+        nivel_prompt = "A1-A2"
+    elif "intermedio" in nivel:
+        nivel_prompt = "B1-B2"
+    else:
+        nivel_prompt = "C1-C2"
+    
+    # Construir prompt para OpenAI
+    prompt_ejercicios = f"""
+    Basándote en los errores y análisis contextual de un estudiante de español de nivel {nivel_prompt}, 
+    crea 3 ejercicios personalizados que le ayuden a mejorar. El estudiante tiene:
+    
+    - Errores gramaticales: {len(errores_gramatica)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_gramatica[:2]])})
+    - Errores léxicos: {len(errores_lexico)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_lexico[:2]])})
+    - Errores de puntuación: {len(errores_puntuacion)}
+    - Errores de estructura: {len(errores_estructura)}
+    
+    - Puntuación en coherencia: {coherencia.get('puntuacion', 0)}/10
+    - Puntuación en cohesión: {cohesion.get('puntuacion', 0)}/10
+    - Registro lingüístico: {registro.get('tipo_detectado', 'No especificado')}
+    
+    Crea ejercicios breves y específicos en formato JSON con esta estructura:
+    {{
+      "ejercicios": [
+        {{
+          "titulo": "Título del ejercicio",
+          "tipo": "tipo de ejercicio (completar huecos, ordenar frases, etc.)",
+          "instrucciones": "instrucciones claras y breves",
+          "contenido": "el contenido del ejercicio",
+          "solucion": "la solución del ejercicio"
+        }}
+      ]
+    }}
+    """
+    
+    # Idioma para las instrucciones
+    if idioma != "Español":
+        prompt_ejercicios += f"\nTraduce las instrucciones y el título al {idioma}, pero mantén el contenido del ejercicio en español."
+    
+    try:
+        # Llamada a la API
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            temperature=0.7,
+            messages=[{"role": "system", "content": "Eres un experto profesor de ELE especializado en crear ejercicios personalizados."}, 
+                      {"role": "user", "content": prompt_ejercicios}]
+        )
+        
+        # Extraer JSON de la respuesta
+        content = response.choices[0].message.content
+        
+        # Buscar JSON en el texto
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+            try:
+                ejercicios_data = json.loads(json_str)
+                return ejercicios_data
+            except json.JSONDecodeError as e:
+                # Si hay error de JSON, mostrar un ejercicio genérico como fallback
+                st.warning(f"Error al parsear JSON de ejercicios: {e}")
+                return {"ejercicios": [{"titulo": "Ejercicio de repaso", "tipo": "Ejercicio de práctica", 
+                                       "instrucciones": "Revisa los elementos más problemáticos en tu texto", 
+                                       "contenido": "Contenido genérico de práctica", 
+                                       "solucion": "Consulta con tu profesor"}]}
+        else:
+            st.warning("No se pudo extraer JSON de la respuesta. Mostrando ejercicios genéricos.")
+            return {"ejercicios": [{"titulo": "Ejercicio de repaso general", "tipo": "Reflexión",
+                                  "instrucciones": "Revisa los errores más comunes en tu texto", 
+                                  "contenido": "Identifica y corrige los errores destacados en tu texto", 
+                                  "solucion": "Personalizada según tus errores específicos"}]}
+    
+    except Exception as e:
+        st.error(f"Error al generar ejercicios: {str(e)}")
+        return {"ejercicios": [{"titulo": "Error en la generación", "tipo": "Error controlado", 
+                              "instrucciones": "No se pudieron generar ejercicios personalizados", 
+                              "contenido": f"Error: {str(e)}", 
+                              "solucion": "Intenta de nuevo más tarde"}]}
+
+# Función para obtener recursos recomendados según errores
+def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
+    recursos_recomendados = []
+    
+    # Determinar el nivel para buscar recursos
+    if "principiante" in nivel:
+        nivel_db = "A1-A2"
+    elif "intermedio" in nivel:
+        nivel_db = "B1-B2"
+    else:
+        nivel_db = "C1-C2"
+    
+    # Verificar errores gramaticales
+    if len(errores_obj.get("Gramática", [])) > 0:
+        recursos_gramatica = RECURSOS_DB.get(nivel_db, {}).get("Gramática", [])
+        if recursos_gramatica:
+            recursos_recomendados.extend(recursos_gramatica[:2])
+    
+    # Verificar errores léxicos
+    if len(errores_obj.get("Léxico", [])) > 0:
+        recursos_lexico = RECURSOS_DB.get(nivel_db, {}).get("Léxico", [])
+        if recursos_lexico:
+            recursos_recomendados.extend(recursos_lexico[:2])
+    
+    # Verificar problemas de cohesión
+    if analisis_contextual.get("cohesion", {}).get("puntuacion", 10) < 7:
+        recursos_cohesion = RECURSOS_DB.get(nivel_db, {}).get("Cohesión", [])
+        if recursos_cohesion:
+            recursos_recomendados.extend(recursos_cohesion[:1])
+    
+    # Verificar problemas de registro
+    if analisis_contextual.get("registro_linguistico", {}).get("puntuacion", 10) < 7:
+        recursos_registro = RECURSOS_DB.get(nivel_db, {}).get("Registro", [])
+        if recursos_registro:
+            recursos_recomendados.extend(recursos_registro[:1])
+    
+    return recursos_recomendados
+
+# UI para mostrar recomendaciones
+def mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
+    st.header("📚 Recomendaciones personalizadas")
+    
+    # Pestañas para diferentes tipos de recomendaciones
+    tab1, tab2 = st.tabs(["📖 Recursos recomendados", "✏️ Ejercicios personalizados"])
+    
+    with tab1:
+        recursos = obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel)
+        
+        if recursos:
+            st.write("Basado en tu análisis, te recomendamos estos recursos:")
+            
+            for i, recurso in enumerate(recursos):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.markdown(f"**{recurso['título']}**")
+                with col2:
+                    st.write(f"Tipo: {recurso['tipo']}")
+                with col3:
+                    st.write(f"Nivel: {recurso['nivel']}")
+                st.markdown(f"[Ver recurso]({recurso['url']})")
+                if i < len(recursos) - 1:
+                    st.divider()
+        else:
+            st.info("No hay recursos específicos para recomendar en este momento.")
+    
+    with tab2:
+        st.write("Ejercicios personalizados según tus necesidades:")
+        
+        with st.spinner("Generando ejercicios personalizados..."):
+            ejercicios_data = generar_ejercicios_personalizado(
+                errores_obj, analisis_contextual, nivel, idioma, openai_api_key
+            )
+            
+            ejercicios = ejercicios_data.get("ejercicios", [])
+            
+            for i, ejercicio in enumerate(ejercicios):
+                # Usar st.expander para el ejercicio principal
+                with st.expander(f"{ejercicio.get('titulo', f'Ejercicio {i+1}')}"):
+                    # Crear pestañas para ejercicio y solución
+                    ejercicio_tab, solucion_tab = st.tabs(["Ejercicio", "Solución"])
+                    
+                    with ejercicio_tab:
+                        st.markdown(f"**{ejercicio.get('tipo', 'Actividad')}**")
+                        st.markdown(f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
+                        st.markdown("---")
+                        st.markdown(ejercicio.get('contenido', ''))
+                    
+                    with solucion_tab:
+                        st.markdown(f"#### Solución del ejercicio:")
+                        st.markdown(ejercicio.get('solucion', ''))
+
+# Intenta aprovechar la variable tracking_sheet que definimos al inicio
+                        try:
+                            tracking_sheet.append_row(datos_seguimiento)
+                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
+                        except NameError:
+                            # Si tracking_sheet no está definido, intentamos recuperarlo
+                            tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+                            try:
+                                tracking_sheet = tracking_doc.worksheet("Seguimiento")
+                            except gspread.exceptions.WorksheetNotFound:
+                                tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=14)
+                                headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
+                                        "Errores Puntuación", "Errores Estructura", "Total Errores", 
+                                        "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
+                                        "Puntuación Adecuación Cultural", "Consejo Final"]
+                                tracking_sheet.append_row(headers)
+                            
+                            tracking_sheet.append_row(datos_seguimiento)
+                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento (recuperada).")
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar estadísticas en Seguimiento: {str(e)}")
+                        st.info("Detalles del error para depuración:")
+                        st.code(str(e))
+
+                    # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
+                    st.markdown("**🔊 Consejo leído en voz alta:**")
+                    with st.spinner("Generando audio con ElevenLabs..."):
+                        tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                        headers = {
+                            "xi-api-key": elevenlabs_api_key,
+                            "Content-Type": "application/json"
+                        }
+                        audio_text = consejo_final.replace("Consejo final:", "").strip()
+                        data = {
+                            "text": audio_text,
+                            "model_id": "eleven_multilingual_v2",
+                            "voice_settings": {
+                                "stability": 0.3,
+                                "similarity_boost": 0.9
+                            }
+                        }
+                        try:
+                            response_audio = requests.post(tts_url, headers=headers, json=data)
+                            if response_audio.ok:
+                                audio_bytes = BytesIO(response_audio.content)
+                                st.audio(audio_bytes, format="audio/mpeg")
+                            else:
+                                st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+                        except Exception as e:
+                            st.warning(f"⚠️ Error al generar audio: {e}")
+
+                    # --- SECCIONES NUEVAS ---
+                    
+                    # 1. Mostrar recomendaciones personalizadas
+                    mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key)
+                    
+                    # 2. Opciones de exportación
+                    st.header("📊 Exportar informe")
+                    
+                    # Opciones de exportación en pestañas
+                    export_tab1, export_tab2, export_tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
+
+                    with export_tab1:
+                        st.write("Exporta este informe como documento Word (DOCX)")
+                        
+                        # Generar el buffer por adelantado
+                        docx_buffer = None
+                        try:
+                            docx_buffer = generar_informe_docx(
+                                nombre, nivel, fecha, texto, texto_corregido,
+                                errores_obj, analisis_contextual, consejo_final
+                            )
+                        except Exception as e:
+                            st.error(f"Error al generar el documento Word: {e}")
+                        
+                        # Si el buffer se generó correctamente, mostrar el botón de descarga FUERA del formulario
+                        if docx_buffer is not None:
+                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                            st.download_button(
+                                label="📥 Descargar documento Word",
+                                data=docx_buffer,
+                                file_name=nombre_archivo,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key="docx_download_corregir"
+                            )
+                    
+                    with export_tab2:
+                        st.write("Exporta este informe como página web (HTML)")
+                        
+                        # Generar el HTML directamente sin necesidad de un botón adicional
+                        html_content = f"""
+                        <!DOCTYPE html>
+                        <html lang="es">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>Informe de corrección - {nombre}</title>
+                            <style>
+                                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                                .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
+                                h1 {{ color: #2c3e50; }}
+                                h2 {{ color: #3498db; margin-top: 30px; }}
+                                h3 {{ color: #2980b9; }}
+                                .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
+                                .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
+                                .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
+                                .fragmento {{ color: #dc3545; }}
+                                .correccion {{ color: #28a745; }}
+                                .explicacion {{ color: #17a2b8; font-style: italic; }}
+                                .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
+                                .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+                                .puntuaciones th {{ background-color: #f2f2f2; }}
+                                .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
+                                .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <h1>Informe de corrección textual</h1>
+                                
+                                <section>
+                                    <h2>Información general</h2>
+                                    <p><strong>Nombre:</strong> {nombre}</p>
+                                    <p><strong>Nivel:</strong> {nivel}</p>
+                                    <p><strong>Fecha:</strong> {fecha}</p>
+                                </section>
+                                
+                                <section>
+                                    <h2>Texto original</h2>
+                                    <div class="original">
+                                        <p>{texto.replace(chr(10), '<br>')}</p>
+                                    </div>
+                                    
+                                    <h2>Texto corregido</h2>
+                                    <div class="corregido">
+                                        <p>{texto_corregido.replace(chr(10), '<br>')}</p>
+                                    </div>
+                                </section>
+                                
+                                <section>
+                                    <h2>Análisis contextual</h2>
+                                    
+                                    <h3>Puntuaciones</h3>
+                                    <table class="puntuaciones">
+                                        <tr>
+                                            <th>Coherencia</th>
+                                            <th>Cohesión</th>
+                                            <th>Registro</th>
+                                            <th>Adecuación cultural</th>
+                                        </tr>
+                                        <tr>
+                                            <td>{analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A')}/10</td>
+                                            <td>{analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A')}/10</td>
+                                            <td>{analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A')}/10</td>
+                                            <td>{analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A')}/10</td>
+                                        </tr>
+                                    </table>
+                                </section>
+                                
+                                <section>
+                                    <h2>Consejo final</h2>
+                                    <div class="consejo">
+                                        <p>{consejo_final}</p>
+                                    </div>
+                                </section>
+                                
+                                <div class="footer">
+                                    <p>Textocorrector ELE - Informe generado el {fecha} - Todos los derechos reservados</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                        """
+                        
+                        # Convertir a bytes para descargar
+                        html_bytes = html_content.encode()
+                        
+                        # Botón de descarga FUERA del formulario
+                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+                        st.download_button(
+                            label="📥 Descargar página HTML",
+                            data=html_bytes,
+                            file_name=nombre_archivo,
+                            mime="text/html",
+                            key="html_download_corregir"
+                        )
+                        
+                        # Opción para previsualizar
+                        with st.expander("Previsualizar HTML"):
+                            st.markdown(f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
+                    
+                    with export_tab3:
+                        st.write("Exporta los datos del análisis en formato CSV")
+                        
+                        # Crear CSV en memoria directamente sin necesidad de un botón adicional
+                        csv_buffer = StringIO()
+                        
+                        # Encabezados
+                        csv_buffer.write("Categoría,Dato\n")
+                        csv_buffer.write(f"Nombre,{nombre}\n")
+                        csv_buffer.write(f"Nivel,{nivel}\n")
+                        csv_buffer.write(f"Fecha,{fecha}\n")
+                        csv_buffer.write(f"Errores Gramática,{num_gramatica}\n")
+                        csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
+                        csv_buffer.write(f"Errores Puntuación,{num_puntuacion}\n")
+                        csv_buffer.write(f"Errores Estructura,{num_estructura}\n")
+                        csv_buffer.write(f"Total Errores,{total_errores}\n")
+                        csv_buffer.write(f"Puntuación Coherencia,{puntuacion_coherencia}\n")
+                        csv_buffer.write(f"Puntuación Cohesión,{puntuacion_cohesion}\n")
+                        csv_buffer.write(f"Puntuación Registro,{puntuacion_registro}\n")
+                        csv_buffer.write(f"Puntuación Adecuación Cultural,{puntuacion_adecuacion}\n")
+                        
+                        csv_bytes = csv_buffer.getvalue().encode()
+                        
+                        # Botón de descarga FUERA del formulario
+                        nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+                        st.download_button(
+                            label="📥 Descargar CSV",
+                            data=csv_bytes,
+                            file_name=nombre_archivo,
+                            mime="text/csv",
+                            key="csv_download_corregir"
+                        )
+
+                except Exception as e:
+                    st.error(f"Error al generar la corrección o guardar: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())                                # --- 3. ESTRUCTURA DE LA APLICACIÓN ---
 st.title("📝 Textocorrector ELE")
 st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
@@ -1173,7 +1531,6 @@ Contexto cultural: {contexto_cultural}
                                             st.divider()
 
                     # Texto corregido
-                    # Texto corregido
                     st.subheader("Texto corregido completo")
                     st.write(texto_corregido)
                     
@@ -1268,239 +1625,123 @@ Contexto cultural: {contexto_cultural}
                             puntuacion_registro,
                             puntuacion_adecuacion,
                             consejo_final
-                        ]
-                        
-                        # Intenta aprovechar la variable tracking_sheet que definimos al inicio
-                        try:
-                            tracking_sheet.append_row(datos_seguimiento)
-                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
-                        except NameError:
-                            # Si tracking_sheet no está definido, intentamos recuperarlo
-                            tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-                            try:
-                                tracking_sheet = tracking_doc.worksheet("Seguimiento")
-                            except gspread.exceptions.WorksheetNotFound:
-                                tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=14)
-                                headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
-                                        "Errores Puntuación", "Errores Estructura", "Total Errores", 
-                                        "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
-                                        "Puntuación Adecuación Cultural", "Consejo Final"]
-                                tracking_sheet.append_row(headers)
-                            
-                            tracking_sheet.append_row(datos_seguimiento)
-                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento (recuperada).")
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar estadísticas en Seguimiento: {str(e)}")
-                        st.info("Detalles del error para depuración:")
-                        st.code(str(e))
+                        ]# --- 3. ESTRUCTURA DE LA APLICACIÓN ---
+st.title("📝 Textocorrector ELE")
+st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
-                    # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
-                    st.markdown("**🔊 Consejo leído en voz alta:**")
-                    with st.spinner("Generando audio con ElevenLabs..."):
-                        tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
-                        headers = {
-                            "xi-api-key": elevenlabs_api_key,
-                            "Content-Type": "application/json"
-                        }
-                        audio_text = consejo_final.replace("Consejo final:", "").strip()
-                        data = {
-                            "text": audio_text,
-                            "model_id": "eleven_multilingual_v2",
-                            "voice_settings": {
-                                "stability": 0.3,
-                                "similarity_boost": 0.9
-                            }
-                        }
-                        try:
-                            response_audio = requests.post(tts_url, headers=headers, json=data)
-                            if response_audio.ok:
-                                audio_bytes = BytesIO(response_audio.content)
-                                st.audio(audio_bytes, format="audio/mpeg")
-                            else:
-                                st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
-                        except Exception as e:
-                            st.warning(f"⚠️ Error al generar audio: {e}")
+# Pestañas principales - ESTRUCTURA REORGANIZADA
+tab_corregir, tab_progreso, tab_historial, tab_examenes, tab_herramientas = st.tabs([
+    "📝 Corregir texto", 
+    "📊 Ver progreso", 
+    "📚 Historial", 
+    "🎓 Preparación para exámenes",
+    "🔧 Herramientas complementarias"
+])
 
-                    # --- SECCIONES NUEVAS ---
-                    
-                    # 1. Mostrar recomendaciones personalizadas
-                    mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key)
-                    
-                    # 2. Opciones de exportación
-                    st.header("📊 Exportar informe")
-                    
-                    # Opciones de exportación en pestañas
-                    export_tab1, export_tab2, export_tab3 = st.tabs(["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
+# --- PESTAÑA 1: CORREGIR TEXTO ---
+with tab_corregir:
+    with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
+        st.markdown("""
+    Esta versión mejorada del Textocorrector incluye:
+    - **Análisis de coherencia**: Evalúa si las ideas están conectadas de manera lógica y si el texto tiene sentido en su conjunto.
+    - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
+    - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
+    - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
+    - **Asistente de escritura en tiempo real**: Recibe sugerencias mientras escribes (activable/desactivable).
+    
+    Las correcciones se adaptan automáticamente al nivel del estudiante.
+""")
 
-                    with export_tab1:
-                        st.write("Exporta este informe como documento Word (DOCX)")
-                        
-                        # Generar el buffer por adelantado
-                        docx_buffer = None
-                        try:
-                            docx_buffer = generar_informe_docx(
-                                nombre, nivel, fecha, texto, texto_corregido,
-                                errores_obj, analisis_contextual, consejo_final
-                            )
-                        except Exception as e:
-                            st.error(f"Error al generar el documento Word: {e}")
-                        
-                        # Si el buffer se generó correctamente, mostrar el botón de descarga
-                        if docx_buffer is not None:
-                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                            if st.download_button(
-                                label="📥 Descargar documento Word",
-                                data=docx_buffer,
-                                file_name=nombre_archivo,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key="docx_download_corregir"
-                            ):
-                                st.success("✅ Documento Word descargado correctamente.")
-                    
-                    with export_tab2:
-                        st.write("Exporta este informe como página web (HTML)")
-                        
-                        # Generar el HTML directamente sin necesidad de un botón adicional
-                        html_content = f"""
-                        <!DOCTYPE html>
-                        <html lang="es">
-                        <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>Informe de corrección - {nombre}</title>
-                            <style>
-                                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                                .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
-                                h1 {{ color: #2c3e50; }}
-                                h2 {{ color: #3498db; margin-top: 30px; }}
-                                h3 {{ color: #2980b9; }}
-                                .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
-                                .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
-                                .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
-                                .fragmento {{ color: #dc3545; }}
-                                .correccion {{ color: #28a745; }}
-                                .explicacion {{ color: #17a2b8; font-style: italic; }}
-                                .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
-                                .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
-                                .puntuaciones th {{ background-color: #f2f2f2; }}
-                                .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
-                                .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
-                            </style>
-                        </head>
-                        <body>
-                            <div class="container">
-                                <h1>Informe de corrección textual</h1>
-                                
-                                <section>
-                                    <h2>Información general</h2>
-                                    <p><strong>Nombre:</strong> {nombre}</p>
-                                    <p><strong>Nivel:</strong> {nivel}</p>
-                                    <p><strong>Fecha:</strong> {fecha}</p>
-                                </section>
-                                
-                                <section>
-                                    <h2>Texto original</h2>
-                                    <div class="original">
-                                        <p>{texto.replace(chr(10), '<br>')}</p>
-                                    </div>
-                                    
-                                    <h2>Texto corregido</h2>
-                                    <div class="corregido">
-                                        <p>{texto_corregido.replace(chr(10), '<br>')}</p>
-                                    </div>
-                                </section>
-                                
-                                <section>
-                                    <h2>Análisis contextual</h2>
-                                    
-                                    <h3>Puntuaciones</h3>
-                                    <table class="puntuaciones">
-                                        <tr>
-                                            <th>Coherencia</th>
-                                            <th>Cohesión</th>
-                                            <th>Registro</th>
-                                            <th>Adecuación cultural</th>
-                                        </tr>
-                                        <tr>
-                                            <td>{analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A')}/10</td>
-                                            <td>{analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A')}/10</td>
-                                            <td>{analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A')}/10</td>
-                                            <td>{analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A')}/10</td>
-                                        </tr>
-                                    </table>
-                                </section>
-                                
-                                <section>
-                                    <h2>Consejo final</h2>
-                                    <div class="consejo">
-                                        <p>{consejo_final}</p>
-                                    </div>
-                                </section>
-                                
-                                <div class="footer">
-                                    <p>Textocorrector ELE - Informe generado el {fecha} - Todos los derechos reservados</p>
-                                </div>
-                            </div>
-                        </body>
-                        </html>
-                        """
-                        
-                        # Convertir a bytes para descargar
-                        html_bytes = html_content.encode()
-                        
-                        # Botón de descarga
-                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                        st.download_button(
-                            label="📥 Descargar página HTML",
-                            data=html_bytes,
-                            file_name=nombre_archivo,
-                            mime="text/html",
-                            key="html_download_corregir"
-                        )
-                        
-                        # Opción para previsualizar
-                        with st.expander("Previsualizar HTML"):
-                            st.markdown(f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
-                    
-                    with export_tab3:
-                        st.write("Exporta los datos del análisis en formato CSV")
-                        
-                        # Crear CSV en memoria directamente sin necesidad de un botón adicional
-                        csv_buffer = StringIO()
-                        
-                        # Encabezados
-                        csv_buffer.write("Categoría,Dato\n")
-                        csv_buffer.write(f"Nombre,{nombre}\n")
-                        csv_buffer.write(f"Nivel,{nivel}\n")
-                        csv_buffer.write(f"Fecha,{fecha}\n")
-                        csv_buffer.write(f"Errores Gramática,{num_gramatica}\n")
-                        csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
-                        csv_buffer.write(f"Errores Puntuación,{num_puntuacion}\n")
-                        csv_buffer.write(f"Errores Estructura,{num_estructura}\n")
-                        csv_buffer.write(f"Total Errores,{total_errores}\n")
-                        csv_buffer.write(f"Puntuación Coherencia,{puntuacion_coherencia}\n")
-                        csv_buffer.write(f"Puntuación Cohesión,{puntuacion_cohesion}\n")
-                        csv_buffer.write(f"Puntuación Registro,{puntuacion_registro}\n")
-                        csv_buffer.write(f"Puntuación Adecuación Cultural,{puntuacion_adecuacion}\n")
-                        
-                        csv_bytes = csv_buffer.getvalue().encode()
-                        
-                        # Botón de descarga
-                        nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                        st.download_button(
-                            label="📥 Descargar CSV",
-                            data=csv_bytes,
-                            file_name=nombre_archivo,
-                            mime="text/csv",
-                            key="csv_download_corregir"
-                        )
+    # IMPORTANTE: Capturamos nombre y nivel fuera de todo formulario
+    nombre = st.text_input("Nombre y apellido:", key="nombre_corregir_gral")
+    if nombre and " " not in nombre:
+        st.warning("Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+        
+    nivel = st.selectbox("¿Cuál es tu nivel?", [
+        "Nivel principiante (A1-A2)",
+        "Nivel intermedio (B1-B2)",
+        "Nivel avanzado (C1-C2)"
+    ], key="nivel_corregir_gral")
+    
+    # Guardar nivel en formato simplificado para el asistente
+    nivel_map = {
+        "Nivel principiante (A1-A2)": "principiante",
+        "Nivel intermedio (B1-B2)": "intermedio",
+        "Nivel avanzado (C1-C2)": "avanzado"
+    }
+    st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
+    
+    # IMPORTANTE: Generador de consignas TOTALMENTE FUERA del formulario
+    with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
+        tipo_consigna = st.selectbox(
+            "Tipo de texto a escribir:",
+            [
+                "Cualquiera (aleatorio)",
+                "Narración",
+                "Correo/Carta formal",
+                "Opinión/Argumentación",
+                "Descripción",
+                "Diálogo"
+            ],
+            key="tipo_consigna_corregir"
+        )
+        
+        if st.button("Generar consigna de escritura", key="generar_consigna"):
+            with st.spinner("Generando consigna adaptada a tu nivel..."):
+                # Determinar el nivel para la IA
+                nivel_actual = nivel_map.get(nivel, "intermedio")
+                
+                # Generar la consigna
+                consigna_generada = generar_consigna_escritura(nivel_actual, tipo_consigna)
+                
+                # Guardar en session_state para usarlo en el formulario
+                st.session_state.consigna_actual = consigna_generada
+            
+            # Mostrar la consigna generada
+            st.success("✨ Consigna generada:")
+            st.info(st.session_state.consigna_actual)
+            
+            # Opción para usar esta consigna
+            if st.button("Usar esta consigna como contexto", key="usar_consigna"):
+                st.session_state.info_adicional_corregir = f"Consigna: {st.session_state.consigna_actual}"
+                st.session_state.usar_consigna_como_texto = True
+                st.rerun()  # Recargar para actualizar el formulario
+    
+    # AHORA: Formulario de corrección completamente separado
+    with st.form(key="formulario_corregir"):
+        # No repetimos nombre y nivel, ya que los capturamos fuera del formulario
+        
+        idioma = st.selectbox("Selecciona lenguaje para la corrección", ["Español", "Francés", "Inglés"], key="idioma_corregir")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_texto = st.selectbox("Tipo de texto", [
+                "General/No especificado",
+                "Académico",
+                "Profesional/Laboral",
+                "Informal/Cotidiano",
+                "Creativo/Literario"
+            ], key="tipo_texto_corregir")
+        
+        with col2:
+            contexto_cultural = st.selectbox("Contexto cultural", [
+                "General/Internacional",
+                "España",
+                "Latinoamérica",
+                "Contexto académico",
+                "Contexto empresarial"
+            ], key="contexto_cultural_corregir")
+        
+        # Texto inicial con contenido de la consigna si está disponible
+        texto_inicial = ""
+        if "usar_consigna_como_texto" in st.session_state and st.session_state.usar_consigna_como_texto and "consigna_actual" in st.session_state:
+            texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
+            # Reset para no añadirlo cada vez
+            st.session_state.usar_consigna_como_texto = False
+        
+        #
 
-                except Exception as e:
-                    st.error(f"Error al generar la corrección o guardar: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
-
-  # --- PESTAÑA 2: VER PROGRESO ---
+    # --- PESTAÑA 2: VER PROGRESO ---
 with tab_progreso:
     st.header("Seguimiento del progreso")
     
@@ -1819,6 +2060,13 @@ with tab_examenes:
         Practica sin límite de tiempo y recibe correcciones detalladas.
         """)
         
+        # Inicialización de variables de sesión para el modelo de examen
+        if "tarea_modelo_generada" not in st.session_state:
+            st.session_state.tarea_modelo_generada = None
+        if "respuesta_modelo_examen" not in st.session_state:
+            st.session_state.respuesta_modelo_examen = ""
+        
+        # Botón para generar tarea
         if st.button("Generar tarea de examen", key="generar_tarea_examen"):
             # Generar tarea específica para el examen y nivel seleccionados
             with st.spinner("Generando tarea oficial..."):
@@ -1844,19 +2092,57 @@ with tab_examenes:
                     ]
                 )
                 
-                tarea_generada = response.choices[0].message.content
-                
-                # Mostrar la tarea
+                st.session_state.tarea_modelo_generada = response.choices[0].message.content
                 st.success("✅ Tarea generada correctamente")
-                st.markdown(tarea_generada)
-                
-                # Opción para usar esta tarea en la sección de corrección
-                if st.button("Usar esta tarea para practicar", key="usar_tarea_examen"):
-                    # Guardar en session_state para usarlo en el formulario de corrección
-                    st.session_state.info_adicional_corregir = f"Tarea {tipo_examen} {nivel_examen}: {tarea_generada}"
-                    # Redirigir a la pestaña de corrección (experimental)
-                    st.write("Redirigiendo a la pestaña de corrección...")
-                    st.script_runner.script_request("click_element", {"selector": "button[data-baseweb='tab'][title='📝 Corregir texto']"})
+        
+        # Mostrar la tarea y área de respuesta si hay una tarea generada
+        if st.session_state.tarea_modelo_generada:
+            with st.expander("Ver instrucciones de la tarea", expanded=True):
+                st.markdown(st.session_state.tarea_modelo_generada)
+            
+            # Área para que el estudiante escriba su respuesta
+            st.subheader("Tu respuesta:")
+            respuesta_estudiante = st.text_area(
+                "Escribe tu respuesta a la tarea aquí:",
+                value=st.session_state.respuesta_modelo_examen,
+                height=250,
+                key="respuesta_modelo_examen_area"
+            )
+            
+            # Guardar respuesta en session_state
+            st.session_state.respuesta_modelo_examen = respuesta_estudiante
+            
+            # Botones para opciones
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Finalizar y enviar a corrección", key="finalizar_modelo_examen"):
+                    if respuesta_estudiante.strip():
+                        # Preparar datos para la corrección
+                        st.session_state.texto_correccion_corregir = respuesta_estudiante
+                        st.session_state.info_adicional_corregir = f"Tarea {tipo_examen} {nivel_examen}: {st.session_state.tarea_modelo_generada}"
+                        
+                        # Indicar redirección
+                        st.success("Respuesta guardada. Redirigiendo a la pestaña de corrección...")
+                        
+                        # Intentar cambiar a la pestaña de corrección
+                        js = """
+                        <script>
+                            window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
+                        </script>
+                        """
+                        st.markdown(js, unsafe_allow_html=True)
+                        
+                        # Como fallback, proporcionar instrucciones manuales
+                        st.info("Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+                    else:
+                        st.warning("Por favor, escribe una respuesta antes de enviar a corrección.")
+            
+            with col2:
+                if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
+                    # Reiniciar variables
+                    st.session_state.tarea_modelo_generada = None
+                    st.session_state.respuesta_modelo_examen = ""
+                    st.rerun()
     
     with tabs_examen[1]:
         st.subheader("Simulacro cronometrado")
@@ -1872,6 +2158,11 @@ with tab_examenes:
                 # Configurar el temporizador
                 st.session_state.inicio_simulacro = time.time()
                 st.session_state.duracion_simulacro = obtener_duracion_examen(tipo_examen, nivel_examen)
+                
+                # Inicializar variable para la respuesta
+                if "simulacro_respuesta_texto" not in st.session_state:
+                    st.session_state.simulacro_respuesta_texto = ""
+                
                 st.rerun()
         else:
             # Calcular tiempo transcurrido
@@ -1910,39 +2201,60 @@ with tab_examenes:
                     st.session_state.tarea_simulacro = response.choices[0].message.content
             
             # Mostrar la tarea
-            st.markdown("### Tarea:")
-            st.markdown(st.session_state.tarea_simulacro)
+            with st.expander("Tarea del simulacro:", expanded=True):
+                st.markdown(st.session_state.tarea_simulacro)
             
             # Área de texto para respuesta
             simulacro_respuesta = st.text_area(
                 "Tu respuesta:",
+                value=st.session_state.simulacro_respuesta_texto,
                 height=300,
-                key="simulacro_respuesta"
+                key="simulacro_respuesta_area"
             )
+            
+            # Guardar respuesta en tiempo real
+            st.session_state.simulacro_respuesta_texto = simulacro_respuesta
             
             # Opciones para finalizar o reiniciar
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Finalizar simulacro", key="finalizar_simulacro"):
-                    # Limpiar variables del simulacro
-                    tiempo_final = time.time() - st.session_state.inicio_simulacro
-                    minutos_usados = int(tiempo_final // 60)
-                    segundos_usados = int(tiempo_final % 60)
-                    
-                    st.session_state.tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
-                    st.session_state.respuesta_final = simulacro_respuesta
-                    
-                    # Limpiar variables de control
-                    del st.session_state.inicio_simulacro
-                    del st.session_state.duracion_simulacro
-                    
-                    st.success(f"Simulacro completado en {st.session_state.tiempo_usado}")
-                    st.rerun()
+                if st.button("Finalizar y enviar a corrección", key="finalizar_simulacro"):
+                    if simulacro_respuesta.strip():
+                        # Calcular tiempo usado
+                        tiempo_final = time.time() - st.session_state.inicio_simulacro
+                        minutos_usados = int(tiempo_final // 60)
+                        segundos_usados = int(tiempo_final % 60)
+                        tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
+                        
+                        # Guardar en variables de sesión para corrección
+                        st.session_state.texto_correccion_corregir = simulacro_respuesta
+                        st.session_state.info_adicional_corregir = f"Simulacro {tipo_examen} {nivel_examen} (Tiempo: {tiempo_usado}): {st.session_state.tarea_simulacro}"
+                        
+                        # Limpiar variables de control
+                        for key in ["inicio_simulacro", "duracion_simulacro"]:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        
+                        # Mensaje de éxito
+                        st.success(f"Simulacro completado en {tiempo_usado}. Redirigiendo a corrección...")
+                        
+                        # Intentar redirigir a la pestaña de corrección
+                        js = """
+                        <script>
+                            window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
+                        </script>
+                        """
+                        st.markdown(js, unsafe_allow_html=True)
+                        
+                        # Instrucciones de fallback
+                        st.info("Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+                    else:
+                        st.warning("Por favor, escribe una respuesta antes de finalizar.")
             
             with col2:
                 if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
                     # Limpiar todas las variables del simulacro
-                    for key in ["inicio_simulacro", "duracion_simulacro", "tarea_simulacro"]:
+                    for key in ["inicio_simulacro", "duracion_simulacro", "tarea_simulacro", "simulacro_respuesta_texto"]:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
@@ -1950,20 +2262,8 @@ with tab_examenes:
             # Verificar si se acabó el tiempo
             if tiempo_restante_segundos <= 0:
                 st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
-            
-            # Mostrar la respuesta final si existe
-            if "respuesta_final" in st.session_state:
-                st.subheader("Tu respuesta final:")
-                st.write(f"Tiempo utilizado: {st.session_state.tiempo_usado}")
-                st.write(st.session_state.respuesta_final)
-                
-                # Opción para corregir
-                if st.button("Enviar para corrección", key="corregir_simulacro"):
-                    st.session_state.texto_correccion_corregir = st.session_state.respuesta_final
-                    st.session_state.info_adicional_corregir = f"Simulacro {tipo_examen} {nivel_examen}: {st.session_state.tarea_simulacro}"
-                    # Redirigir a pestaña de corrección (experimental)
-                    st.write("Redirigiendo a la pestaña de corrección...")
-                    st.script_runner.script_request("click_element", {"selector": "button[data-baseweb='tab'][title='📝 Corregir texto']"})
+                # Guardar automáticamente (opcional)
+                st.info("Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
     
     with tabs_examen[2]:
         st.subheader("Criterios de evaluación")
@@ -2007,9 +2307,9 @@ with tab_examenes:
 with tab_herramientas:
     st.header("🔧 Herramientas complementarias")
     
-    # Rediseño: Ahora solo contiene herramientas verdaderamente complementarias
-    subtab_complejidad, subtab_recursos = st.tabs([
-        "Análisis de complejidad", "Biblioteca de recursos"
+    # Rediseño: Añadiendo nuevas herramientas
+    subtab_complejidad, subtab_recursos, subtab_imagen, subtab_manuscrito = st.tabs([
+        "Análisis de complejidad", "Biblioteca de recursos", "Descripción de imágenes", "Texto manuscrito"
     ])
     
     # --- Subpestaña 1: Análisis de complejidad ---
@@ -2287,5 +2587,165 @@ with tab_herramientas:
                         if "descripcion" in recurso:
                             st.markdown(f"**Descripción:** {recurso.get('descripcion', '')}")
             else:
-                st.info(f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")                 
+                st.info(f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
+    
+    # --- Nueva subpestaña: Descripción de imágenes con DALL-E
+    with subtab_imagen:
+        st.subheader("🖼️ Descripción de imágenes generadas por IA")
+        st.markdown("""
+        Esta herramienta genera imágenes adaptadas a tu nivel de español y proporciona actividades
+        de descripción para practicar vocabulario y estructuras descriptivas.
+        """)
+        
+        # Selección de nivel
+        nivel_imagen = st.selectbox(
+            "Nivel de español:",
+            [
+                "Nivel principiante (A1-A2)",
+                "Nivel intermedio (B1-B2)",
+                "Nivel avanzado (C1-C2)"
+            ],
+            key="nivel_imagen_dalle"
+        )
+        
+        # Tema para la imagen
+        tema_imagen = st.text_input(
+            "Tema o escena para la imagen (por ejemplo: 'un parque en primavera', 'una oficina moderna'):",
+            key="tema_imagen_dalle"
+        )
+        
+        if st.button("Generar imagen y actividad", key="generar_imagen_dalle") and tema_imagen:
+            with st.spinner("Generando imagen con DALL-E..."):
+                # Obtener nivel en formato simplificado
+                nivel_map = {
+                    "Nivel principiante (A1-A2)": "principiante",
+                    "Nivel intermedio (B1-B2)": "intermedio",
+                    "Nivel avanzado (C1-C2)": "avanzado"
+                }
+                nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
+                
+                # Generar imagen y descripción
+                imagen_url, descripcion = generar_imagen_dalle(tema_imagen, nivel_dalle, openai_api_key)
+                
+                if imagen_url:
+                    # Mostrar la imagen
+                    st.image(imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_column_width=True)
                     
+                    # Guardar en session_state para usos futuros
+                    st.session_state.ultima_imagen_url = imagen_url
+                    st.session_state.ultima_descripcion = descripcion
+                    
+                    # Mostrar la descripción y actividades
+                    with st.expander("Descripción y actividades de práctica", expanded=True):
+                        st.markdown(descripcion)
+                    
+                    # Área para que el estudiante escriba su descripción
+                    st.subheader("Tu descripción:")
+                    descripcion_estudiante = st.text_area(
+                        "Describe la imagen con tus propias palabras:",
+                        height=200,
+                        key="descripcion_imagen_estudiante"
+                    )
+                    
+                    # Botón para enviar a corrección
+                    if st.button("Enviar descripción a corrección", key="corregir_descripcion_imagen"):
+                        if descripcion_estudiante.strip():
+                            # Guardar en variables para la corrección
+                            st.session_state.texto_correccion_corregir = descripcion_estudiante
+                            st.session_state.info_adicional_corregir = f"Descripción de imagen sobre '{tema_imagen}'. Nivel: {nivel_imagen}"
+                            
+                            # Mensaje de éxito y redirección
+                            st.success("Descripción guardada. Redirigiendo a la pestaña de corrección...")
+                            
+                            # Script de redirección
+                            js = """
+                            <script>
+                                window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                            
+                            # Instrucciones de fallback
+                            st.info("Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+                        else:
+                            st.warning("Por favor, escribe una descripción antes de enviar a corrección.")
+                else:
+                    st.error("No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
+    
+    # --- Nueva subpestaña: Transcripción de textos manuscritos
+    with subtab_manuscrito:
+        st.subheader("✍️ Transcripción de textos manuscritos")
+        st.markdown("""
+        Esta herramienta te permite subir imágenes de textos manuscritos para transcribirlos
+        automáticamente y luego enviarlos a corrección.
+        """)
+        
+        # Selección de idioma para la transcripción
+        idioma_manuscrito = st.selectbox(
+            "Idioma del texto manuscrito:",
+            ["Español", "Francés", "Inglés"],
+            key="idioma_manuscrito"
+        )
+        
+        # Mapeo de idiomas para la API
+        idioma_map = {
+            "Español": "es",
+            "Francés": "fr",
+            "Inglés": "en"
+        }
+        
+        # Subida de imagen
+        imagen_manuscrito = st.file_uploader(
+            "Sube una imagen de tu texto manuscrito (JPG, PNG):",
+            type=["jpg", "jpeg", "png"],
+            key="imagen_manuscrito"
+        )
+        
+        if imagen_manuscrito is not None:
+            # Mostrar la imagen subida
+            imagen = Image.open(imagen_manuscrito)
+            st.image(imagen, caption="Imagen subida", use_column_width=True)
+            
+            # Botón para transcribir
+            if st.button("Transcribir texto", key="transcribir_manuscrito"):
+                with st.spinner("Transcribiendo texto manuscrito..."):
+                    # Leer bytes de la imagen
+                    imagen_bytes = imagen_manuscrito.getvalue()
+                    
+                    # Obtener código de idioma
+                    codigo_idioma = idioma_map.get(idioma_manuscrito, "es")
+                    
+                    # Transcribir la imagen
+                    texto_transcrito = transcribir_imagen_texto(imagen_bytes, codigo_idioma)
+                    
+                    if texto_transcrito:
+                        # Mostrar el texto transcrito
+                        st.success("✅ Texto transcrito correctamente")
+                        
+                        with st.expander("Texto transcrito", expanded=True):
+                            st.write(texto_transcrito)
+                            
+                            # Guardar en session_state
+                            st.session_state.ultimo_texto_transcrito = texto_transcrito
+                        
+                        # Enviar a corrección
+                        if st.button("Enviar texto transcrito a corrección", key="corregir_texto_transcrito"):
+                            # Guardar en variables para la corrección
+                            st.session_state.texto_correccion_corregir = texto_transcrito
+                            st.session_state.info_adicional_corregir = f"Texto manuscrito transcrito en {idioma_manuscrito}"
+                            
+                            # Mensaje de éxito y redirección
+                            st.success("Texto transcrito guardado. Redirigiendo a la pestaña de corrección...")
+                            
+                            # Script de redirección
+                            js = """
+                            <script>
+                                window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                            
+                            # Instrucciones de fallback
+                            st.info("Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+                    else:
+                        st.error("No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
