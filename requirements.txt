@@ -12,3 +12,4 @@ google-auth
 python-docx
 qrcode
 pillow
+black>=23.1.0
