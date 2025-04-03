@@ -986,28 +986,28 @@ def mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idi
                         st.markdown(ejercicio.get('solucion', ''))
 
 # Intenta aprovechar la variable tracking_sheet que definimos al inicio
-                        try:
-                            tracking_sheet.append_row(datos_seguimiento)
-                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
-                        except NameError:
-                            # Si tracking_sheet no está definido, intentamos recuperarlo
-                            tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-                            try:
-                                tracking_sheet = tracking_doc.worksheet("Seguimiento")
-                            except gspread.exceptions.WorksheetNotFound:
-                                tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=14)
-                                headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
-                                        "Errores Puntuación", "Errores Estructura", "Total Errores", 
-                                        "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
-                                        "Puntuación Adecuación Cultural", "Consejo Final"]
-                                tracking_sheet.append_row(headers)
-                            
-                            tracking_sheet.append_row(datos_seguimiento)
-                            st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento (recuperada).")
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar estadísticas en Seguimiento: {str(e)}")
-                        st.info("Detalles del error para depuración:")
-                        st.code(str(e))
+try:
+    tracking_sheet.append_row(datos_seguimiento)
+    st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento.")
+except NameError:
+    # Si tracking_sheet no está definido, intentamos recuperarlo
+    tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+    try:
+        tracking_sheet = tracking_doc.worksheet("Seguimiento")
+    except gspread.exceptions.WorksheetNotFound:
+        tracking_sheet = tracking_doc.add_worksheet(title="Seguimiento", rows=100, cols=14)
+        headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico", 
+                   "Errores Puntuación", "Errores Estructura", "Total Errores", 
+                   "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro", 
+                   "Puntuación Adecuación Cultural", "Consejo Final"]
+        tracking_sheet.append_row(headers)
+    
+    tracking_sheet.append_row(datos_seguimiento)
+    st.success(f"✅ Estadísticas guardadas en hoja de Seguimiento (recuperada).")
+except Exception as e:
+    st.error(f"❌ Error al guardar estadísticas en Seguimiento: {str(e)}")
+    st.info("Detalles del error para depuración:")
+    st.code(str(e))
 
                     # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
                     st.markdown("**🔊 Consejo leído en voz alta:**")
