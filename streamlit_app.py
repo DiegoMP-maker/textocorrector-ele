@@ -1009,32 +1009,30 @@ except Exception as e:
     st.info("Detalles del error para depuración:")
     st.code(str(e))
 
-                    # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
-                    st.markdown("**🔊 Consejo leído en voz alta:**")
-                    with st.spinner("Generando audio con ElevenLabs..."):
-                        tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
-                        headers = {
-                            "xi-api-key": elevenlabs_api_key,
-                            "Content-Type": "application/json"
-                        }
-                        audio_text = consejo_final.replace("Consejo final:", "").strip()
-                        data = {
-                            "text": audio_text,
-                            "model_id": "eleven_multilingual_v2",
-                            "voice_settings": {
-                                "stability": 0.3,
-                                "similarity_boost": 0.9
-                            }
-                        }
-                        try:
-                            response_audio = requests.post(tts_url, headers=headers, json=data)
-                            if response_audio.ok:
-                                audio_bytes = BytesIO(response_audio.content)
-                                st.audio(audio_bytes, format="audio/mpeg")
-                            else:
-                                st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
-                        except Exception as e:
-                            st.warning(f"⚠️ Error al generar audio: {e}")
+with st.spinner("Generando audio con ElevenLabs..."):
+    tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+    headers = {
+        "xi-api-key": elevenlabs_api_key,
+        "Content-Type": "application/json"
+    }
+    audio_text = consejo_final.replace("Consejo final:", "").strip()
+    data = {
+        "text": audio_text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.9
+        }
+    }
+    try:
+        response_audio = requests.post(tts_url, headers=headers, json=data)
+        if response_audio.ok:
+            audio_bytes = BytesIO(response_audio.content)
+            st.audio(audio_bytes, format="audio/mpeg")
+        else:
+            st.warning(f"⚠️ No se pudo reproducir el consejo con ElevenLabs. (Status code: {response_audio.status_code})")
+    except Exception as e:
+        st.warning(f"⚠️ Error al generar audio: {e}")
 
                     # --- SECCIONES NUEVAS ---
                     
