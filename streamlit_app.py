@@ -1140,7 +1140,7 @@ def main():
     st.title("📝 Textocorrector ELE")
     st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
 
-    # Pestañas principales
+    # IMPORTANTE: Definir primero todas las pestañas antes de implementar su contenido
     tab_corregir, tab_progreso, tab_historial, tab_examenes, tab_herramientas = st.tabs([
         "📝 Corregir texto",
         "📊 Ver progreso",
@@ -1818,503 +1818,506 @@ def main():
                     except Exception as e:
                         st.error(f"Error al procesar la corrección: {e}")
                         st.code(traceback.format_exc())
+                        # --- PESTAÑA 2: VER PROGRESO ---
+    with tab_progreso:
+        st.header("Seguimiento del progreso")
 
+        # Subtabs para diferentes vistas de progreso
+        subtab_estadisticas, subtab_plan_estudio = st.tabs([
+            "Estadísticas", "Plan de estudio personalizado"
+        ])
 
-     # --- PESTAÑA 2: VER PROGRESO ---
-with tab_progreso:
-    st.header("Seguimiento del progreso")
+        with subtab_estadisticas:
+            nombre_estudiante = st.text_input(
+                "Nombre y apellido del estudiante para ver progreso:", key="nombre_progreso")
+            if nombre_estudiante and " " not in nombre_estudiante:
+                st.warning(
+                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
 
-    # Subtabs para diferentes vistas de progreso
-    subtab_estadisticas, subtab_plan_estudio = st.tabs([
-        "Estadísticas", "Plan de estudio personalizado"
-    ])
+            if nombre_estudiante:
+                with st.spinner("Cargando datos de progreso..."):
+                    try:
+                        df = obtener_historial_estudiante(
+                            nombre_estudiante, tracking_sheet)
+                        if df is not None and not df.empty:
+                            mostrar_progreso(df)
 
-    with subtab_estadisticas:
-        nombre_estudiante = st.text_input(
-            "Nombre y apellido del estudiante para ver progreso:", key="nombre_progreso")
-        if nombre_estudiante and " " not in nombre_estudiante:
-            st.warning(
-                "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+                            # Mostrar tabla con historial completo
+                            with st.expander("Ver datos completos"):
+                                st.dataframe(df)
 
-        if nombre_estudiante:
-            with st.spinner("Cargando datos de progreso..."):
-                try:
+                            # Verificar si existe la columna Fecha
+                            fecha_col = None
+                            for col in df.columns:
+                                if col.lower() == 'fecha':
+                                    fecha_col = col
+                                    break
+
+                            if fecha_col is not None:
+                                # Consejo basado en tendencias
+                                if len(df) >= 2:
+                                    st.subheader(
+                                        "Consejo basado en tendencias")
+
+                                    # Calcular tendencias simples
+                                    df[fecha_col] = pd.to_datetime(
+                                        df[fecha_col])
+                                    df = df.sort_values(fecha_col)
+
+                                    # Extraer primera y última entrada para comparar
+                                    primera = df.iloc[0]
+                                    ultima = df.iloc[-1]
+
+                                    # Comparar total de errores
+                                    dif_errores = ultima['Total Errores'] - \
+                                        primera['Total Errores']
+
+                                    if dif_errores < 0:
+                                        st.success(
+                                            f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                                    elif dif_errores > 0:
+                                        st.warning(
+                                            f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                                    else:
+                                        st.info(
+                                            "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+
+                                    # Identificar área con mayor progreso y área que necesita más trabajo
+                                    categorias = [
+                                        'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                                    difs = {}
+                                    for cat in categorias:
+                                        difs[cat] = ultima[cat] - primera[cat]
+
+                                    mejor_area = min(difs.items(), key=lambda x: x[1])[
+                                        0] if difs else None
+                                    peor_area = max(difs.items(), key=lambda x: x[1])[
+                                        0] if difs else None
+
+                                    if mejor_area and difs[mejor_area] < 0:
+                                        st.success(
+                                            f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+
+                                    if peor_area and difs[peor_area] > 0:
+                                        st.warning(
+                                            f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                        else:
+                            st.info(
+                                f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+
+                            # Nuevo código para mostrar nombres disponibles
+                            try:
+                                todos_datos = tracking_sheet.get_all_records()
+                                if todos_datos:
+                                    columnas = list(todos_datos[0].keys())
+                                    nombre_col = next(
+                                        (col for col in columnas if col.lower() == 'nombre'), None)
+
+                                    if nombre_col:
+                                        nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip()
+                                                                         for row in todos_datos if row.get(nombre_col)))
+
+                                        if nombres_disponibles:
+                                            st.write(
+                                                "Nombres disponibles en el historial:")
+                                            nombres_botones = []
+
+                                            # Dividir en filas de 3 botones
+                                            for i in range(0, len(nombres_disponibles), 3):
+                                                fila = nombres_disponibles[i:i+3]
+                                                cols = st.columns(3)
+                                                for j, nombre in enumerate(fila):
+                                                    if j < len(fila) and cols[j].button(nombre, key=f"btn_progreso_{nombre}_{i+j}"):
+                                                        st.experimental_set_query_params(
+                                                            nombre_seleccionado=nombre)
+                                                        st.rerun()
+                            except Exception as e:
+                                st.error(
+                                    f"Error al listar nombres disponibles: {e}")
+                    except Exception as e:
+                        st.error(f"Error al obtener historial: {e}")
+                        st.info("Detalles para depuración:")
+                        st.code(str(e))
+
+        # NUEVO: Plan de estudio personalizado
+        with subtab_plan_estudio:
+            st.header("📚 Plan de estudio personalizado")
+
+            nombre_estudiante_plan = st.text_input(
+                "Nombre y apellido:", key="nombre_plan_estudio")
+
+            if nombre_estudiante_plan and " " not in nombre_estudiante_plan:
+                st.warning(
+                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+
+            if nombre_estudiante_plan:
+                with st.spinner("Analizando tu historial de errores y generando plan personalizado..."):
+                    # Obtener historial del estudiante
                     df = obtener_historial_estudiante(
-                        nombre_estudiante, tracking_sheet)
+                        nombre_estudiante_plan, tracking_sheet)
+
                     if df is not None and not df.empty:
-                        mostrar_progreso(df)
+                        # Analizar patrones de error frecuentes
+                        # Suponemos que tenemos estas columnas en el df
+                        if 'Errores Gramática' in df.columns and 'Errores Léxico' in df.columns:
+                            # Extraer estadísticas básicas
+                            promedio_gramatica = df['Errores Gramática'].mean()
+                            promedio_lexico = df['Errores Léxico'].mean()
 
-                        # Mostrar tabla con historial completo
-                        with st.expander("Ver datos completos"):
-                            st.dataframe(df)
+                            # Verificar si tenemos las columnas contextuales
+                            coherencia_promedio = df['Puntuación Coherencia'].mean(
+                            ) if 'Puntuación Coherencia' in df.columns else 5
+                            cohesion_promedio = df['Puntuación Cohesión'].mean(
+                            ) if 'Puntuación Cohesión' in df.columns else 5
 
-                        # Verificar si existe la columna Fecha
-                        fecha_col = None
-                        for col in df.columns:
-                            if col.lower() == 'fecha':
-                                fecha_col = col
-                                break
+                            # Extraer nivel del último registro
+                            if 'Nivel' in df.columns:
+                                nivel_actual = df.iloc[-1]['Nivel']
+                            else:
+                                nivel_actual = "intermedio"
 
-                        if fecha_col is not None:
-                            # Consejo basado en tendencias
-                            if len(df) >= 2:
-                                st.subheader("Consejo basado en tendencias")
+                            # Verificar si tenemos consejos finales para extraer temas recurrentes
+                            temas_recurrentes = []
+                            if 'Consejo Final' in df.columns:
+                                # Aquí podríamos implementar un análisis más sofisticado de los consejos
+                                temas_recurrentes = [
+                                    "conjugación verbal", "uso de preposiciones", "concordancia"]
 
-                                # Calcular tendencias simples
-                                df[fecha_col] = pd.to_datetime(df[fecha_col])
-                                df = df.sort_values(fecha_col)
+                            # Construir contexto para la IA
+                            errores_frecuentes = (
+                                f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
+                                f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
+                                f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
+                                f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
+                                f"Temas recurrentes: {', '.join(temas_recurrentes)}."
+                            )
 
-                                # Extraer primera y última entrada para comparar
-                                primera = df.iloc[0]
-                                ultima = df.iloc[-1]
+                            # Generar plan de estudio con IA
+                            client = OpenAI(api_key=openai_api_key)
 
-                                # Comparar total de errores
-                                dif_errores = ultima['Total Errores'] - \
-                                    primera['Total Errores']
+                            response = client.chat.completions.create(
+                                model="gpt-4-turbo",
+                                temperature=0.7,
+                                messages=[
+                                    {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
+                                    {"role": "user",
+                                        "content": f"Crea un plan de estudio personalizado para un estudiante de nivel {nivel_actual} con los siguientes errores frecuentes: {errores_frecuentes} Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados."}
+                                ]
+                            )
 
-                                if dif_errores < 0:
-                                    st.success(
-                                        f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                                elif dif_errores > 0:
-                                    st.warning(
-                                        f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                                else:
-                                    st.info(
-                                        "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                            plan_estudio = response.choices[0].message.content
 
-                                # Identificar área con mayor progreso y área que necesita más trabajo
-                                categorias = [
-                                    'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
-                                difs = {}
-                                for cat in categorias:
-                                    difs[cat] = ultima[cat] - primera[cat]
+                            # Mostrar el plan en pestañas organizadas por semanas
+                            # Podría necesitar ajustes según el formato de salida
+                            semanas = plan_estudio.split("Semana")
 
-                                mejor_area = min(difs.items(), key=lambda x: x[1])[
-                                    0] if difs else None
-                                peor_area = max(difs.items(), key=lambda x: x[1])[
-                                    0] if difs else None
+                            st.markdown("### Tu plan de estudio personalizado")
+                            st.markdown(
+                                "Basado en tu historial de errores, hemos creado este plan de estudio de 4 semanas para ayudarte a mejorar tus habilidades:")
 
-                                if mejor_area and difs[mejor_area] < 0:
-                                    st.success(
-                                        f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                            # Ignorar el elemento vacío al inicio
+                            for i, semana in enumerate(semanas[1:], 1):
+                                titulo_semana = extraer_titulo(semana)
+                                with st.expander(f"Semana {i}: {titulo_semana}"):
+                                    st.markdown(semana)
 
-                                if peor_area and difs[peor_area] > 0:
-                                    st.warning(
-                                        f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                                    # Generar ejercicios específicos para esta parte
+                                    if st.button(f"Generar ejercicios para Semana {i}", key=f"ejercicios_semana_{i}"):
+                                        with st.spinner("Creando ejercicios personalizados..."):
+                                            prompt_ejercicios = f"Crea 2 ejercicios breves para practicar los temas de la semana {i} del plan: {semana[:300]}... Los ejercicios deben ser específicos para un estudiante de nivel {nivel_actual}."
+
+                                            response_ej = client.chat.completions.create(
+                                                model="gpt-4-turbo",
+                                                temperature=0.7,
+                                                messages=[
+                                                    {"role": "system", "content": "Eres un profesor de español especializado en crear actividades didácticas."},
+                                                    {"role": "user",
+                                                        "content": prompt_ejercicios}
+                                                ]
+                                            )
+
+                                            ejercicios = response_ej.choices[0].message.content
+                                            st.markdown(
+                                                "#### Ejercicios recomendados")
+                                            st.markdown(ejercicios)
+                        else:
+                            st.warning(
+                                "No se encontraron columnas de errores en los datos. El análisis no puede ser completo.")
                     else:
                         st.info(
-                            f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+                            "No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
+                        # --- PESTAÑA 3: HISTORIAL ---
+    with tab_historial:
+        st.header("Historial de correcciones")
 
-                        # Nuevo código para mostrar nombres disponibles
-                        try:
-                            todos_datos = tracking_sheet.get_all_records()
-                            if todos_datos:
-                                columnas = list(todos_datos[0].keys())
-                                nombre_col = next(
-                                    (col for col in columnas if col.lower() == 'nombre'), None)
+        try:
+            # Obtener todas las correcciones
+            correcciones = corrections_sheet.get_all_records()
 
-                                if nombre_col:
-                                    nombres_disponibles = sorted(set(str(row.get(nombre_col, '')).strip()
-                                                                     for row in todos_datos if row.get(nombre_col)))
+            if correcciones:
+                # Convertir a dataframe
+                df_correcciones = pd.DataFrame(correcciones)
 
-                                    if nombres_disponibles:
-                                        st.write(
-                                            "Nombres disponibles en el historial:")
-                                        nombres_botones = []
+                # Normalizar nombres de columnas para la verificación (convertir a minúsculas)
+                df_columns_lower = [col.lower()
+                                    for col in df_correcciones.columns]
 
-                                        # Dividir en filas de 3 botones
-                                        for i in range(0, len(nombres_disponibles), 3):
-                                            fila = nombres_disponibles[i:i+3]
-                                            cols = st.columns(3)
-                                            for j, nombre in enumerate(fila):
-                                                if j < len(fila) and cols[j].button(nombre, key=f"btn_progreso_{nombre}_{i+j}"):
-                                                    st.experimental_set_query_params(
-                                                        nombre_seleccionado=nombre)
-                                                    st.rerun()
-                        except Exception as e:
-                            st.error(
-                                f"Error al listar nombres disponibles: {e}")
-                except Exception as e:
-                    st.error(f"Error al obtener historial: {e}")
-                    st.info("Detalles para depuración:")
-                    st.code(str(e))
+                # Filtrar columnas relevantes (verificando de forma más flexible)
+                if 'nombre' in df_columns_lower or 'Nombre' in df_correcciones.columns:
+                    # Determinar los nombres reales de las columnas
+                    nombre_col = 'Nombre' if 'Nombre' in df_correcciones.columns else 'nombre'
+                    nivel_col = 'Nivel' if 'Nivel' in df_correcciones.columns else 'nivel'
+                    fecha_col = 'Fecha' if 'Fecha' in df_correcciones.columns else 'fecha'
 
-    # NUEVO: Plan de estudio personalizado
-    with subtab_plan_estudio:
-        st.header("📚 Plan de estudio personalizado")
+                    # Verificar que todas las columnas existan
+                    if nombre_col in df_correcciones.columns and nivel_col in df_correcciones.columns and fecha_col in df_correcciones.columns:
+                        df_display = df_correcciones[[
+                            nombre_col, nivel_col, fecha_col]]
 
-        nombre_estudiante_plan = st.text_input(
-            "Nombre y apellido:", key="nombre_plan_estudio")
+                        # Mostrar tabla de historial
+                        st.dataframe(df_display)
 
-        if nombre_estudiante_plan and " " not in nombre_estudiante_plan:
-            st.warning(
-                "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+                        # Opciones para ver detalles
+                        if st.checkbox("Ver detalles de una corrección", key="checkbox_historial"):
+                            # Extraer nombres únicos
+                            nombres = sorted(
+                                df_correcciones[nombre_col].unique().tolist())
 
-        if nombre_estudiante_plan:
-            with st.spinner("Analizando tu historial de errores y generando plan personalizado..."):
-                # Obtener historial del estudiante
-                df = obtener_historial_estudiante(
-                    nombre_estudiante_plan, tracking_sheet)
+                            # Selector de nombre
+                            nombre_select = st.selectbox(
+                                "Selecciona un nombre:", nombres, key="nombre_select_historial")
 
-                if df is not None and not df.empty:
-                    # Analizar patrones de error frecuentes
-                    # Suponemos que tenemos estas columnas en el df
-                    if 'Errores Gramática' in df.columns and 'Errores Léxico' in df.columns:
-                        # Extraer estadísticas básicas
-                        promedio_gramatica = df['Errores Gramática'].mean()
-                        promedio_lexico = df['Errores Léxico'].mean()
+                            # Filtrar por nombre
+                            correcciones_filtradas = df_correcciones[df_correcciones[nombre_col]
+                                                                     == nombre_select]
 
-                        # Verificar si tenemos las columnas contextuales
-                        coherencia_promedio = df['Puntuación Coherencia'].mean(
-                        ) if 'Puntuación Coherencia' in df.columns else 5
-                        cohesion_promedio = df['Puntuación Cohesión'].mean(
-                        ) if 'Puntuación Cohesión' in df.columns else 5
+                            # Extraer fechas para este nombre
+                            fechas = correcciones_filtradas[fecha_col].tolist()
 
-                        # Extraer nivel del último registro
-                        if 'Nivel' in df.columns:
-                            nivel_actual = df.iloc[-1]['Nivel']
-                        else:
-                            nivel_actual = "intermedio"
+                            # Selector de fecha
+                            fecha_select = st.selectbox(
+                                "Selecciona una fecha:", fechas, key="fecha_select_historial")
 
-                        # Verificar si tenemos consejos finales para extraer temas recurrentes
-                        temas_recurrentes = []
-                        if 'Consejo Final' in df.columns:
-                            # Aquí podríamos implementar un análisis más sofisticado de los consejos
-                            temas_recurrentes = [
-                                "conjugación verbal", "uso de preposiciones", "concordancia"]
+                            # Mostrar corrección seleccionada
+                            correccion = correcciones_filtradas[correcciones_filtradas[fecha_col]
+                                                                == fecha_select].iloc[0]
 
-                        # Construir contexto para la IA
-                        errores_frecuentes = (
-                            f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
-                            f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
-                            f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
-                            f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
-                            f"Temas recurrentes: {', '.join(temas_recurrentes)}."
-                        )
+                            # Mostrar detalles
+                            st.subheader(
+                                f"Corrección para {nombre_select} ({fecha_select})")
 
-                        # Generar plan de estudio con IA
-                        client = OpenAI(api_key=openai_api_key)
+                            # Pestañas para texto original y datos
+                            tab_original, tab_datos = st.tabs(
+                                ["Texto original", "Datos de corrección"])
 
-                        response = client.chat.completions.create(
-                            model="gpt-4-turbo",
-                            temperature=0.7,
-                            messages=[
-                                {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
-                                {"role": "user",
-                                    "content": f"Crea un plan de estudio personalizado para un estudiante de nivel {nivel_actual} con los siguientes errores frecuentes: {errores_frecuentes} Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados."}
-                            ]
-                        )
-
-                        plan_estudio = response.choices[0].message.content
-
-                        # Mostrar el plan en pestañas organizadas por semanas
-                        # Podría necesitar ajustes según el formato de salida
-                        semanas = plan_estudio.split("Semana")
-
-                        st.markdown("### Tu plan de estudio personalizado")
-                        st.markdown(
-                            "Basado en tu historial de errores, hemos creado este plan de estudio de 4 semanas para ayudarte a mejorar tus habilidades:")
-
-                        # Ignorar el elemento vacío al inicio
-                        for i, semana in enumerate(semanas[1:], 1):
-                            titulo_semana = extraer_titulo(semana)
-                            with st.expander(f"Semana {i}: {titulo_semana}"):
-                                st.markdown(semana)
-
-                                # Generar ejercicios específicos para esta parte
-                                if st.button(f"Generar ejercicios para Semana {i}", key=f"ejercicios_semana_{i}"):
-                                    with st.spinner("Creando ejercicios personalizados..."):
-                                        prompt_ejercicios = f"Crea 2 ejercicios breves para practicar los temas de la semana {i} del plan: {semana[:300]}... Los ejercicios deben ser específicos para un estudiante de nivel {nivel_actual}."
-
-                                        response_ej = client.chat.completions.create(
-                                            model="gpt-4-turbo",
-                                            temperature=0.7,
-                                            messages=[
-                                                {"role": "system", "content": "Eres un profesor de español especializado en crear actividades didácticas."},
-                                                {"role": "user",
-                                                    "content": prompt_ejercicios}
-                                            ]
-                                        )
-
-                                        ejercicios = response_ej.choices[0].message.content
-                                        st.markdown(
-                                            "#### Ejercicios recomendados")
-                                        st.markdown(ejercicios)
-                    else:
-                        st.warning(
-                            "No se encontraron columnas de errores en los datos. El análisis no puede ser completo.")
-                else:
-                    st.info(
-                        "No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
-
-# --- PESTAÑA 3: HISTORIAL ---
-with tab_historial:
-    st.header("Historial de correcciones")
-
-    try:
-        # Obtener todas las correcciones
-        correcciones = corrections_sheet.get_all_records()
-
-        if correcciones:
-            # Convertir a dataframe
-            df_correcciones = pd.DataFrame(correcciones)
-
-            # Normalizar nombres de columnas para la verificación (convertir a minúsculas)
-            df_columns_lower = [col.lower() for col in df_correcciones.columns]
-
-            # Filtrar columnas relevantes (verificando de forma más flexible)
-            if 'nombre' in df_columns_lower or 'Nombre' in df_correcciones.columns:
-                # Determinar los nombres reales de las columnas
-                nombre_col = 'Nombre' if 'Nombre' in df_correcciones.columns else 'nombre'
-                nivel_col = 'Nivel' if 'Nivel' in df_correcciones.columns else 'nivel'
-                fecha_col = 'Fecha' if 'Fecha' in df_correcciones.columns else 'fecha'
-
-                # Verificar que todas las columnas existan
-                if nombre_col in df_correcciones.columns and nivel_col in df_correcciones.columns and fecha_col in df_correcciones.columns:
-                    df_display = df_correcciones[[
-                        nombre_col, nivel_col, fecha_col]]
-
-                    # Mostrar tabla de historial
-                    st.dataframe(df_display)
-
-                    # Opciones para ver detalles
-                    if st.checkbox("Ver detalles de una corrección", key="checkbox_historial"):
-                        # Extraer nombres únicos
-                        nombres = sorted(
-                            df_correcciones[nombre_col].unique().tolist())
-
-                        # Selector de nombre
-                        nombre_select = st.selectbox(
-                            "Selecciona un nombre:", nombres, key="nombre_select_historial")
-
-                        # Filtrar por nombre
-                        correcciones_filtradas = df_correcciones[df_correcciones[nombre_col]
-                                                                 == nombre_select]
-
-                        # Extraer fechas para este nombre
-                        fechas = correcciones_filtradas[fecha_col].tolist()
-
-                        # Selector de fecha
-                        fecha_select = st.selectbox(
-                            "Selecciona una fecha:", fechas, key="fecha_select_historial")
-
-                        # Mostrar corrección seleccionada
-                        correccion = correcciones_filtradas[correcciones_filtradas[fecha_col]
-                                                            == fecha_select].iloc[0]
-
-                        # Mostrar detalles
-                        st.subheader(
-                            f"Corrección para {nombre_select} ({fecha_select})")
-
-                        # Pestañas para texto original y datos
-                        tab_original, tab_datos = st.tabs(
-                            ["Texto original", "Datos de corrección"])
-
-                        with tab_original:
-                            texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
-                            if texto_col in correccion:
-                                st.write(correccion.get(
-                                    texto_col, 'No disponible'))
-                            else:
-                                st.warning(
-                                    "No se pudo encontrar el texto original.")
-
-                        with tab_datos:
-                            try:
-                                # Intentar parsear el JSON de la respuesta
-                                raw_output_col = 'raw_output' if 'raw_output' in df_correcciones.columns else 'Raw_output'
-                                if raw_output_col in correccion:
-                                    raw_output = correccion.get(
-                                        raw_output_col, '{}')
-                                    data_json = json.loads(raw_output)
-
-                                    # Mostrar campos específicos
-                                    if 'texto_corregido' in data_json:
-                                        st.subheader("Texto corregido")
-                                        st.write(data_json['texto_corregido'])
-
-                                    if 'consejo_final' in data_json:
-                                        st.subheader("Consejo final")
-                                        st.info(data_json['consejo_final'])
+                            with tab_original:
+                                texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
+                                if texto_col in correccion:
+                                    st.write(correccion.get(
+                                        texto_col, 'No disponible'))
                                 else:
                                     st.warning(
-                                        "No se encontraron datos de corrección.")
-                            except json.JSONDecodeError:
-                                st.warning(
-                                    "No se pudieron cargar los datos de corrección en formato estructurado.")
-                                # Mostrar parte del texto crudo
-                                st.code(raw_output[:500] + "...")
+                                        "No se pudo encontrar el texto original.")
+
+                            with tab_datos:
+                                try:
+                                    # Intentar parsear el JSON de la respuesta
+                                    raw_output_col = 'raw_output' if 'raw_output' in df_correcciones.columns else 'Raw_output'
+                                    if raw_output_col in correccion:
+                                        raw_output = correccion.get(
+                                            raw_output_col, '{}')
+                                        data_json = json.loads(raw_output)
+
+                                        # Mostrar campos específicos
+                                        if 'texto_corregido' in data_json:
+                                            st.subheader("Texto corregido")
+                                            st.write(
+                                                data_json['texto_corregido'])
+
+                                        if 'consejo_final' in data_json:
+                                            st.subheader("Consejo final")
+                                            st.info(data_json['consejo_final'])
+                                    else:
+                                        st.warning(
+                                            "No se encontraron datos de corrección.")
+                                except json.JSONDecodeError:
+                                    st.warning(
+                                        "No se pudieron cargar los datos de corrección en formato estructurado.")
+                                    # Mostrar parte del texto crudo
+                                    st.code(raw_output[:500] + "...")
+                    else:
+                        st.warning("Algunas columnas necesarias no se encuentran en los datos. Columnas disponibles: " +
+                                   ", ".join(df_correcciones.columns))
                 else:
-                    st.warning("Algunas columnas necesarias no se encuentran en los datos. Columnas disponibles: " +
+                    st.warning("El formato de los datos no coincide con lo esperado. Columnas disponibles: " +
                                ", ".join(df_correcciones.columns))
             else:
-                st.warning("El formato de los datos no coincide con lo esperado. Columnas disponibles: " +
-                           ", ".join(df_correcciones.columns))
-        else:
-            st.info("No hay correcciones guardadas en el historial.")
-    except Exception as e:
-        st.error(f"Error al cargar el historial: {e}")
-        st.code(str(e))  # Mostrar el error para depuración
+                st.info("No hay correcciones guardadas en el historial.")
+        except Exception as e:
+            st.error(f"Error al cargar el historial: {e}")
+            st.code(str(e))  # Mostrar el error para depuración
 
-# --- PESTAÑA 4: PREPARACIÓN PARA EXÁMENES ---
-with tab_examenes:
-    st.header("🎓 Preparación para exámenes oficiales")
+    # --- PESTAÑA 4: PREPARACIÓN PARA EXÁMENES ---
+    with tab_examenes:
+        st.header("🎓 Preparación para exámenes oficiales")
 
-    # Selector de examen y nivel
-    col1, col2 = st.columns(2)
-    with col1:
-        tipo_examen = st.selectbox(
-            "Examen oficial:",
-            ["DELE", "SIELE", "CELU", "DUCLE"],
-            key="tipo_examen"
-        )
-
-    with col2:
-        nivel_examen = st.selectbox(
-            "Nivel:",
-            ["A1", "A2", "B1", "B2", "C1", "C2"],
-            key="nivel_examen"
-        )
-
-    # Pestañas para las diferentes funcionalidades
-    tabs_examen = st.tabs(
-        ["Modelo de examen", "Simulacro cronometrado", "Criterios de evaluación"])
-
-    with tabs_examen[0]:
-        st.subheader("Modelo de prueba escrita")
-        st.markdown("""
-        Aquí encontrarás un modelo de tarea de expresión escrita similar a la que encontrarás en el examen.
-        Practica sin límite de tiempo y recibe correcciones detalladas.
-        """)
-
-        # Inicialización de variables de sesión para el modelo de examen
-        if "tarea_modelo_generada" not in st.session_state:
-            st.session_state.tarea_modelo_generada = None
-        if "respuesta_modelo_examen" not in st.session_state:
-            st.session_state.respuesta_modelo_examen = ""
-
-        # Botón para generar tarea
-        if st.button("Generar tarea de examen", key="generar_tarea_examen"):
-            # Generar tarea específica para el examen y nivel seleccionados
-            with st.spinner("Generando tarea oficial..."):
-                client = OpenAI(api_key=openai_api_key)
-
-                prompt_tarea = f"""
-                Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
-                La tarea debe incluir:
-                1. Instrucciones claras y precisas
-                2. Contexto o situación comunicativa
-                3. Número de palabras requerido
-                4. Aspectos que se evaluarán
-                
-                El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
-                """
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    temperature=0.7,
-                    messages=[
-                        {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
-                        {"role": "user", "content": prompt_tarea}
-                    ]
-                )
-
-                st.session_state.tarea_modelo_generada = response.choices[0].message.content
-                st.success("✅ Tarea generada correctamente")
-
-        # Mostrar la tarea y área de respuesta si hay una tarea generada
-        if st.session_state.tarea_modelo_generada:
-            with st.expander("Ver instrucciones de la tarea", expanded=True):
-                st.markdown(st.session_state.tarea_modelo_generada)
-
-            # Área para que el estudiante escriba su respuesta
-            st.subheader("Tu respuesta:")
-            respuesta_estudiante = st.text_area(
-                "Escribe tu respuesta a la tarea aquí:",
-                value=st.session_state.respuesta_modelo_examen,
-                height=250,
-                key="respuesta_modelo_examen_area"
+        # Selector de examen y nivel
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_examen = st.selectbox(
+                "Examen oficial:",
+                ["DELE", "SIELE", "CELU", "DUCLE"],
+                key="tipo_examen"
             )
 
-            # Guardar respuesta en session_state
-            st.session_state.respuesta_modelo_examen = respuesta_estudiante
+        with col2:
+            nivel_examen = st.selectbox(
+                "Nivel:",
+                ["A1", "A2", "B1", "B2", "C1", "C2"],
+                key="nivel_examen"
+            )
 
-            # Botones para opciones
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Finalizar y enviar a corrección", key="finalizar_modelo_examen"):
-                    if respuesta_estudiante.strip():
-                        # Preparar datos para la corrección
-                        st.session_state.texto_correccion_corregir = respuesta_estudiante
-                        st.session_state.info_adicional_corregir = f"Tarea {tipo_examen} {nivel_examen}: {st.session_state.tarea_modelo_generada}"
+        # Pestañas para las diferentes funcionalidades
+        tabs_examen = st.tabs(
+            ["Modelo de examen", "Simulacro cronometrado", "Criterios de evaluación"])
 
-                        # Indicar redirección
-                        st.success(
-                            "Respuesta guardada. Redirigiendo a la pestaña de corrección...")
+        with tabs_examen[0]:
+            st.subheader("Modelo de prueba escrita")
+            st.markdown("""
+            Aquí encontrarás un modelo de tarea de expresión escrita similar a la que encontrarás en el examen.
+            Practica sin límite de tiempo y recibe correcciones detalladas.
+            """)
 
-                        # Intentar cambiar a la pestaña de corrección
-                        js = """
-                        <script>
-                            window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
+            # Inicialización de variables de sesión para el modelo de examen
+            if "tarea_modelo_generada" not in st.session_state:
+                st.session_state.tarea_modelo_generada = None
+            if "respuesta_modelo_examen" not in st.session_state:
+                st.session_state.respuesta_modelo_examen = ""
 
-                        # Como fallback, proporcionar instrucciones manuales
-                        st.info(
-                            "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una respuesta antes de enviar a corrección.")
-
-            with col2:
-                if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
-                    # Reiniciar variables
-                    st.session_state.tarea_modelo_generada = None
-                    st.session_state.respuesta_modelo_examen = ""
-                    st.rerun()
-
-    with tabs_examen[1]:
-        st.subheader("Simulacro cronometrado")
-        st.markdown("""
-        Pon a prueba tus habilidades bajo las condiciones reales del examen.
-        Esta prueba está cronometrada según los tiempos oficiales.
-        """)
-
-        tiempo_restante = st.empty()
-
-        if "inicio_simulacro" not in st.session_state:
-            if st.button("Iniciar simulacro", key="iniciar_simulacro"):
-                # Configurar el temporizador
-                st.session_state.inicio_simulacro = time.time()
-                st.session_state.duracion_simulacro = obtener_duracion_examen(
-                    tipo_examen, nivel_examen)
-
-                # Inicializar variable para la respuesta
-                if "simulacro_respuesta_texto" not in st.session_state:
-                    st.session_state.simulacro_respuesta_texto = ""
-
-                st.rerun()
-        else:
-            # Calcular tiempo transcurrido
-            tiempo_transcurrido = time.time() - st.session_state.inicio_simulacro
-            tiempo_restante_segundos = max(
-                0, st.session_state.duracion_simulacro - tiempo_transcurrido)
-
-            # Formatear tiempo restante
-            minutos = int(tiempo_restante_segundos // 60)
-            segundos = int(tiempo_restante_segundos % 60)
-
-            # Mostrar temporizador
-            tiempo_restante.warning(
-                f"⏱️ Tiempo restante: {minutos:02d}:{segundos:02d}")
-
-            # Generar tarea para el simulacro si no existe
-            if "tarea_simulacro" not in st.session_state:
-                with st.spinner("Generando tarea para el simulacro..."):
+            # Botón para generar tarea
+            if st.button("Generar tarea de examen", key="generar_tarea_examen"):
+                # Generar tarea específica para el examen y nivel seleccionados
+                with st.spinner("Generando tarea oficial..."):
                     client = OpenAI(api_key=openai_api_key)
 
                     prompt_tarea = f"""
+                    Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
+                    La tarea debe incluir:
+                    1. Instrucciones claras y precisas
+                    2. Contexto o situación comunicativa
+                    3. Número de palabras requerido
+                    4. Aspectos que se evaluarán
+                    
+                    El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
+                    """
+
+                    response = client.chat.completions.create(
+                        model="gpt-4-turbo",
+                        temperature=0.7,
+                        messages=[
+                            {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
+                            {"role": "user", "content": prompt_tarea}
+                        ]
+                    )
+
+                    st.session_state.tarea_modelo_generada = response.choices[0].message.content
+                    st.success("✅ Tarea generada correctamente")
+
+            # Mostrar la tarea y área de respuesta si hay una tarea generada
+            if st.session_state.tarea_modelo_generada:
+                with st.expander("Ver instrucciones de la tarea", expanded=True):
+                    st.markdown(st.session_state.tarea_modelo_generada)
+
+                # Área para que el estudiante escriba su respuesta
+                st.subheader("Tu respuesta:")
+                respuesta_estudiante = st.text_area(
+                    "Escribe tu respuesta a la tarea aquí:",
+                    value=st.session_state.respuesta_modelo_examen,
+                    height=250,
+                    key="respuesta_modelo_examen_area"
+                )
+
+                # Guardar respuesta en session_state
+                st.session_state.respuesta_modelo_examen = respuesta_estudiante
+
+                # Botones para opciones
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("Finalizar y enviar a corrección", key="finalizar_modelo_examen"):
+        if respuesta_estudiante.strip():
+            # Preparar datos para la corrección
+            st.session_state.texto_correccion_corregir = respuesta_estudiante
+            st.session_state.info_adicional_corregir = f"Tarea {tipo_examen} {nivel_examen}: {st.session_state.tarea_modelo_generada}"
+
+            # Indicar redirección
+            st.success(
+                "Respuesta guardada. Redirigiendo a la pestaña de corrección...")
+
+            # Intentar cambiar a la pestaña de corrección
+            js = """
+            <script>
+                window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
+            </script>
+            """
+            st.markdown(js, unsafe_allow_html=True)
+
+            # Como fallback, proporcionar instrucciones manuales
+            st.info(
+                "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+        else:
+            st.warning(
+                "Por favor, escribe una respuesta antes de enviar a corrección.")
+
+with col2:
+    if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
+        # Reiniciar variables
+        st.session_state.tarea_modelo_generada = None
+        st.session_state.respuesta_modelo_examen = ""
+        st.rerun()
+
+# Contenido de la segunda pestaña
+with tabs_examen[1]:
+    st.subheader("Simulacro cronometrado")
+    st.markdown("""
+    Pon a prueba tus habilidades bajo las condiciones reales del examen.
+    Esta prueba está cronometrada según los tiempos oficiales.
+    """)
+
+    tiempo_restante = st.empty()
+
+    if "inicio_simulacro" not in st.session_state:
+        if st.button("Iniciar simulacro", key="iniciar_simulacro"):
+            # Configurar el temporizador
+            st.session_state.inicio_simulacro = time.time()
+            st.session_state.duracion_simulacro = obtener_duracion_examen(
+                tipo_examen, nivel_examen)
+
+            # Inicializar variable para la respuesta
+            if "simulacro_respuesta_texto" not in st.session_state:
+                st.session_state.simulacro_respuesta_texto = ""
+
+            st.rerun()
+    else:
+        # Calcular tiempo transcurrido
+        tiempo_transcurrido = time.time() - st.session_state.inicio_simulacro
+        tiempo_restante_segundos = max(
+            0, st.session_state.duracion_simulacro - tiempo_transcurrido)
+
+        # Formatear tiempo restante
+        minutos = int(tiempo_restante_segundos // 60)
+        segundos = int(tiempo_restante_segundos % 60)
+
+        # Mostrar temporizador
+        tiempo_restante.warning(
+            f"⏱️ Tiempo restante: {minutos:02d}:{segundos:02d}")
+
+        # Generar tarea para el simulacro si no existe
+        if "tarea_simulacro" not in st.session_state:
+            with st.spinner("Generando tarea para el simulacro..."):
+                client = OpenAI(api_key=openai_api_key)
+
+                prompt_tarea = f"""
                     Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
                     La tarea debe ser concisa e incluir:
                     1. Instrucciones claras
@@ -2322,86 +2325,86 @@ with tab_examenes:
                     3. Extensión requerida
                     """
 
-                    response = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        temperature=0.7,
-                        messages=[
-                            {"role": "system",
-                                "content": "Eres un experto en exámenes oficiales de español."},
-                            {"role": "user", "content": prompt_tarea}
-                        ]
-                    )
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system",
+                            "content": "Eres un experto en exámenes oficiales de español."},
+                        {"role": "user", "content": prompt_tarea}
+                    ]
+                )
 
-                    st.session_state.tarea_simulacro = response.choices[0].message.content
+                st.session_state.tarea_simulacro = response.choices[0].message.content
 
             # Mostrar la tarea
-            with st.expander("Tarea del simulacro:", expanded=True):
-                st.markdown(st.session_state.tarea_simulacro)
+        with st.expander("Tarea del simulacro:", expanded=True):
+            st.markdown(st.session_state.tarea_simulacro)
 
             # Área de texto para respuesta
-            simulacro_respuesta = st.text_area(
-                "Tu respuesta:",
-                value=st.session_state.simulacro_respuesta_texto,
-                height=300,
-                key="simulacro_respuesta_area"
-            )
+        simulacro_respuesta = st.text_area(
+            "Tu respuesta:",
+            value=st.session_state.simulacro_respuesta_texto,
+            height=300,
+            key="simulacro_respuesta_area"
+        )
 
-            # Guardar respuesta en tiempo real
-            st.session_state.simulacro_respuesta_texto = simulacro_respuesta
+        # Guardar respuesta en tiempo real
+        st.session_state.simulacro_respuesta_texto = simulacro_respuesta
 
-            # Opciones para finalizar o reiniciar
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Finalizar y enviar a corrección", key="finalizar_simulacro"):
-                    if simulacro_respuesta.strip():
-                        # Calcular tiempo usado
-                        tiempo_final = time.time() - st.session_state.inicio_simulacro
-                        minutos_usados = int(tiempo_final // 60)
-                        segundos_usados = int(tiempo_final % 60)
-                        tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
+        # Opciones para finalizar o reiniciar
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Finalizar y enviar a corrección", key="finalizar_simulacro"):
+                if simulacro_respuesta.strip():
+                    # Calcular tiempo usado
+                    tiempo_final = time.time() - st.session_state.inicio_simulacro
+                    minutos_usados = int(tiempo_final // 60)
+                    segundos_usados = int(tiempo_final % 60)
+                    tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
 
-                        # Guardar en variables de sesión para corrección
-                        st.session_state.texto_correccion_corregir = simulacro_respuesta
-                        st.session_state.info_adicional_corregir = f"Simulacro {tipo_examen} {nivel_examen} (Tiempo: {tiempo_usado}): {st.session_state.tarea_simulacro}"
+                    # Guardar en variables de sesión para corrección
+                    st.session_state.texto_correccion_corregir = simulacro_respuesta
+                    st.session_state.info_adicional_corregir = f"Simulacro {tipo_examen} {nivel_examen} (Tiempo: {tiempo_usado}): {st.session_state.tarea_simulacro}"
 
-                        # Limpiar variables de control
-                        for key in ["inicio_simulacro", "duracion_simulacro"]:
-                            if key in st.session_state:
-                                del st.session_state[key]
+                    # Limpiar variables de control
+                    for key in ["inicio_simulacro", "duracion_simulacro"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
 
-                        # Mensaje de éxito
-                        st.success(
-                            f"Simulacro completado en {tiempo_usado}. Redirigiendo a corrección...")
+                    # Mensaje de éxito
+                    st.success(
+                        f"Simulacro completado en {tiempo_usado}. Redirigiendo a corrección...")
 
-                        # Intentar redirigir a la pestaña de corrección
-                        js = """
+                    # Intentar redirigir a la pestaña de corrección
+                    js = """
                         <script>
                             window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
                         </script>
                         """
-                        st.markdown(js, unsafe_allow_html=True)
+                    st.markdown(js, unsafe_allow_html=True)
 
-                        # Instrucciones de fallback
-                        st.info(
-                            "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una respuesta antes de finalizar.")
+                    # Instrucciones de fallback
+                    st.info(
+                        "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
+                else:
+                    st.warning(
+                        "Por favor, escribe una respuesta antes de finalizar.")
 
-            with col2:
-                if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
-                    # Limpiar todas las variables del simulacro
-                    for key in ["inicio_simulacro", "duracion_simulacro", "tarea_simulacro", "simulacro_respuesta_texto"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
+        with col2:
+            if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
+                # Limpiar todas las variables del simulacro
+                for key in ["inicio_simulacro", "duracion_simulacro", "tarea_simulacro", "simulacro_respuesta_texto"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
 
             # Verificar si se acabó el tiempo
-            if tiempo_restante_segundos <= 0:
-                st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
-                # Guardar automáticamente (opcional)
-                st.info(
-                    "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
+        if tiempo_restante_segundos <= 0:
+            st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
+            # Guardar automáticamente (opcional)
+            st.info(
+                "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
 
     with tabs_examen[2]:
         st.subheader("Criterios de evaluación")
