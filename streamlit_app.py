@@ -23,6 +23,7 @@ import logging
 from urllib.parse import urlparse
 import uuid
 
+
 # Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
@@ -108,10 +109,10 @@ st.sidebar.title("📝 Textocorrector ELE")
 st.sidebar.info(
     """
     Versión: {0}
-    
+
     Una herramienta para corrección de textos
     en español con análisis contextual avanzado.
-    
+
     ID de sesión: {1}
     """.format(APP_VERSION, st.session_state.session_id[:8])
 )
@@ -658,12 +659,12 @@ def generar_imagen_dalle(tema, nivel):
         # Generar una descripción adaptada al nivel
         descripcion_prompt = f"""
         Crea una descripción en español de esta imagen generada para un estudiante de nivel {nivel}.
-        
+
         La descripción debe:
         1. Ser apropiada para el nivel {nivel}
         2. Utilizar vocabulario y estructuras gramaticales de ese nivel
         3. Incluir entre 3-5 preguntas al final para que el estudiante practique describiendo la imagen
-        
+
         Tema de la imagen: {tema}
         """
 
@@ -686,7 +687,7 @@ def generar_imagen_dalle(tema, nivel):
         return imagen_url, descripcion
 
     except Exception as e:
-        logger.error(f"Error al generar imagen: {str(e)}")
+        handle_exception("generar_imagen_dalle", e)
         circuit_breaker.record_failure("openai")
         return None, f"Error: {str(e)}"
 
@@ -744,8 +745,7 @@ def transcribir_imagen_texto(imagen_bytes, idioma="es"):
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        error_msg = f"Error al transcribir la imagen: {str(e)}"
-        logger.error(error_msg)
+        handle_exception("transcribir_imagen_texto", e)
         circuit_breaker.record_failure("openai")
         return f"Error en la transcripción: {str(e)}"
 
@@ -1142,44 +1142,63 @@ def obtener_duracion_examen(tipo_examen, nivel_examen):
     Returns:
         int: Duración en segundos
     """
-    # Mapeo de duraciones según examen y nivel
-    duraciones = {
-        "DELE": {
-            "A1": 25 * 60,  # 25 minutos
-            "A2": 30 * 60,
-            "B1": 40 * 60,
-            "B2": 60 * 60,
-            "C1": 80 * 60,
-            "C2": 90 * 60
-        },
-        "SIELE": {
-            "A1": 20 * 60,
-            "A2": 25 * 60,
-            "B1": 35 * 60,
-            "B2": 50 * 60,
-            "C1": 70 * 60,
-            "C2": 80 * 60
-        },
-        "CELU": {
-            "A1": 30 * 60,
-            "A2": 35 * 60,
-            "B1": 45 * 60,
-            "B2": 60 * 60,
-            "C1": 75 * 60,
-            "C2": 90 * 60
-        },
-        "DUCLE": {
-            "A1": 20 * 60,
-            "A2": 25 * 60,
-            "B1": 30 * 60,
-            "B2": 40 * 60,
-            "C1": 50 * 60,
-            "C2": 60 * 60
-        }
-    }
+    try:
+        # Verificar que los parámetros son válidos
+        if tipo_examen is None or nivel_examen is None:
+            logger.warning(
+                "Parámetros inválidos en obtener_duracion_examen: tipo_examen o nivel_examen es None")
+            return 45 * 60  # 45 minutos por defecto
 
-    # Default: 45 minutos si no se encuentra el examen o nivel
-    return duraciones.get(tipo_examen, {}).get(nivel_examen, 45 * 60)
+        # Mapeo de duraciones según examen y nivel
+        duraciones = {
+            "DELE": {
+                "A1": 25 * 60,  # 25 minutos
+                "A2": 30 * 60,
+                "B1": 40 * 60,
+                "B2": 60 * 60,
+                "C1": 80 * 60,
+                "C2": 90 * 60
+            },
+            "SIELE": {
+                "A1": 20 * 60,
+                "A2": 25 * 60,
+                "B1": 35 * 60,
+                "B2": 50 * 60,
+                "C1": 70 * 60,
+                "C2": 80 * 60
+            },
+            "CELU": {
+                "A1": 30 * 60,
+                "A2": 35 * 60,
+                "B1": 45 * 60,
+                "B2": 60 * 60,
+                "C1": 75 * 60,
+                "C2": 90 * 60
+            },
+            "DUCLE": {
+                "A1": 20 * 60,
+                "A2": 25 * 60,
+                "B1": 30 * 60,
+                "B2": 40 * 60,
+                "C1": 50 * 60,
+                "C2": 60 * 60
+            }
+        }
+
+        # Intentar obtener la duración específica
+        duracion = duraciones.get(tipo_examen, {}).get(nivel_examen)
+
+        # Si no se encuentra, usar el valor por defecto
+        if duracion is None:
+            logger.info(
+                f"No se encontró duración para {tipo_examen} nivel {nivel_examen}, usando valor por defecto")
+            duracion = 45 * 60  # 45 minutos por defecto
+
+        return duracion
+
+    except Exception as e:
+        logger.error(f"Error en obtener_duracion_examen: {str(e)}")
+        return 45 * 60  # 45 minutos por defecto
 
 
 def extraer_titulo(texto):
@@ -1226,18 +1245,18 @@ def analizar_complejidad_texto(texto):
     try:
         # Prompt para análisis de complejidad
         prompt_analisis = f"""
-        Analiza la complejidad lingüística del siguiente texto en español. 
+        Analiza la complejidad lingüística del siguiente texto en español.
         Proporciona un análisis detallado que incluya:
-        
+
         1. Complejidad léxica (variedad de vocabulario, riqueza léxica, palabras poco comunes)
         2. Complejidad sintáctica (longitud de frases, subordinación, tipos de oraciones)
         3. Complejidad textual (coherencia, cohesión, estructura general)
         4. Nivel MCER estimado (A1-C2) con explicación
         5. Índices estadísticos: TTR (type-token ratio), densidad léxica, índice Flesh-Szigriszt (adaptado al español)
-        
+
         Texto a analizar:
         "{texto}"
-        
+
         Devuelve el análisis ÚNICAMENTE en formato JSON con la siguiente estructura:
         {{
           "complejidad_lexica": {{
@@ -1295,10 +1314,9 @@ def analizar_complejidad_texto(texto):
         return analisis_data
 
     except Exception as e:
-        error_msg = f"Error al analizar complejidad: {str(e)}"
-        logger.error(error_msg)
+        handle_exception("analizar_complejidad_texto", e)
         circuit_breaker.record_failure("openai")
-        return {"error": error_msg}
+        return {"error": f"Error al analizar complejidad: {str(e)}"}
 
 # --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO ---
 
@@ -1319,39 +1337,40 @@ def corregir_texto(texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, 
     Returns:
         dict: Resultado de la corrección o mensaje de error
     """
-    client = get_openai_client()
-    if client is None:
-        return {"error": "Servicio de corrección no disponible. Verifique la conexión."}
+    try:
+        client = get_openai_client()
+        if client is None:
+            return {"error": "Servicio de corrección no disponible. Verifique la conexión."}
 
-    if not circuit_breaker.can_execute("openai"):
-        return {"error": "Servicio temporalmente no disponible. Inténtelo más tarde."}
+        if not circuit_breaker.can_execute("openai"):
+            return {"error": "Servicio temporalmente no disponible. Inténtelo más tarde."}
 
-    # Validar la entrada
-    if not texto or not nombre:
-        return {"error": "El texto y el nombre son obligatorios."}
+        # Validar la entrada
+        if not texto or not nombre:
+            return {"error": "El texto y el nombre son obligatorios."}
 
-    # Mapeo de niveles para instrucciones más específicas
-    nivel_map_instrucciones = {
-        "Nivel principiante (A1-A2)": {
-            "descripcion": "principiante (A1-A2)",
-            "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
-        },
-        "Nivel intermedio (B1-B2)": {
-            "descripcion": "intermedio (B1-B2)",
-            "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
-        },
-        "Nivel avanzado (C1-C2)": {
-            "descripcion": "avanzado (C1-C2)",
-            "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
+        # Mapeo de niveles para instrucciones más específicas
+        nivel_map_instrucciones = {
+            "Nivel principiante (A1-A2)": {
+                "descripcion": "principiante (A1-A2)",
+                "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
+            },
+            "Nivel intermedio (B1-B2)": {
+                "descripcion": "intermedio (B1-B2)",
+                "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
+            },
+            "Nivel avanzado (C1-C2)": {
+                "descripcion": "avanzado (C1-C2)",
+                "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
+            }
         }
-    }
 
-    # Usar nivel intermedio como fallback
-    nivel_info = nivel_map_instrucciones.get(
-        nivel, nivel_map_instrucciones["Nivel intermedio (B1-B2)"])
+        # Usar nivel intermedio como fallback
+        nivel_info = nivel_map_instrucciones.get(
+            nivel, nivel_map_instrucciones["Nivel intermedio (B1-B2)"])
 
-    # Instrucciones para el modelo de IA con análisis contextual avanzado
-    system_message = f"""
+        # Instrucciones para el modelo de IA con análisis contextual avanzado
+        system_message = f"""
 Eres Diego, un profesor experto en ELE (Español como Lengua Extranjera) especializado en análisis lingüístico contextual.
 Tu objetivo es corregir textos adaptando tu feedback al nivel {nivel_info['descripcion']} del estudiante.
 {nivel_info['enfoque']}
@@ -1447,8 +1466,8 @@ IMPORTANTE:
 No devuelvas ningún texto extra fuera de este JSON.
 """
 
-    # Mensaje para el usuario con contexto adicional
-    user_message = f"""
+        # Mensaje para el usuario con contexto adicional
+        user_message = f"""
 Texto del alumno:
 \"\"\"
 {texto}
@@ -1461,37 +1480,42 @@ Contexto cultural: {contexto_cultural}
 {f"Información adicional: {info_adicional}" if info_adicional else ""}
 """
 
-    try:
-        # Enviar solicitud a OpenAI
-        raw_output, data_json = obtener_json_de_ia(
-            system_message, user_message, model="gpt-4-turbo", max_retries=3)
+        try:
+            # Enviar solicitud a OpenAI
+            raw_output, data_json = obtener_json_de_ia(
+                system_message, user_message, model="gpt-4-turbo", max_retries=3)
 
-        # Verificar si hay error en la respuesta
-        if raw_output is None or "error" in data_json:
-            error_msg = data_json.get(
-                "error", "Error desconocido en el procesamiento")
-            logger.error(f"Error en corrección: {error_msg}")
+            # Verificar si hay error en la respuesta
+            if raw_output is None or "error" in data_json:
+                error_msg = data_json.get(
+                    "error", "Error desconocido en el procesamiento")
+                logger.error(f"Error en corrección: {error_msg}")
+                return {"error": error_msg}
+
+            # Registrar éxito
+            circuit_breaker.record_success("openai")
+
+            # Guardar corrección si hay conexión a Google Sheets
+            if sheets_connection is not None:
+                resultado_guardado = guardar_correccion(
+                    nombre, nivel, idioma, texto, raw_output)
+                if not resultado_guardado["success"]:
+                    logger.warning(
+                        f"No se pudo guardar la corrección: {resultado_guardado['message']}")
+
+            # Devolver resultado
+            return data_json
+
+        except Exception as e:
+            error_msg = f"Error al corregir texto: {str(e)}"
+            logger.error(error_msg)
+            circuit_breaker.record_failure("openai")
             return {"error": error_msg}
 
-        # Registrar éxito
-        circuit_breaker.record_success("openai")
-
-        # Guardar corrección si hay conexión a Google Sheets
-        if sheets_connection is not None:
-            resultado_guardado = guardar_correccion(
-                nombre, nivel, idioma, texto, raw_output)
-            if not resultado_guardado["success"]:
-                logger.warning(
-                    f"No se pudo guardar la corrección: {resultado_guardado['message']}")
-
-        # Devolver resultado
-        return data_json
-
     except Exception as e:
-        error_msg = f"Error al corregir texto: {str(e)}"
-        logger.error(error_msg)
-        circuit_breaker.record_failure("openai")
-        return {"error": error_msg}
+        handle_exception("corregir_texto", e)
+        return {"error": f"Error al corregir texto: {str(e)}"}
+
     # --- 1. GENERACIÓN DE INFORMES EN DIFERENTES FORMATOS ---
 
 
@@ -1513,6 +1537,9 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         BytesIO: Buffer con el documento generado
     """
     try:
+        # Añadir información de depuración
+        logger.info(f"Iniciando generación de informe DOCX para {nombre}")
+
         doc = Document()
 
         # Estilo del documento
@@ -1597,58 +1624,80 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         doc.add_paragraph(consejo_final)
 
         # Generar QR code
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4,
-        )
+        logger.info("Generando código QR para el informe")
+        try:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
 
-        # Generar un ID único para el informe
-        informe_id = f"{nombre.replace(' ', '')}_{fecha.replace(' ', '_').replace(':', '-')}"
-        qr_data = f"textocorrector://informe/{informe_id}"
-        qr.add_data(qr_data)
-        qr.make(fit=True)
+            # Generar un ID único para el informe
+            informe_id = f"{nombre.replace(' ', '')}_{fecha.replace(' ', '_').replace(':', '-')}"
+            qr_data = f"textocorrector://informe/{informe_id}"
+            qr.add_data(qr_data)
+            qr.make(fit=True)
 
-        img = qr.make_image(fill_color="black", back_color="white")
+            img = qr.make_image(fill_color="black", back_color="white")
 
-        # Guardar QR como imagen temporal
-        qr_buffer = BytesIO()
-        img.save(qr_buffer)
-        qr_buffer.seek(0)
+            # Guardar QR como imagen temporal
+            qr_buffer = BytesIO()
+            img.save(qr_buffer)
+            qr_buffer.seek(0)
 
-        # Añadir la imagen del QR al documento
-        doc.add_heading('Acceso online', level=1)
-        doc.add_paragraph(
-            'Escanea este código QR para acceder a este informe online:')
-        doc.add_picture(qr_buffer, width=Inches(2.0))
+            # Añadir la imagen del QR al documento
+            doc.add_heading('Acceso online', level=1)
+            doc.add_paragraph(
+                'Escanea este código QR para acceder a este informe online:')
+            doc.add_picture(qr_buffer, width=Inches(2.0))
+
+            # Cerrar el buffer del QR
+            qr_buffer.close()
+
+            logger.info("Código QR generado correctamente")
+        except Exception as qr_error:
+            logger.error(f"Error al generar QR: {str(qr_error)}")
+            # Continuar sin el QR
 
         # Guardar el documento en memoria
+        logger.info("Guardando documento DOCX en memoria")
         docx_buffer = BytesIO()
         doc.save(docx_buffer)
         docx_buffer.seek(0)
 
-        # Cerrar el buffer del QR
-        qr_buffer.close()
+        # Verificar tamaño del buffer
+        buffer_size = len(docx_buffer.getvalue())
+        logger.info(
+            f"Documento DOCX generado correctamente. Tamaño: {buffer_size} bytes")
+
+        if buffer_size == 0:
+            logger.error("¡El buffer del documento tiene tamaño cero!")
+            raise ValueError("El documento generado está vacío")
 
         return docx_buffer
 
     except Exception as e:
-        logger.error(f"Error al generar informe DOCX: {str(e)}")
-        # Devolver un documento simple con mensaje de error
+        logger.error(f"Error detallado al generar informe DOCX: {str(e)}")
+        logger.error(traceback.format_exc())
+
+        # Mostrar error detallado sin interrumpir la aplicación
         try:
             doc = Document()
             doc.add_heading('Error al generar informe', 0)
             doc.add_paragraph(
                 f"Se produjo un error al generar el informe: {str(e)}")
+            doc.add_paragraph(
+                f"Detalles técnicos: {traceback.format_exc()[:500]}...")
             doc.add_paragraph("Por favor, contacte con soporte técnico.")
 
             docx_buffer = BytesIO()
             doc.save(docx_buffer)
             docx_buffer.seek(0)
             return docx_buffer
-        except:
-            # Si todo falla, devolver None
+        except Exception as inner_e:
+            logger.error(
+                f"Error secundario al generar informe de error: {str(inner_e)}")
             return None
 
 
@@ -2105,11 +2154,11 @@ def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, id
         - Errores léxicos: {len(errores_lexico)} {f"(ejemplos: {ejemplos_lexico})" if ejemplos_lexico else ""}
         - Errores de puntuación: {len(errores_puntuacion)}
         - Errores de estructura: {len(errores_estructura)}
-        
+
         - Puntuación en coherencia: {coherencia.get('puntuacion', 0)}/10
         - Puntuación en cohesión: {cohesion.get('puntuacion', 0)}/10
         - Registro lingüístico: {registro.get('tipo_detectado', 'No especificado')}
-        
+
         Crea ejercicios breves y específicos en formato JSON con esta estructura:
         {{
           "ejercicios": [
@@ -2158,8 +2207,7 @@ def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, id
         return ejercicios_data
 
     except Exception as e:
-        error_msg = f"Error al generar ejercicios: {str(e)}"
-        logger.error(error_msg)
+        handle_exception("generar_ejercicios_personalizado", e)
         circuit_breaker.record_failure("openai")
         return {"ejercicios": [{"titulo": "Error en la generación",
                                 "tipo": "Error controlado",
@@ -2291,18 +2339,18 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
 
             # Prompt para la IA
             prompt_plan = f"""
-            Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual} 
-            con los siguientes errores frecuentes: {errores_frecuentes} 
-            
+            Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual}
+            con los siguientes errores frecuentes: {errores_frecuentes}
+
             Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
             Para cada semana, incluye:
-            
+
             1. Objetivos específicos
             2. Temas gramaticales a trabajar
             3. Vocabulario a practicar
             4. 1-2 actividades concretas
             5. Recursos o materiales recomendados
-            
+
             Adapta todo el contenido al nivel del estudiante y sus necesidades específicas.
             """
 
@@ -2348,10 +2396,9 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
             return {"error": "No se encontraron columnas necesarias en los datos", "plan": None}
 
     except Exception as e:
-        error_msg = f"Error al generar plan de estudio: {str(e)}"
-        logger.error(error_msg)
+        handle_exception("generar_plan_estudio_personalizado", e)
         circuit_breaker.record_failure("openai")
-        return {"error": error_msg, "plan": None}
+        return {"error": f"Error al generar plan de estudio: {str(e)}", "plan": None}
 
 # --- 4. GENERACIÓN DE TAREAS Y EJEMPLOS DE EXAMEN ---
 
@@ -2383,7 +2430,7 @@ def generar_tarea_examen(tipo_examen, nivel_examen):
         2. Contexto o situación comunicativa
         3. Número de palabras requerido
         4. Aspectos que se evaluarán
-        
+
         El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
         La tarea debe ser apropiada para el nivel {nivel_examen}, siguiendo los estándares oficiales.
         """
@@ -2433,9 +2480,9 @@ def generar_ejemplos_evaluados(tipo_examen, nivel_examen):
     try:
         # Prompt para generación de ejemplos
         prompt_ejemplos = f"""
-        Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen}, 
+        Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen},
         junto con una evaluación detallada usando los criterios oficiales.
-        Muestra: 
+        Muestra:
         1. La tarea solicitada
         2. El texto del estudiante (con algunos errores típicos de ese nivel)
         3. Evaluación punto por punto según los criterios oficiales
@@ -2745,6 +2792,10 @@ def ui_countdown_timer(total_seconds, start_time=None):
     Returns:
         dict: Estado del temporizador
     """
+    # Manejar el caso donde total_seconds es None
+    if total_seconds is None:
+        total_seconds = 0  # Usar 0 como valor por defecto
+
     if start_time is None:
         start_time = time.time()
 
@@ -2757,8 +2808,12 @@ def ui_countdown_timer(total_seconds, start_time=None):
     segundos = int(tiempo_restante_segundos % 60)
     tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
 
-    # Calcular porcentaje
-    porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+    # Calcular porcentaje (evitar división por cero)
+    if total_seconds > 0:
+        porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+    else:
+        porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
+
     porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
 
     # Determinar color según tiempo restante
@@ -3269,12 +3324,97 @@ def ui_feedback_form():
                 }
 
             return None
+
+
+def handle_exception(func_name, exception, show_user=True):
+    """
+    Función de utilidad para manejar excepciones de manera consistente.
+
+    Args:
+        func_name: Nombre de la función donde ocurrió el error
+        exception: La excepción capturada
+        show_user: Si se debe mostrar un mensaje al usuario
+
+    Returns:
+        None
+    """
+    error_msg = f"Error en {func_name}: {str(exception)}"
+    logger.error(error_msg)
+    logger.error(traceback.format_exc())
+
+    if show_user:
+        st.error(f"⚠️ {error_msg}")
+        with st.expander("Detalles técnicos", expanded=False):
+            st.code(traceback.format_exc())
+
+    return None
+
+
+def ui_tooltip(text, tooltip):
+    """
+    Muestra un texto con tooltip al pasar el ratón.
+
+    Args:
+        text: Texto a mostrar
+        tooltip: Texto del tooltip
+    """
+    st.markdown(f"""
+    <span title="{tooltip}" style="border-bottom: 1px dotted #000; cursor: help;">
+        {text}
+    </span>
+    """, unsafe_allow_html=True)
+
+
+def ui_feedback_form():
+    """
+    Muestra un formulario de feedback para el usuario.
+
+    Returns:
+        dict: Datos del feedback o None si no se envía
+    """
+    with st.expander("📝 Danos tu opinión", expanded=False):
+        with st.form(key="feedback_form"):
+            st.markdown("### Nos gustaría conocer tu opinión")
+
+            rating = st.slider(
+                "¿Cómo valorarías la utilidad de esta herramienta?",
+                min_value=1,
+                max_value=5,
+                value=4,
+                help="1 = Poco útil, 5 = Muy útil"
+            )
+
+            feedback_text = st.text_area(
+                "Comentarios o sugerencias:",
+                height=100,
+                help="¿Qué podríamos mejorar?"
+            )
+
+            submit = st.form_submit_button("Enviar feedback")
+
+            if submit:
+                # En una implementación real, aquí se enviaría el feedback a una base de datos
+                ui_success_message("¡Gracias por tu feedback!")
+                return {
+                    "rating": rating,
+                    "feedback": feedback_text,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+            return None
         # --- 1. PESTAÑA DE CORRECCIÓN DE TEXTO ---
 
 
 # Actualización del llamado a la función en tab_corregir
 def tab_corregir():
     """Implementación de la pestaña de corrección de texto."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
     st.header("📝 Corrección de texto")
 
     with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
@@ -3284,7 +3424,7 @@ def tab_corregir():
         - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
         - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
         - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
-        
+
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
 
@@ -3337,45 +3477,45 @@ def tab_corregir():
                     set_session_var("usar_consigna_como_texto", True)
                     st.rerun()  # Recargar para actualizar el formulario
 
-    # FORMULARIO DE CORRECCIÓN
-    with st.form(key="formulario_corregir"):
-        # Opciones de corrección
-        options = ui_idioma_correcciones_tipo()
 
-        # Texto inicial con contenido de la consigna si está disponible
-        texto_inicial = ""
-        if get_session_var("usar_consigna_como_texto", False) and "consigna_actual" in st.session_state:
-            texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
-            # Reset para no añadirlo cada vez
-            set_session_var("usar_consigna_como_texto", False)
+# FORMULARIO DE CORRECCIÓN
+with st.form(key="formulario_corregir"):
+    # Opciones de corrección
+    options = ui_idioma_correcciones_tipo()
 
-        # Área de texto para la corrección
-        texto = st.text_area(
-            "Escribe tu texto aquí:",
-            value=texto_inicial,
-            height=250,
-            key="texto_correccion_corregir"
-        )
+    # Texto inicial con contenido de la consigna si está disponible
+    texto_inicial = ""
+    if get_session_var("usar_consigna_como_texto", False) and "consigna_actual" in st.session_state:
+        texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
+        # Reset para no añadirlo cada vez
+        set_session_var("usar_consigna_como_texto", False)
 
-        info_adicional = st.text_area(
-            "Información adicional o contexto (opcional):",
-            value=get_session_var("info_adicional_corregir", ""),
-            height=100,
-            key="info_adicional_corregir"
-        )
+    # Área de texto para la corrección
+    texto = st.text_area(
+        "Escribe tu texto aquí:",
+        value=texto_inicial,
+        height=250,
+        key="texto_correccion_corregir"
+    )
 
-        # Guardar para referencia futura
-        set_session_var("info_adicional_corregir", info_adicional)
+    info_adicional = st.text_area(
+        "Información adicional o contexto (opcional):",
+        value=get_session_var("info_adicional_corregir", ""),
+        height=100,
+        key="info_adicional_widget_key"  # Clave diferente para el widget
+    )
 
-        # Botón de envío
-        enviar = st.form_submit_button("Corregir", use_container_width=True)
+    # Guardar sin conflicto (dentro del formulario, pero fuera de la definición del widget)
+    set_session_var("info_adicional_corregir", info_adicional)
 
-    # PROCESAMIENTO DEL FORMULARIO
-    if enviar:
-        if not texto.strip():
-            st.warning("Por favor, escribe un texto para corregir.")
-            return
+    # Botón de envío (corregida la indentación)
+    enviar = st.form_submit_button("Corregir", use_container_width=True)
 
+# PROCESAMIENTO DEL FORMULARIO
+if enviar:
+    if not texto.strip():
+        st.warning("Por favor, escribe un texto para corregir.")
+    else:
         # Guardar el texto para posible uso futuro
         set_session_var("ultimo_texto", texto)
 
@@ -3699,29 +3839,58 @@ def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
     tiempo_restante_placeholder = st.empty()
 
     # Verificar si el simulacro está en progreso
-    if "inicio_simulacro" not in st.session_state:
+    if "inicio_simulacro" not in st.session_state or get_session_var("inicio_simulacro") is None:
         if st.button("Iniciar simulacro", key="iniciar_simulacro"):
-            # Configurar el temporizador
-            set_session_var("inicio_simulacro", time.time())
-            set_session_var("duracion_simulacro",
-                            obtener_duracion_examen(tipo_examen, nivel_examen))
+            try:
+                # Configurar el temporizador con verificación
+                duracion = obtener_duracion_examen(tipo_examen, nivel_examen)
+                if duracion is None or duracion <= 0:
+                    st.warning(
+                        "No se pudo determinar la duración del examen. Usando 45 minutos por defecto.")
+                    duracion = 45 * 60  # 45 minutos por defecto
 
-            # Inicializar variable para la respuesta
-            if "simulacro_respuesta_texto" not in st.session_state:
-                set_session_var("simulacro_respuesta_texto", "")
+                set_session_var("inicio_simulacro", time.time())
+                set_session_var("duracion_simulacro", duracion)
 
-            # Generar tarea para el simulacro
-            tarea_simulacro = generar_tarea_examen(tipo_examen, nivel_examen)
-            set_session_var("tarea_simulacro", tarea_simulacro)
+                # Inicializar variable para la respuesta
+                if "simulacro_respuesta_texto" not in st.session_state:
+                    set_session_var("simulacro_respuesta_texto", "")
 
-            st.rerun()  # Refrescar para mostrar el simulacro
+                # Generar tarea para el simulacro
+                tarea_simulacro = generar_tarea_examen(
+                    tipo_examen, nivel_examen)
+                if tarea_simulacro:
+                    set_session_var("tarea_simulacro", tarea_simulacro)
+                else:
+                    set_session_var(
+                        "tarea_simulacro", "No se pudo generar la tarea. Por favor, inténtalo de nuevo.")
+
+                st.rerun()  # Refrescar para mostrar el simulacro
+            except Exception as e:
+                handle_exception("iniciar_simulacro", e)
+                st.error(f"Error al iniciar el simulacro: {str(e)}")
     else:
-        # Simulacro en progreso
-        inicio_simulacro = get_session_var("inicio_simulacro")
-        duracion_simulacro = get_session_var("duracion_simulacro")
 
-        # Obtener estado del temporizador
-        timer_state = ui_countdown_timer(duracion_simulacro, inicio_simulacro)
+        try:
+
+            # Simulacro en progreso
+            inicio_simulacro = get_session_var("inicio_simulacro")
+            duracion_simulacro = get_session_var("duracion_simulacro")
+
+            # Verificar que los valores sean válidos
+            if inicio_simulacro is None or duracion_simulacro is None:
+                st.warning("Datos del simulacro incorrectos. Reiniciando...")
+                set_session_var("inicio_simulacro", None)
+                set_session_var("duracion_simulacro", None)
+                st.rerun()
+
+            # Obtener estado del temporizador
+            timer_state = ui_countdown_timer(
+                duracion_simulacro, inicio_simulacro)
+        except Exception as e:
+            # Manejo genérico de errores
+            handle_exception("simulacro_timer", e)
+            st.error(f"Error en el temporizador del simulacro: {str(e)}")
 
         # Mostrar temporizador según el estado
         if timer_state["color"] == "normal":
@@ -3835,6 +4004,13 @@ def criterios_evaluacion_tab(tipo_examen, nivel_examen):
 
 def tab_herramientas():
     """Implementación de la pestaña de herramientas complementarias."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
     st.header("🔧 Herramientas complementarias")
 
     # Verificar si hay usuario
@@ -4272,6 +4448,13 @@ def herramienta_texto_manuscrito():
 
 def tab_progreso():
     """Implementación de la pestaña de progreso."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
     st.header("📊 Seguimiento del progreso")
 
     # Verificar si hay usuario
@@ -4350,8 +4533,8 @@ def estadisticas_progreso_tab():
 
                         # Comparar total de errores
                         if "Total Errores" in primera and "Total Errores" in ultima:
-                            dif_errores = ultima['Total Errores'] - \
-                                primera['Total Errores']
+                            dif_errores = int(
+                                ultima['Total Errores']) - int(primera['Total Errores'])
 
                             if dif_errores < 0:
                                 st.success(
@@ -4373,7 +4556,8 @@ def estadisticas_progreso_tab():
                                 difs = {}
                                 for cat in categorias_existentes:
                                     if cat in primera and cat in ultima:
-                                        difs[cat] = ultima[cat] - primera[cat]
+                                        difs[cat] = int(
+                                            ultima[cat]) - int(primera[cat])
 
                                 if difs:
                                     mejor_area = min(
@@ -4511,6 +4695,13 @@ def plan_estudio_tab():
 
 def tab_historial():
     """Implementación de la pestaña de historial."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
     st.header("📚 Historial de correcciones")
 
     # Verificar si hay usuario
