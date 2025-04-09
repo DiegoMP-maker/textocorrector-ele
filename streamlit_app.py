@@ -4926,7 +4926,7 @@ def init_app():
             "⚠️ Algunas funcionalidades están limitadas debido a configuraciones incompletas.")
 
     # Manejar parámetros de URL
-    handle_url_params()
+    handle_url_params_fix()
 
     # Comprobar si es la primera ejecución
     if "app_initialized" not in st.session_state:
