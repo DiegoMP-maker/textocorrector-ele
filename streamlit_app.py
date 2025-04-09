@@ -2574,14 +2574,17 @@ def ui_header():
         """, unsafe_allow_html=True)
 
 
-def ui_user_info_form():
+def ui_user_info_form(form_key="form_user_info"):
     """
     Formulario para obtener información básica del usuario.
+
+    Args:
+        form_key: Clave única para el formulario
 
     Returns:
         dict: Datos del usuario (nombre, nivel)
     """
-    with st.form(key="form_user_info"):
+    with st.form(key=form_key):
         col1, col2 = st.columns(2)
 
         with col1:
@@ -3285,7 +3288,7 @@ def tab_corregir():
         """)
 
     # Obtener datos del usuario
-    user_data = ui_user_info_form()
+    user_data = ui_user_info_form(form_key="form_user_info_corregir")
 
     # Si no hay datos, no continuar
     if not user_data:
@@ -3569,7 +3572,7 @@ def tab_examenes():
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
         # Mostrar formulario básico de usuario
-        user_data = ui_user_info_form()
+        user_data = ui_user_info_form(form_key="form_user_info_examenes")
         if not user_data:
             return
 
@@ -3839,7 +3842,7 @@ def tab_herramientas():
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
         # Mostrar formulario básico de usuario
-        user_data = ui_user_info_form()
+        user_data = ui_user_info_form(form_key="form_user_info_herramientas")
         if not user_data:
             return
 
@@ -4276,7 +4279,7 @@ def tab_progreso():
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
         # Mostrar formulario básico de usuario
-        user_data = ui_user_info_form()
+        user_data = ui_user_info_form(form_key="form_user_info_progreso")
         if not user_data:
             return
 
@@ -4870,22 +4873,26 @@ def main():
 
 def handle_url_params():
     """Maneja los parámetros de URL para navegación entre páginas."""
-    # Obtener parámetros de URL
-    query_params = st.experimental_get_query_params()
+    # Obtener parámetros de URL - usar API actual en lugar de experimental
+    query_params = st.query_params
 
     # Manejar la selección de nombre
     if "nombre_seleccionado" in query_params:
-        nombre = query_params["nombre_seleccionado"][0]
+        nombre = query_params["nombre_seleccionado"]
         if nombre:
             set_session_var("usuario_actual", nombre)
 
     # Manejar redirección a pestañas
     if "tab" in query_params:
-        tab = query_params["tab"][0]
+        tab = query_params["tab"]
         st.session_state.active_tab = tab
 
-    # Limpiar parámetros después de procesarlos
-    st.experimental_set_query_params()
+    # Limpiar parámetros después de procesarlos - usar API actual
+    # Nota: Con la nueva API, debemos eliminar cada parámetro individualmente
+    if "nombre_seleccionado" in query_params:
+        del st.query_params["nombre_seleccionado"]
+    if "tab" in query_params:
+        del st.query_params["tab"]
 
 # --- 3. INICIALIZACIÓN DE LA APLICACIÓN ---
 
