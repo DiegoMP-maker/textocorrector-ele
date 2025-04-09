@@ -19,171 +19,542 @@ from PIL import Image
 import qrcode
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
+import logging
+from urllib.parse import urlparse
+import uuid
 
-# Importar el asistente de escritura en tiempo real
-from real_time_writing_assistant import RealTimeWritingAssistant
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
+# Configuración de la página
+st.set_page_config(
+    page_title="Textocorrector ELE",
+    page_icon="📝",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Configuración de cache y timeout
+st.cache_data.clear()
+
+# Versión de la aplicación
+APP_VERSION = "2.0.0"
+
+# Inicializar variables de session_state si no existen
+
+
+def init_session_state():
+    """
+    Inicializa variables de session_state con valores predeterminados seguros
+    para evitar KeyError durante la ejecución.
+    """
+    default_values = {
+        "nivel_estudiante": "intermedio",
+        "consigna_actual": "",
+        "usar_consigna_como_texto": False,
+        "texto_correccion_corregir": "",
+        "info_adicional_corregir": "",
+        "ultima_imagen_url": "",
+        "ultima_descripcion": "",
+        "ultimo_texto_transcrito": "",
+        "tarea_modelo_generada": None,
+        "respuesta_modelo_examen": "",
+        "inicio_simulacro": None,
+        "duracion_simulacro": None,
+        "tarea_simulacro": None,
+        "simulacro_respuesta_texto": "",
+        "request_id": "",
+        "usuario_actual": "",
+        "correction_result": None,
+        "last_correction_time": None,
+        "examen_result": None,
+        "api_error_count": 0,
+        "api_last_error_time": None,
+        "circuit_breaker_open": False
+    }
+
+    for key, default_value in default_values.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+
+# Inicializar session_state
+init_session_state()
+
+# Funciones seguras para acceso a session_state
+
+
+def get_session_var(key, default=None):
+    """Obtiene una variable de session_state de forma segura"""
+    return st.session_state.get(key, default)
+
+
+def set_session_var(key, value):
+    """Establece una variable en session_state"""
+    st.session_state[key] = value
+
+
+# Generar ID único para esta sesión si no existe
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+# Mensaje de bienvenida en sidebar
+st.sidebar.title("📝 Textocorrector ELE")
+st.sidebar.info(
+    """
+    Versión: {0}
+    
+    Una herramienta para corrección de textos
+    en español con análisis contextual avanzado.
+    
+    ID de sesión: {1}
+    """.format(APP_VERSION, st.session_state.session_id[:8])
+)
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
-openai_api_key = st.secrets["OPENAI_API_KEY"]
-elevenlabs_api_key = st.secrets["ELEVENLABS_API_KEY"]
-elevenlabs_voice_id = st.secrets["ELEVENLABS_VOICE_ID"]
 
-# --- 2. CONEXIÓN A GOOGLE SHEETS ---
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-client_gsheets = gspread.authorize(creds)
 
-# IDs de los documentos
-# Historial_Correcciones_ELE
-CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"
-TRACKING_DOC_ID = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"  # Seguimiento
+def get_api_keys():
+    """
+    Obtiene las claves de API de los secretos de Streamlit con manejo de errores.
+    Permite la operación en modo degradado si faltan claves.
+    """
+    keys = {
+        "openai": None,
+        "elevenlabs": {"api_key": None, "voice_id": None},
+        "google_credentials": None
+    }
 
-# --- Abrir documento de correcciones (Historial_Correcciones_ELE) ---
-try:
-    corrections_sheet = client_gsheets.open_by_key(CORRECTIONS_DOC_ID).sheet1
-    st.success("✅ Conectado a Historial_Correcciones_ELE correctamente.")
-except Exception as e:
-    st.error(f"❌ Error al conectar con Historial_Correcciones_ELE: {e}")
-    st.stop()
-
-# --- Verificar y preparar documento de seguimiento ---
-try:
-    tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
-    hojas = [hoja.title for hoja in tracking_doc.worksheets()]
-
-    # Verificar si existe la hoja Seguimiento
     try:
-        tracking_sheet = tracking_doc.worksheet("Seguimiento")
-        st.success("✅ Conectado a hoja Seguimiento correctamente.")
-    except gspread.exceptions.WorksheetNotFound:
-        # Crear la hoja si no existe
-        tracking_sheet = tracking_doc.add_worksheet(
-            title="Seguimiento", rows=100, cols=14)
-        # Añadir encabezados a la hoja con nuevas columnas para análisis semántico
-        headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico",
-                   "Errores Puntuación", "Errores Estructura", "Total Errores",
-                   "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro",
-                   "Puntuación Adecuación Cultural", "Consejo Final"]
-        tracking_sheet.append_row(headers)
-        st.success("✅ Hoja 'Seguimiento' creada y preparada correctamente.")
-except Exception as e:
-    st.warning(f"⚠️ Advertencia con documento de Seguimiento: {e}")
-    # --- INICIALIZACIÓN DEL ASISTENTE DE ESCRITURA ---
+        keys["openai"] = st.secrets["OPENAI_API_KEY"]
+    except Exception as e:
+        logger.warning(f"Error al obtener API Key de OpenAI: {e}")
+        st.sidebar.warning(
+            "⚠️ API de OpenAI no configurada. Algunas funciones estarán limitadas.")
+
+    try:
+        keys["elevenlabs"]["api_key"] = st.secrets["ELEVENLABS_API_KEY"]
+        keys["elevenlabs"]["voice_id"] = st.secrets["ELEVENLABS_VOICE_ID"]
+    except Exception as e:
+        logger.warning(f"Error al obtener configuración de ElevenLabs: {e}")
+        st.sidebar.warning(
+            "⚠️ API de ElevenLabs no configurada. La función de audio estará deshabilitada.")
+
+    try:
+        keys["google_credentials"] = json.loads(
+            st.secrets["GOOGLE_CREDENTIALS"])
+    except Exception as e:
+        logger.warning(f"Error al obtener credenciales de Google: {e}")
+        st.sidebar.warning(
+            "⚠️ Credenciales de Google no configuradas. El guardado de datos estará deshabilitado.")
+
+    return keys
 
 
-@st.cache_resource
-def init_writing_assistant():
-    """Inicializar el asistente de escritura en tiempo real (singleton)"""
-    return RealTimeWritingAssistant(openai_api_key)
+# Obtener claves de API
+api_keys = get_api_keys()
+
+# --- 2. CIRCUIT BREAKER PARA APIS ---
 
 
-# Inicializar asistente
-writing_assistant = init_writing_assistant()
+class CircuitBreaker:
+    """
+    Implementa el patrón Circuit Breaker para APIs externas.
+    Previene llamadas repetidas a APIs con fallo.
+    """
 
-# --- FUNCIONES AUXILIARES ---
+    def __init__(self, failure_threshold=5, reset_timeout=300):
+        self.failure_threshold = failure_threshold  # Número de fallos antes de abrir
+        self.reset_timeout = reset_timeout  # Tiempo en segundos antes de reintentar
 
-# Función para obtener JSON de la IA con reintentos
+        # Inicializar contadores para diferentes servicios
+        self.services = {
+            "openai": {"failures": 0, "last_failure_time": None, "open": False},
+            "elevenlabs": {"failures": 0, "last_failure_time": None, "open": False},
+            "google_sheets": {"failures": 0, "last_failure_time": None, "open": False}
+        }
+
+    def record_failure(self, service_name):
+        """Registra un fallo para el servicio especificado"""
+        if service_name not in self.services:
+            logger.warning(f"Servicio desconocido: {service_name}")
+            return
+
+        service = self.services[service_name]
+        service["failures"] += 1
+        service["last_failure_time"] = time.time()
+
+        if service["failures"] >= self.failure_threshold:
+            service["open"] = True
+            logger.warning(f"Circuit breaker ABIERTO para {service_name}")
+
+    def record_success(self, service_name):
+        """Registra un éxito y restablece contadores para el servicio"""
+        if service_name not in self.services:
+            return
+
+        service = self.services[service_name]
+        service["failures"] = 0
+        service["open"] = False
+
+    def can_execute(self, service_name):
+        """Determina si se puede ejecutar una llamada al servicio"""
+        if service_name not in self.services:
+            return True
+
+        service = self.services[service_name]
+
+        # Si el circuit breaker está abierto, verificar si ha pasado el tiempo de reset
+        if service["open"]:
+            if service["last_failure_time"] is None:
+                return True
+
+            elapsed = time.time() - service["last_failure_time"]
+            if elapsed > self.reset_timeout:
+                # Permitir un reintento
+                service["open"] = False
+                return True
+            else:
+                return False
+
+        return True
+
+    def get_status(self):
+        """Devuelve el estado actual de todos los servicios"""
+        return {name: {"open": info["open"], "failures": info["failures"]}
+                for name, info in self.services.items()}
 
 
-def obtener_json_de_ia(system_msg, user_msg, max_retries=3):
-    client = OpenAI(api_key=openai_api_key)
+# Inicializar circuit breaker
+circuit_breaker = CircuitBreaker()
+
+# --- 3. CONEXIÓN A GOOGLE SHEETS ---
+
+
+def connect_to_googlesheets():
+    """
+    Establece conexión con Google Sheets para almacenamiento de datos.
+    Retorna un diccionario con los objetos de conexión o None si hay error.
+    """
+    if api_keys["google_credentials"] is None:
+        return None
+
+    if not circuit_breaker.can_execute("google_sheets"):
+        st.warning(
+            "⚠️ Conexión a Google Sheets temporalmente deshabilitada debido a errores previos.")
+        return None
+
+    try:
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
+
+        creds = Credentials.from_service_account_info(
+            api_keys["google_credentials"], scopes=scope)
+        client_gsheets = gspread.authorize(creds)
+
+        # IDs de los documentos
+        CORRECTIONS_DOC_ID = "1GTaS0Bv_VN-wzTq1oiEbDX9_UdlTQXWhC9CLeNHVk_8"
+        TRACKING_DOC_ID = "1-OQsMGgWseZ__FyUVh0UtYVOLui_yoTMG0BxxTGPOU8"
+
+        sheets = {}
+
+        # Intentar abrir documentos con manejo de errores para cada uno
+        try:
+            sheets["corrections"] = client_gsheets.open_by_key(
+                CORRECTIONS_DOC_ID).sheet1
+            logger.info("Conectado a Historial_Correcciones_ELE")
+        except Exception as e:
+            logger.error(
+                f"Error al conectar con Historial_Correcciones_ELE: {e}")
+            sheets["corrections"] = None
+
+        try:
+            tracking_doc = client_gsheets.open_by_key(TRACKING_DOC_ID)
+
+            # Verificar si existe la hoja Seguimiento
+            try:
+                sheets["tracking"] = tracking_doc.worksheet("Seguimiento")
+                logger.info("Conectado a hoja Seguimiento")
+            except gspread.exceptions.WorksheetNotFound:
+                # Crear la hoja si no existe
+                sheets["tracking"] = tracking_doc.add_worksheet(
+                    title="Seguimiento", rows=100, cols=14)
+                # Añadir encabezados a la hoja
+                headers = ["Nombre", "Nivel", "Fecha", "Errores Gramática", "Errores Léxico",
+                           "Errores Puntuación", "Errores Estructura", "Total Errores",
+                           "Puntuación Coherencia", "Puntuación Cohesión", "Puntuación Registro",
+                           "Puntuación Adecuación Cultural", "Consejo Final"]
+                sheets["tracking"].append_row(headers)
+                logger.info("Hoja 'Seguimiento' creada y preparada")
+        except Exception as e:
+            logger.error(f"Error al conectar con hoja de Seguimiento: {e}")
+            sheets["tracking"] = None
+
+        # Verificar si hubo éxito en alguna conexión
+        if sheets["corrections"] is not None or sheets["tracking"] is not None:
+            circuit_breaker.record_success("google_sheets")
+            return sheets
+        else:
+            circuit_breaker.record_failure("google_sheets")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error al conectar con Google Sheets: {e}")
+        circuit_breaker.record_failure("google_sheets")
+        return None
+
+
+# Establecer conexión con Google Sheets (podría ser None si falla)
+sheets_connection = connect_to_googlesheets()
+
+# --- 4. CLIENTE DE OPENAI SEGURO ---
+
+
+def get_openai_client():
+    """
+    Crea un cliente de OpenAI con manejo de errores.
+    Retorna el cliente o None si no es posible crear la conexión.
+    """
+    if api_keys["openai"] is None:
+        return None
+
+    if not circuit_breaker.can_execute("openai"):
+        st.warning(
+            "⚠️ Conexión a OpenAI temporalmente deshabilitada debido a errores previos.")
+        return None
+
+    try:
+        client = OpenAI(api_key=api_keys["openai"])
+        circuit_breaker.record_success("openai")
+        return client
+    except Exception as e:
+        logger.error(f"Error al crear cliente OpenAI: {e}")
+        circuit_breaker.record_failure("openai")
+        return None
+
+# --- 5. UTILIDADES DE DIAGNÓSTICO ---
+
+
+def show_connection_status():
+    """Muestra el estado de conexión de los servicios externos"""
+    with st.sidebar.expander("Estado de conexiones", expanded=False):
+        status = circuit_breaker.get_status()
+
+        # OpenAI
+        if api_keys["openai"] is not None:
+            if not status["openai"]["open"]:
+                st.sidebar.success("✅ OpenAI: Conectado")
+            else:
+                st.sidebar.error(
+                    f"❌ OpenAI: Desconectado ({status['openai']['failures']} fallos)")
+        else:
+            st.sidebar.warning("⚠️ OpenAI: No configurado")
+
+        # Google Sheets
+        if sheets_connection is not None:
+            sheets_status = []
+            if sheets_connection["corrections"] is not None:
+                sheets_status.append("Historial")
+            if sheets_connection["tracking"] is not None:
+                sheets_status.append("Seguimiento")
+
+            if sheets_status:
+                st.sidebar.success(
+                    f"✅ Google Sheets: {', '.join(sheets_status)}")
+            else:
+                st.sidebar.error("❌ Google Sheets: Error de conexión")
+        else:
+            if api_keys["google_credentials"] is not None:
+                st.sidebar.error("❌ Google Sheets: Error de conexión")
+            else:
+                st.sidebar.warning("⚠️ Google Sheets: No configurado")
+
+        # ElevenLabs
+        if api_keys["elevenlabs"]["api_key"] is not None:
+            if not status["elevenlabs"]["open"]:
+                st.sidebar.success("✅ ElevenLabs: Conectado")
+            else:
+                st.sidebar.error(
+                    f"❌ ElevenLabs: Desconectado ({status['elevenlabs']['failures']} fallos)")
+        else:
+            st.sidebar.warning("⚠️ ElevenLabs: No configurado")
+
+
+# Mostrar estado de conexión en sidebar
+show_connection_status()
+# --- 1. FUNCIONES DE API DE OPENAI ---
+
+
+def extract_json_safely(content):
+    """
+    Extrae contenido JSON de una respuesta con múltiples estrategias.
+    Implementa parsing robusto para evitar errores.
+
+    Args:
+        content: Contenido de texto que debería contener JSON
+
+    Returns:
+        dict: El contenido parseado como JSON o un diccionario con error
+    """
+    # Intento directo
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Búsqueda con regex para JSON completo
+        # Regex recursiva para JSON anidado
+        json_pattern = r'(\{(?:[^{}]|(?1))*\})'
+        match = re.search(json_pattern, content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Segunda estrategia: buscar cualquier JSON entre llaves
+        simple_pattern = r'\{.*\}'
+        match = re.search(simple_pattern, content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    # Si no se pudo extraer, devolver un objeto error
+    logger.warning(f"No se pudo extraer JSON de: {content[:100]}...")
+    return {"error": "No se pudo extraer JSON válido", "raw_content": content}
+
+
+def retry_with_backoff(func, max_retries=3, initial_delay=1):
+    """
+    Ejecuta una función con reintentos y backoff exponencial.
+
+    Args:
+        func: Función a ejecutar
+        max_retries: Número máximo de reintentos
+        initial_delay: Retraso inicial en segundos
+
+    Returns:
+        El resultado de la función o levanta la excepción
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (requests.ConnectionError, requests.Timeout) as e:
+            # Errores de red específicos - reintentamos
+            if attempt == max_retries - 1:
+                raise
+            delay = initial_delay * (2 ** attempt)  # Backoff exponencial
+            logger.info(
+                f"Reintento {attempt+1} en {delay} segundos debido a: {str(e)}")
+            time.sleep(delay)
+        except Exception as e:
+            # Otros errores - no reintentamos
+            logger.error(f"Error no recuperable: {str(e)}")
+            raise
+
+
+def obtener_json_de_ia(system_msg, user_msg, model="gpt-4-turbo", max_retries=3):
+    """
+    Obtiene una respuesta estructurada como JSON de OpenAI con sistema
+    de reintentos mejorado y estrategias robustas de extracción.
+
+    Args:
+        system_msg: Mensaje del sistema para el prompt
+        user_msg: Mensaje del usuario para el prompt
+        model: Modelo de OpenAI a utilizar
+        max_retries: Número máximo de reintentos
+
+    Returns:
+        tuple: (contenido raw original, contenido JSON parseado)
+    """
+    client = get_openai_client()
+    if client is None:
+        return None, {"error": "Cliente OpenAI no disponible"}
+
+    if not circuit_breaker.can_execute("openai"):
+        return None, {"error": "Servicio OpenAI temporalmente no disponible"}
+
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": user_msg}
     ]
 
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4-turbo",
-                temperature=0.5,
-                messages=messages
-            )
-            raw_output = response.choices[0].message.content
+    def send_request(): return client.chat.completions.create(
+        model=model,
+        temperature=0.5,
+        messages=messages
+    )
 
-            try:
-                data_json = json.loads(raw_output)
-                return raw_output, data_json
-            except json.JSONDecodeError:
-                # Intenta extraer JSON usando regex
-                match_json = re.search(r"\{.*\}", raw_output, re.DOTALL)
-                if match_json:
-                    json_str = match_json.group(0)
-                    try:
-                        data_json = json.loads(json_str)
-                        return raw_output, data_json
-                    except json.JSONDecodeError:
-                        pass
-
-                # Si aún no hay JSON válido, pide al modelo que corrija
-                if attempt < max_retries - 1:
-                    messages.append({
-                        "role": "system",
-                        "content": (
-                            "Tu respuesta anterior no cumplió el formato JSON requerido. "
-                            "Por favor, responde ÚNICAMENTE en JSON válido con la estructura solicitada. "
-                            "No incluyas texto extra, backticks, ni marcadores de código fuente."
-                        )
-                    })
-        except Exception as e:
-            st.warning(f"Intento {attempt+1}: Error en la API de OpenAI: {e}")
-            if attempt == max_retries - 1:
-                raise
-
-    raise ValueError(
-        "No se pudo obtener un JSON válido tras varios reintentos.")
-
-# Obtener historial para análisis del progreso
-
-
-def obtener_historial_estudiante(nombre, tracking_sheet):
     try:
-        # Obtener todos los datos
-        todos_datos = tracking_sheet.get_all_records()
+        # Usar retry_with_backoff para gestionar reintentos
+        response = retry_with_backoff(send_request, max_retries=max_retries)
+        raw_output = response.choices[0].message.content
 
-        if not todos_datos:
-            return None
+        # Intentar extraer JSON
+        data_json = extract_json_safely(raw_output)
 
-        # Crear una versión limpia del nombre buscado
-        nombre_buscar = nombre.strip().lower()
+        # Si falló la extracción pero podemos reintentar con un mensaje específico
+        if "error" in data_json and max_retries > 0:
+            # Añadir mensaje solicitando formato JSON específico
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Tu respuesta anterior no cumplió el formato JSON requerido. "
+                    "Por favor, responde ÚNICAMENTE en JSON válido con la estructura solicitada. "
+                    "No incluyas texto extra, backticks, ni marcadores de código fuente."
+                )
+            })
 
-        # Buscar en todos los registros con un enfoque más flexible
-        datos_estudiante = []
-        for row in todos_datos:
-            for key, value in row.items():
-                if 'nombre' in key.lower() and value:  # Buscar en cualquier columna que tenga 'nombre'
-                    if str(value).strip().lower() == nombre_buscar:
-                        datos_estudiante.append(row)
-                        break
+            # Reintento específico para corrección de formato
+            response = retry_with_backoff(
+                lambda: client.chat.completions.create(
+                    model=model,
+                    temperature=0.3,  # Temperatura más baja para formato más preciso
+                    messages=messages
+                ),
+                max_retries=1
+            )
 
-        # Convertir a DataFrame
-        if datos_estudiante:
-            df = pd.DataFrame(datos_estudiante)
-            return df
-        return None
+            # Nuevo intento de extracción
+            raw_output = response.choices[0].message.content
+            data_json = extract_json_safely(raw_output)
+
+        # Marcar como éxito la comunicación con OpenAI
+        circuit_breaker.record_success("openai")
+        return raw_output, data_json
+
     except Exception as e:
-        print(f"Error en obtener_historial_estudiante: {e}")
-        return None
+        logger.error(f"Error en API de OpenAI: {str(e)}")
+        circuit_breaker.record_failure("openai")
+        return None, {"error": f"Error en API de OpenAI: {str(e)}"}
 
-# Función para generar audio con ElevenLabs
+# --- 2. INTEGRACIÓN CON ELEVENLABS ---
 
 
-def generar_audio_consejo(consejo_texto, elevenlabs_api_key, elevenlabs_voice_id):
+def generar_audio_consejo(consejo_texto):
     """
-    Genera un archivo de audio a partir del texto del consejo utilizando ElevenLabs.
+    Genera un archivo de audio a partir del texto usando ElevenLabs.
 
     Args:
-        consejo_texto (str): Texto del consejo a convertir en audio
-        elevenlabs_api_key (str): API key de ElevenLabs
-        elevenlabs_voice_id (str): ID de la voz a utilizar
+        consejo_texto: Texto a convertir en audio
 
     Returns:
         BytesIO: Buffer con el audio generado, o None si ocurre un error
     """
+    if not api_keys["elevenlabs"]["api_key"] or not api_keys["elevenlabs"]["voice_id"]:
+        logger.warning("Claves de ElevenLabs no configuradas")
+        return None
+
+    if not circuit_breaker.can_execute("elevenlabs"):
+        logger.warning("ElevenLabs temporalmente no disponible")
+        return None
+
     if not consejo_texto:
         return None
 
@@ -193,6 +564,9 @@ def generar_audio_consejo(consejo_texto, elevenlabs_api_key, elevenlabs_voice_id
         return None
 
     try:
+        elevenlabs_api_key = api_keys["elevenlabs"]["api_key"]
+        elevenlabs_voice_id = api_keys["elevenlabs"]["voice_id"]
+
         tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
         headers = {
             "xi-api-key": elevenlabs_api_key,
@@ -207,140 +581,339 @@ def generar_audio_consejo(consejo_texto, elevenlabs_api_key, elevenlabs_voice_id
             }
         }
 
-        response_audio = requests.post(tts_url, headers=headers, json=data)
+        # Función para envío de solicitud
+        def send_request():
+            response = requests.post(
+                tts_url, headers=headers, json=data, timeout=15)
+            response.raise_for_status()  # Levantar excepción si hay error
+            return response
+
+        # Usar sistema de reintentos
+        response_audio = retry_with_backoff(send_request, max_retries=2)
+
         if response_audio.ok:
             audio_bytes = BytesIO(response_audio.content)
+            circuit_breaker.record_success("elevenlabs")
             return audio_bytes
         else:
-            print(f"Error en ElevenLabs API: {response_audio.status_code}")
+            logger.error(
+                f"Error en ElevenLabs API: {response_audio.status_code}")
+            circuit_breaker.record_failure("elevenlabs")
             return None
+
     except Exception as e:
-        print(f"Error al generar audio: {e}")
+        logger.error(f"Error al generar audio: {str(e)}")
+        circuit_breaker.record_failure("elevenlabs")
         return None
-    # Función para mostrar gráficos de progreso
+
+# --- 3. INTEGRACIÓN CON DALL-E ---
 
 
-def mostrar_progreso(df):
-    if df is None or df.empty:
-        st.warning("No hay suficientes datos para mostrar el progreso.")
-        return
+def generar_imagen_dalle(tema, nivel):
+    """
+    Genera una imagen utilizando DALL-E basada en un tema y adaptada al nivel del estudiante.
 
-    # Verificar si existe la columna Fecha
-    fecha_col = None
-    # Buscar la columna de fecha de manera más flexible
-    for col in df.columns:
-        if 'fecha' in col.lower().strip():
-            fecha_col = col
-            break
+    Args:
+        tema: Tema para la imagen
+        nivel: Nivel de español (principiante, intermedio, avanzado)
 
-    if fecha_col is None:
-        st.error("Error: No se encontró la columna 'Fecha' en los datos.")
-        st.write("Columnas disponibles:", list(df.columns))
-        return
+    Returns:
+        tuple: (URL de la imagen generada, descripción de la imagen)
+    """
+    client = get_openai_client()
+    if client is None:
+        return None, "API de OpenAI no disponible"
 
-    # Asegurarse de que la columna Fecha está en formato datetime
-    try:
-        df[fecha_col] = pd.to_datetime(df[fecha_col], errors='coerce')
-        df = df.sort_values(fecha_col)
-    except Exception as e:
-        st.error(
-            f"Error al convertir la columna {fecha_col} a formato de fecha: {str(e)}")
-        return
+    if not circuit_breaker.can_execute("openai"):
+        return None, "Servicio OpenAI temporalmente no disponible"
 
-    # Gráfico de errores a lo largo del tiempo
-    st.subheader("Progreso en la reducción de errores")
-
-    # Crear un gráfico con Altair para total de errores
-    chart_errores = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X(f'{fecha_col}:T', title='Fecha'),
-        y=alt.Y('Total Errores:Q', title='Total Errores'),
-        tooltip=[f'{fecha_col}:T', 'Total Errores:Q', 'Nivel:N']
-    ).properties(
-        title='Evolución de errores totales a lo largo del tiempo'
-    ).interactive()
-
-    st.altair_chart(chart_errores, use_container_width=True)
-
-    # Gráfico de tipos de errores
-    # Usar exactamente los nombres de columnas que vemos en la tabla
-    columnas_errores = [
-        'Errores Gramática',
-        'Errores Léxico',
-        'Errores Puntuación',
-        'Errores Estructura'
-    ]
-
-    # Encontrar las columnas que realmente existen en el DataFrame
-    columnas_errores_existentes = [
-        col for col in columnas_errores if col in df.columns]
-
-    # Si no hay columnas de errores, mostrar un mensaje
-    if not columnas_errores_existentes:
-        st.warning("No se encontraron columnas de tipos de errores en los datos.")
-        # Mostrar columnas disponibles para depuración
-        st.write("Columnas disponibles:", list(df.columns))
+    # Adaptar la complejidad del prompt según el nivel
+    if "principiante" in nivel.lower():
+        complejidad = "simple con objetos y personas claramente identificables"
+    elif "intermedio" in nivel.lower():
+        complejidad = "con detalles moderados y una escena cotidiana con varios elementos"
     else:
-        # Usar solo las columnas que existen
-        tipos_error_df = pd.melt(
-            df,
-            id_vars=[fecha_col],
-            value_vars=columnas_errores_existentes,
-            var_name='Tipo de Error',
-            value_name='Cantidad'
-        )
+        complejidad = "detallada con múltiples elementos, que pueda generar descripciones complejas"
 
-        chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
-            x=alt.X(f'{fecha_col}:T', title='Fecha'),
-            y=alt.Y('Cantidad:Q', title='Cantidad'),
-            color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
-            tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
-        ).properties(
-            title='Evolución por tipo de error'
-        ).interactive()
+    # Crear el prompt para DALL-E
+    prompt = f"Una escena {complejidad} sobre {tema}. La imagen debe ser clara, bien iluminada, y adecuada para describir en español."
 
-        st.altair_chart(chart_tipos, use_container_width=True)
+    try:
+        # Función para envío de solicitud
+        def generate_image():
+            return client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                n=1,
+                size="1024x1024",
+                quality="standard"
+            )
 
-    # Gráfico de radar para habilidades contextuales (última entrada)
-    if 'Puntuación Coherencia' in df.columns and len(df) > 0:
-        ultima_entrada = df.iloc[-1]
+        # Usar sistema de reintentos
+        response = retry_with_backoff(generate_image, max_retries=2)
 
-        # Datos para el gráfico de radar
-        categorias = ['Coherencia', 'Cohesión', 'Registro', 'Ad. Cultural']
-        valores = [
-            ultima_entrada.get('Puntuación Coherencia', 0),
-            ultima_entrada.get('Puntuación Cohesión', 0),
-            ultima_entrada.get('Puntuación Registro', 0),
-            ultima_entrada.get('Puntuación Adecuación Cultural', 0)
-        ]
+        # Obtener la URL de la imagen
+        imagen_url = response.data[0].url
 
-        # Crear gráfico de radar
-        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+        # Generar una descripción adaptada al nivel
+        descripcion_prompt = f"""
+        Crea una descripción en español de esta imagen generada para un estudiante de nivel {nivel}.
+        
+        La descripción debe:
+        1. Ser apropiada para el nivel {nivel}
+        2. Utilizar vocabulario y estructuras gramaticales de ese nivel
+        3. Incluir entre 3-5 preguntas al final para que el estudiante practique describiendo la imagen
+        
+        Tema de la imagen: {tema}
+        """
 
-        # Número de categorías
-        N = len(categorias)
+        def generate_description():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": "Eres un profesor de español especializado en crear descripciones y actividades basadas en imágenes."},
+                    {"role": "user", "content": descripcion_prompt}
+                ],
+                temperature=0.7
+            )
 
-        # Ángulos para cada eje
-        angulos = [n / float(N) * 2 * 3.14159 for n in range(N)]
-        angulos += angulos[:1]  # Cerrar el círculo
+        descripcion_response = retry_with_backoff(
+            generate_description, max_retries=2)
+        descripcion = descripcion_response.choices[0].message.content
 
-        # Añadir los valores, repitiendo el primero
-        valores_radar = valores + [valores[0]]
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return imagen_url, descripcion
 
-        # Dibujar los ejes
-        plt.xticks(angulos[:-1], categorias)
+    except Exception as e:
+        logger.error(f"Error al generar imagen: {str(e)}")
+        circuit_breaker.record_failure("openai")
+        return None, f"Error: {str(e)}"
 
-        # Dibujar el polígono
-        ax.plot(angulos, valores_radar)
-        ax.fill(angulos, valores_radar, alpha=0.1)
+# --- 4. FUNCIÓN DE OCR PARA TEXTOS MANUSCRITOS ---
 
-        # Ajustar escala
-        ax.set_yticks([2, 4, 6, 8, 10])
-        ax.set_ylim(0, 10)
 
-        plt.title("Habilidades contextuales (última evaluación)")
-        st.pyplot(fig)
+def transcribir_imagen_texto(imagen_bytes, idioma="es"):
+    """
+    Transcribe texto manuscrito de una imagen utilizando la API de OpenAI.
 
-# Función para generar consignas de escritura
+    Args:
+        imagen_bytes: Bytes de la imagen a transcribir
+        idioma: Código de idioma (es, en, fr)
+
+    Returns:
+        str: Texto transcrito o mensaje de error
+    """
+    client = get_openai_client()
+    if client is None:
+        return "Error: API de OpenAI no disponible"
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Error: Servicio OpenAI temporalmente no disponible"
+
+    try:
+        # Codificar la imagen en base64
+        encoded_image = base64.b64encode(imagen_bytes).decode('utf-8')
+
+        # Función para envío de solicitud
+        def send_ocr_request():
+            return client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"Eres un sistema de OCR especializado en transcribir texto manuscrito en {idioma}. Tu tarea es extraer con precisión el texto presente en la imagen."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Transcribe exactamente el texto manuscrito de esta imagen."},
+                            {"type": "image_url", "image_url": {
+                                "url": f"data:image/jpeg;base64,{encoded_image}"}}
+                        ]
+                    }
+                ],
+                max_tokens=1000
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_ocr_request, max_retries=2)
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        error_msg = f"Error al transcribir la imagen: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return f"Error en la transcripción: {str(e)}"
+
+# --- 5. GUARDADO DE DATOS EN GOOGLE SHEETS ---
+
+
+def guardar_correccion(nombre, nivel, idioma, texto, resultado_json):
+    """
+    Guarda los datos de una corrección en Google Sheets.
+
+    Args:
+        nombre: Nombre del estudiante
+        nivel: Nivel de español
+        idioma: Idioma de corrección
+        texto: Texto original
+        resultado_json: Resultado de la corrección en formato JSON (como string o dict)
+
+    Returns:
+        dict: Resultado de la operación
+    """
+    if sheets_connection is None:
+        return {"success": False, "message": "Conexión a Google Sheets no disponible"}
+
+    # Fecha actual para el registro
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Convertir resultado_json a string si es un diccionario
+    if isinstance(resultado_json, dict):
+        raw_output = json.dumps(resultado_json)
+    else:
+        raw_output = resultado_json
+
+    result = {
+        "success": True,
+        "corrections_saved": False,
+        "tracking_saved": False,
+        "message": ""
+    }
+
+    # Guardar en Historial_Correcciones_ELE
+    if sheets_connection["corrections"] is not None:
+        try:
+            sheets_connection["corrections"].append_row(
+                [nombre, nivel, idioma, fecha, texto, raw_output]
+            )
+            result["corrections_saved"] = True
+            logger.info(f"Corrección guardada para {nombre}")
+        except Exception as e:
+            logger.error(
+                f"Error al guardar en Historial_Correcciones_ELE: {str(e)}")
+            result["message"] += f"Error al guardar historial: {str(e)}. "
+
+    # Guardar en hoja de seguimiento si hay datos de análisis contextual
+    if sheets_connection["tracking"] is not None:
+        try:
+            # Extraer datos del resultado
+            if isinstance(resultado_json, str):
+                data_json = extract_json_safely(resultado_json)
+            else:
+                data_json = resultado_json
+
+            # Extraer datos relevantes para seguimiento
+            errores = data_json.get("errores", {})
+            analisis = data_json.get("analisis_contextual", {})
+
+            # Contar errores por categoría
+            num_gramatica = len(errores.get("Gramática", []))
+            num_lexico = len(errores.get("Léxico", []))
+            num_puntuacion = len(errores.get("Puntuación", []))
+            num_estructura = len(errores.get("Estructura textual", []))
+            total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+
+            # Extraer puntuaciones
+            coherencia = analisis.get("coherencia", {})
+            cohesion = analisis.get("cohesion", {})
+            registro = analisis.get("registro_linguistico", {})
+            adecuacion = analisis.get("adecuacion_cultural", {})
+
+            puntuacion_coherencia = coherencia.get("puntuacion", 0)
+            puntuacion_cohesion = cohesion.get("puntuacion", 0)
+            puntuacion_registro = registro.get("puntuacion", 0)
+            puntuacion_adecuacion = adecuacion.get("puntuacion", 0)
+
+            # Extraer consejo final
+            consejo_final = data_json.get("consejo_final", "")
+
+            # Datos para guardar
+            datos_seguimiento = [
+                nombre,
+                nivel,
+                fecha,
+                num_gramatica,
+                num_lexico,
+                num_puntuacion,
+                num_estructura,
+                total_errores,
+                puntuacion_coherencia,
+                puntuacion_cohesion,
+                puntuacion_registro,
+                puntuacion_adecuacion,
+                consejo_final
+            ]
+
+            # Guardar en hoja de seguimiento
+            sheets_connection["tracking"].append_row(datos_seguimiento)
+            result["tracking_saved"] = True
+            logger.info(f"Estadísticas guardadas para {nombre}")
+        except Exception as e:
+            logger.error(f"Error al guardar en hoja de Seguimiento: {str(e)}")
+            result["message"] += f"Error al guardar estadísticas: {str(e)}."
+
+    # Resultado final
+    if result["corrections_saved"] or result["tracking_saved"]:
+        result["success"] = True
+        if not result["message"]:
+            result["message"] = "Datos guardados correctamente."
+    else:
+        result["success"] = False
+        if not result["message"]:
+            result["message"] = "No se pudo guardar ningún dato."
+
+    return result
+
+
+def obtener_historial_estudiante(nombre):
+    """
+    Obtiene el historial de correcciones y seguimiento para un estudiante específico.
+
+    Args:
+        nombre: Nombre del estudiante
+
+    Returns:
+        pd.DataFrame o None: DataFrame con historial o None si no hay datos
+    """
+    if sheets_connection is None or sheets_connection["tracking"] is None:
+        logger.warning("No hay conexión con hoja de seguimiento")
+        return None
+
+    try:
+        # Obtener todos los datos
+        todos_datos = sheets_connection["tracking"].get_all_records()
+
+        if not todos_datos:
+            return None
+
+        # Crear una versión limpia del nombre buscado
+        nombre_buscar = nombre.strip().lower()
+
+        # Buscar en todos los registros con un enfoque más flexible
+        datos_estudiante = []
+        for row in todos_datos:
+            for key, value in row.items():
+                # Buscar en cualquier columna que tenga 'nombre'
+                if 'nombre' in key.lower() and value:
+                    if str(value).strip().lower() == nombre_buscar:
+                        datos_estudiante.append(row)
+                        break
+
+        # Convertir a DataFrame
+        if datos_estudiante:
+            df = pd.DataFrame(datos_estudiante)
+            return df
+
+        return None
+    except Exception as e:
+        logger.error(f"Error en obtener_historial_estudiante: {str(e)}")
+        return None
+    # --- 1. FUNCIONES DE PROCESAMIENTO DE TEXTOS ---
 
 
 def generar_consigna_escritura(nivel_actual, tipo_consigna):
@@ -349,12 +922,28 @@ def generar_consigna_escritura(nivel_actual, tipo_consigna):
     y el tipo de texto solicitado.
 
     Args:
-        nivel_actual (str): Nivel del estudiante (principiante, intermedio, avanzado)
-        tipo_consigna (str): Tipo de texto a generar
+        nivel_actual: Nivel del estudiante (principiante, intermedio, avanzado)
+        tipo_consigna: Tipo de texto a generar
 
     Returns:
-        str: Consigna de escritura generada
+        str: Consigna de escritura generada o mensaje de error
     """
+    client = get_openai_client()
+    if client is None:
+        return "No se pudo generar la consigna debido a problemas de conexión."
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Servicio temporalmente no disponible. Inténtelo más tarde."
+
+    # Si es aleatorio, seleccionar un tipo
+    if tipo_consigna == "Cualquiera (aleatorio)":
+        import random
+        tipos_disponibles = [
+            "Narración", "Correo/Carta formal", "Opinión/Argumentación",
+            "Descripción", "Diálogo"
+        ]
+        tipo_consigna = random.choice(tipos_disponibles)
+
     # Construir prompt mejorado para OpenAI
     prompt_consigna = f"""
     Eres un profesor experto en la enseñanza de español como lengua extranjera.
@@ -376,77 +965,29 @@ def generar_consigna_escritura(nivel_actual, tipo_consigna):
     Proporciona solo la consigna, sin explicaciones adicionales ni metacomentarios.
     """
 
-    # Llamar a la API
-    client = OpenAI(api_key=openai_api_key)
+    try:
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.8,
+                messages=[
+                    {"role": "system", "content": "Eres un profesor de español experto en diseñar actividades de escritura."},
+                    {"role": "user", "content": prompt_consigna}
+                ]
+            )
 
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        temperature=0.8,
-        messages=[
-            {"role": "system", "content": "Eres un profesor de español experto en diseñar actividades de escritura."},
-            {"role": "user", "content": prompt_consigna}
-        ]
-    )
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
 
-    # Obtener resultado
-    return response.choices[0].message.content.strip()
-# Función para extraer título de sección del plan de estudio
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content.strip()
 
-
-def extraer_titulo(texto):
-    """
-    Extrae el título de una sección del plan de estudio.
-
-    Args:
-        texto (str): Texto de la sección
-
-    Returns:
-        str: Título extraído
-    """
-    lineas = texto.strip().split("\n")
-    if lineas and lineas[0]:
-        return lineas[0].strip()
-    return "Contenido sin título"
-
-# Función para obtener duración de examen
-
-
-def obtener_duracion_examen(tipo_examen, nivel_examen):
-    """
-    Obtiene la duración en segundos para un simulacro según el tipo y nivel de examen.
-
-    Args:
-        tipo_examen (str): Tipo de examen (DELE, SIELE, etc.)
-        nivel_examen (str): Nivel del examen (A1, A2, etc.)
-
-    Returns:
-        int: Duración en segundos
-    """
-    # Mapeo de duraciones según examen y nivel
-    duraciones = {
-        "DELE": {
-            "A1": 25 * 60,  # 25 minutos
-            "A2": 30 * 60,
-            "B1": 40 * 60,
-            "B2": 60 * 60,
-            "C1": 80 * 60,
-            "C2": 90 * 60
-        },
-        "SIELE": {
-            "A1": 20 * 60,
-            "A2": 25 * 60,
-            "B1": 35 * 60,
-            "B2": 50 * 60,
-            "C1": 70 * 60,
-            "C2": 80 * 60
-        },
-        # Otros exámenes
-    }
-
-    # Default: 45 minutos
-    return duraciones.get(tipo_examen, {}).get(nivel_examen, 45 * 60)
-
-# Función para obtener criterios de evaluación
+    except Exception as e:
+        error_msg = f"Error al generar consigna: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return f"No se pudo generar la consigna. Error: {str(e)}"
 
 
 def obtener_criterios_evaluacion(tipo_examen, nivel_examen):
@@ -454,8 +995,8 @@ def obtener_criterios_evaluacion(tipo_examen, nivel_examen):
     Obtiene los criterios de evaluación para un examen y nivel específicos.
 
     Args:
-        tipo_examen (str): Tipo de examen (DELE, SIELE, etc.)
-        nivel_examen (str): Nivel del examen (A1, A2, etc.)
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
 
     Returns:
         str: Criterios de evaluación en formato markdown
@@ -560,7 +1101,7 @@ def obtener_criterios_evaluacion(tipo_examen, nivel_examen):
             - Pleno control de matices y connotaciones
             """
 
-    # Criterios específicos para SIELE (simplificados)
+    # Criterios específicos para SIELE
     elif tipo_examen == "SIELE":
         return """
         ## Criterios de evaluación SIELE
@@ -589,682 +1130,228 @@ def obtener_criterios_evaluacion(tipo_examen, nivel_examen):
     # Por defecto, devolvemos criterios genéricos
     return criterios_default
 
-# Función para generar informe en formato Word (DOCX)
 
-
-def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido,
-                         errores_obj, analisis_contextual, consejo_final):
-    doc = Document()
-
-    # Estilo del documento
-    doc.styles['Normal'].font.name = 'Calibri'
-    doc.styles['Normal'].font.size = Pt(11)
-
-    # Título
-    doc.add_heading('Informe de corrección textual', 0)
-
-    # Información general
-    doc.add_heading('Información general', level=1)
-    doc.add_paragraph(f'Nombre: {nombre}')
-    doc.add_paragraph(f'Nivel: {nivel}')
-    doc.add_paragraph(f'Fecha: {fecha}')
-
-    # Texto original
-    doc.add_heading('Texto original', level=1)
-    doc.add_paragraph(texto_original)
-
-    # Texto corregido
-    doc.add_heading('Texto corregido', level=1)
-    doc.add_paragraph(texto_corregido)
-
-    # Análisis de errores
-    doc.add_heading('Análisis de errores', level=1)
-
-    for categoria, errores in errores_obj.items():
-        if errores:
-            doc.add_heading(categoria, level=2)
-            for error in errores:
-                p = doc.add_paragraph()
-                p.add_run('Fragmento erróneo: ').bold = True
-                p.add_run(error.get('fragmento_erroneo', '')
-                          ).font.color.rgb = RGBColor(255, 0, 0)
-
-                p = doc.add_paragraph()
-                p.add_run('Corrección: ').bold = True
-                p.add_run(error.get('correccion', '')
-                          ).font.color.rgb = RGBColor(0, 128, 0)
-
-                p = doc.add_paragraph()
-                p.add_run('Explicación: ').bold = True
-                p.add_run(error.get('explicacion', ''))
-
-                doc.add_paragraph()  # Espacio
-
-    # Análisis contextual
-    doc.add_heading('Análisis contextual', level=1)
-
-    # Tabla de puntuaciones
-    doc.add_heading('Puntuaciones', level=2)
-    table = doc.add_table(rows=1, cols=5)
-    table.style = 'Table Grid'
-
-    # Encabezados
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Aspecto'
-    hdr_cells[1].text = 'Coherencia'
-    hdr_cells[2].text = 'Cohesión'
-    hdr_cells[3].text = 'Registro'
-    hdr_cells[4].text = 'Adecuación cultural'
-
-    # Datos
-    row_cells = table.add_row().cells
-    row_cells[0].text = 'Puntuación'
-    row_cells[1].text = str(analisis_contextual.get(
-        'coherencia', {}).get('puntuacion', 'N/A'))
-    row_cells[2].text = str(analisis_contextual.get(
-        'cohesion', {}).get('puntuacion', 'N/A'))
-    row_cells[3].text = str(analisis_contextual.get(
-        'registro_linguistico', {}).get('puntuacion', 'N/A'))
-    row_cells[4].text = str(analisis_contextual.get(
-        'adecuacion_cultural', {}).get('puntuacion', 'N/A'))
-
-    # Consejo final
-    doc.add_heading('Consejo final', level=1)
-    doc.add_paragraph(consejo_final)
-
-    # Generar QR code (simulado)
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(
-        f"https://textocorrector.ejemplo.com/informe/{nombre.replace(' ', '')}/{fecha.replace(' ', '_')}")
-    qr.make(fit=True)
-
-    img = qr.make_image(fill_color="black", back_color="white")
-
-    # Guardar QR como imagen temporal
-    qr_buffer = BytesIO()
-    img.save(qr_buffer)
-    qr_buffer.seek(0)
-
-    # Añadir la imagen del QR al documento
-    doc.add_heading('Acceso online', level=1)
-    doc.add_paragraph(
-        'Escanea este código QR para acceder a este informe online:')
-    doc.add_picture(qr_buffer, width=Inches(2.0))
-
-    # Guardar el documento en memoria
-    docx_buffer = BytesIO()
-    doc.save(docx_buffer)
-    docx_buffer.seek(0)
-
-    return docx_buffer
-
-# --- NUEVAS FUNCIONALIDADES ---
-
-# Función para transcribir imágenes de texto manuscrito
-
-
-def transcribir_imagen_texto(imagen_bytes, idioma="es"):
+def obtener_duracion_examen(tipo_examen, nivel_examen):
     """
-    Transcribe texto manuscrito de una imagen utilizando la API de OpenAI.
+    Obtiene la duración en segundos para un simulacro según el tipo y nivel de examen.
 
     Args:
-        imagen_bytes: Bytes de la imagen a transcribir
-        idioma: Código de idioma (es, en, fr)
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
 
     Returns:
-        str: Texto transcrito
+        int: Duración en segundos
     """
-    client = OpenAI(api_key=openai_api_key)
+    # Mapeo de duraciones según examen y nivel
+    duraciones = {
+        "DELE": {
+            "A1": 25 * 60,  # 25 minutos
+            "A2": 30 * 60,
+            "B1": 40 * 60,
+            "B2": 60 * 60,
+            "C1": 80 * 60,
+            "C2": 90 * 60
+        },
+        "SIELE": {
+            "A1": 20 * 60,
+            "A2": 25 * 60,
+            "B1": 35 * 60,
+            "B2": 50 * 60,
+            "C1": 70 * 60,
+            "C2": 80 * 60
+        },
+        "CELU": {
+            "A1": 30 * 60,
+            "A2": 35 * 60,
+            "B1": 45 * 60,
+            "B2": 60 * 60,
+            "C1": 75 * 60,
+            "C2": 90 * 60
+        },
+        "DUCLE": {
+            "A1": 20 * 60,
+            "A2": 25 * 60,
+            "B1": 30 * 60,
+            "B2": 40 * 60,
+            "C1": 50 * 60,
+            "C2": 60 * 60
+        }
+    }
 
-    try:
-        # Codificar la imagen en base64
-        encoded_image = base64.b64encode(imagen_bytes).decode('utf-8')
-
-        # Crear el mensaje para la API de Vision
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"Eres un sistema de OCR especializado en transcribir texto manuscrito en {idioma}. Tu tarea es extraer con precisión el texto presente en la imagen."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Transcribe exactamente el texto manuscrito de esta imagen."},
-                        {"type": "image_url", "image_url": {
-                            "url": f"data:image/jpeg;base64,{encoded_image}"}}
-                    ]
-                }
-            ],
-            max_tokens=1000
-        )
-
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        st.error(f"Error al transcribir la imagen: {str(e)}")
-        return "Error en la transcripción: " + str(e)
-
-# Función para generar imágenes con DALL-E adaptadas al nivel
+    # Default: 45 minutos si no se encuentra el examen o nivel
+    return duraciones.get(tipo_examen, {}).get(nivel_examen, 45 * 60)
 
 
-def generar_imagen_dalle(tema, nivel, openai_api_key):
+def extraer_titulo(texto):
     """
-    Genera una imagen utilizando DALL-E basada en un tema y adaptada al nivel del estudiante.
+    Extrae el título de una sección de texto.
 
     Args:
-        tema (str): Tema para la imagen
-        nivel (str): Nivel de español (principiante, intermedio, avanzado)
-        openai_api_key (str): API key de OpenAI
+        texto: Texto de la sección
 
     Returns:
-        tuple: URL de la imagen generada, descripción de la imagen
+        str: Título extraído
     """
-    client = OpenAI(api_key=openai_api_key)
+    if not texto:
+        return "Contenido sin título"
 
-    # Adaptar la complejidad del prompt según el nivel
-    if "principiante" in nivel:
-        complejidad = "simple con objetos y personas claramente identificables"
-    elif "intermedio" in nivel:
-        complejidad = "con detalles moderados y una escena cotidiana con varios elementos"
-    else:
-        complejidad = "detallada con múltiples elementos, que pueda generar descripciones complejas"
+    lineas = texto.strip().split("\n")
+    if lineas and lineas[0]:
+        # Eliminar caracteres no deseados que podrían aparecer en un título
+        titulo = lineas[0].strip().strip('#').strip('-').strip('*').strip()
+        return titulo
 
-    # Crear el prompt para DALL-E
-    prompt = f"Una escena {complejidad} sobre {tema}. La imagen debe ser clara, bien iluminada, y adecuada para describir en español."
+    return "Contenido sin título"
+
+# --- 2. ANÁLISIS DE COMPLEJIDAD TEXTUAL ---
+
+
+def analizar_complejidad_texto(texto):
+    """
+    Analiza la complejidad lingüística de un texto en español.
+
+    Args:
+        texto: Texto a analizar
+
+    Returns:
+        dict: Análisis de complejidad o mensaje de error
+    """
+    client = get_openai_client()
+    if client is None or not texto:
+        return {"error": "No se pudo realizar el análisis. Verifique la conexión o el texto."}
+
+    if not circuit_breaker.can_execute("openai"):
+        return {"error": "Servicio temporalmente no disponible. Inténtelo más tarde."}
 
     try:
-        # Llamar a la API para generar la imagen
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            n=1,
-            size="1024x1024",
-            quality="standard"
-        )
-
-        # Obtener la URL de la imagen
-        imagen_url = response.data[0].url
-
-        # Generar una descripción adaptada al nivel
-        descripcion_prompt = f"""
-        Crea una descripción en español de esta imagen generada para un estudiante de nivel {nivel}.
-
-        La descripción debe:
-        1. Ser apropiada para el nivel {nivel}
-        2. Utilizar vocabulario y estructuras gramaticales de ese nivel
-        3. Incluir entre 3-5 preguntas al final para que el estudiante practique describiendo la imagen
-
-        Tema de la imagen: {tema}
+        # Prompt para análisis de complejidad
+        prompt_analisis = f"""
+        Analiza la complejidad lingüística del siguiente texto en español. 
+        Proporciona un análisis detallado que incluya:
+        
+        1. Complejidad léxica (variedad de vocabulario, riqueza léxica, palabras poco comunes)
+        2. Complejidad sintáctica (longitud de frases, subordinación, tipos de oraciones)
+        3. Complejidad textual (coherencia, cohesión, estructura general)
+        4. Nivel MCER estimado (A1-C2) con explicación
+        5. Índices estadísticos: TTR (type-token ratio), densidad léxica, índice Flesh-Szigriszt (adaptado al español)
+        
+        Texto a analizar:
+        "{texto}"
+        
+        Devuelve el análisis ÚNICAMENTE en formato JSON con la siguiente estructura:
+        {{
+          "complejidad_lexica": {{
+            "nivel": "string",
+            "descripcion": "string",
+            "palabras_destacadas": ["string1", "string2"]
+          }},
+          "complejidad_sintactica": {{
+            "nivel": "string",
+            "descripcion": "string",
+            "estructuras_destacadas": ["string1", "string2"]
+          }},
+          "complejidad_textual": {{
+            "nivel": "string",
+            "descripcion": "string"
+          }},
+          "nivel_mcer": {{
+            "nivel": "string",
+            "justificacion": "string"
+          }},
+          "indices": {{
+            "ttr": number,
+            "densidad_lexica": number,
+            "szigriszt": number,
+            "interpretacion": "string"
+          }},
+          "recomendaciones": ["string1", "string2"]
+        }}
         """
 
-        descripcion_response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Eres un profesor de español especializado en crear descripciones y actividades basadas en imágenes."},
-                {"role": "user", "content": descripcion_prompt}
-            ],
-            temperature=0.7
-        )
-
-        descripcion = descripcion_response.choices[0].message.content
-
-        return imagen_url, descripcion
-
-    except Exception as e:
-        st.error(f"Error al generar la imagen: {str(e)}")
-        return None, f"Error: {str(e)}"
-    # --- BASE DE DATOS DE RECURSOS Y FUNCIONES PARA EJERCICIOS ---
-
-
-# Base de datos simple de recursos por niveles y categorías
-RECURSOS_DB = {
-    "A1-A2": {
-        "Gramática": [
-            {"título": "Presente de indicativo", "tipo": "Ficha",
-                "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
-            {"título": "Los artículos en español", "tipo": "Vídeo",
-                "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
-            {"título": "Ser y estar", "tipo": "Ejercicios",
-                "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
-            {"título": "Pretérito indefinido", "tipo": "Explicación",
-                "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
-        ],
-        "Léxico": [
-            {"título": "Vocabulario básico", "tipo": "Ficha",
-                "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
-            {"título": "Alimentos y comidas", "tipo": "Tarjetas",
-                "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
-            {"título": "La ciudad", "tipo": "Podcast",
-                "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
-        ],
-        "Cohesión": [
-            {"título": "Conectores básicos", "tipo": "Guía",
-                "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
-            {"título": "Organizar ideas", "tipo": "Ejercicios",
-                "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
-        ],
-        "Registro": [
-            {"título": "Saludos formales e informales", "tipo": "Vídeo",
-                "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
-            {"título": "Peticiones corteses", "tipo": "Diálogos",
-                "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
-        ]
-    },
-    "B1-B2": {
-        "Gramática": [
-            {"título": "Subjuntivo presente", "tipo": "Guía",
-                "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
-            {"título": "Estilo indirecto", "tipo": "Ejercicios",
-                "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
-        ],
-        "Léxico": [
-            {"título": "Expresiones idiomáticas", "tipo": "Podcast",
-                "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
-            {"título": "Vocabulario académico", "tipo": "Glosario",
-                "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
-        ],
-        "Cohesión": [
-            {"título": "Marcadores discursivos", "tipo": "Guía",
-                "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
-            {"título": "Conectores argumentativos", "tipo": "Ejercicios",
-                "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
-        ],
-        "Registro": [
-            {"título": "Lenguaje formal e informal", "tipo": "Curso",
-                "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
-            {"título": "Comunicación profesional", "tipo": "Ejemplos",
-                "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
-        ]
-    },
-    "C1-C2": {
-        "Gramática": [
-            {"título": "Construcciones pasivas", "tipo": "Análisis",
-                "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
-            {"título": "Subordinadas complejas", "tipo": "Guía",
-                "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
-        ],
-        "Léxico": [
-            {"título": "Lenguaje académico", "tipo": "Corpus",
-                "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
-            {"título": "Variantes dialectales", "tipo": "Curso",
-                "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
-        ],
-        "Cohesión": [
-            {"título": "Estructura textual avanzada", "tipo": "Manual",
-                "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
-            {"título": "Análisis del discurso", "tipo": "Investigación",
-                "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
-        ],
-        "Registro": [
-            {"título": "Pragmática intercultural", "tipo": "Seminario",
-                "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
-            {"título": "Lenguaje literario", "tipo": "Análisis",
-                "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
-        ]
-    }
-}
-
-# Función para generar recomendaciones de ejercicios con IA - CORREGIDA
-
-
-def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
-    client = OpenAI(api_key=openai_api_key)
-
-    # Preparar datos para el prompt
-    errores_gramatica = errores_obj.get("Gramática", [])
-    errores_lexico = errores_obj.get("Léxico", [])
-    errores_puntuacion = errores_obj.get("Puntuación", [])
-    errores_estructura = errores_obj.get("Estructura textual", [])
-
-    # Extraer puntos débiles del análisis contextual
-    coherencia = analisis_contextual.get("coherencia", {})
-    cohesion = analisis_contextual.get("cohesion", {})
-    registro = analisis_contextual.get("registro_linguistico", {})
-
-    # Mapear nivel para el prompt
-    if "principiante" in nivel:
-        nivel_prompt = "A1-A2"
-    elif "intermedio" in nivel:
-        nivel_prompt = "B1-B2"
-    else:
-        nivel_prompt = "C1-C2"
-
-    # Construir prompt para OpenAI
-    prompt_ejercicios = f"""
-    Basándote en los errores y análisis contextual de un estudiante de español de nivel {nivel_prompt},
-    crea 3 ejercicios personalizados que le ayuden a mejorar. El estudiante tiene:
-
-    - Errores gramaticales: {len(errores_gramatica)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_gramatica[:2]])})
-    - Errores léxicos: {len(errores_lexico)} (ejemplos: {', '.join([e.get('fragmento_erroneo', '') for e in errores_lexico[:2]])})
-    - Errores de puntuación: {len(errores_puntuacion)}
-    - Errores de estructura: {len(errores_estructura)}
-
-    - Puntuación en coherencia: {coherencia.get('puntuacion', 0)}/10
-    - Puntuación en cohesión: {cohesion.get('puntuacion', 0)}/10
-    - Registro lingüístico: {registro.get('tipo_detectado', 'No especificado')}
-
-    Crea ejercicios breves y específicos en formato JSON con esta estructura:
-    {{
-      "ejercicios": [
-        {{
-          "titulo": "Título del ejercicio",
-          "tipo": "tipo de ejercicio (completar huecos, ordenar frases, etc.)",
-          "instrucciones": "instrucciones claras y breves",
-          "contenido": "el contenido del ejercicio",
-          "solucion": "la solución del ejercicio"
-        }}
-      ]
-    }}
-    """
-
-    # Idioma para las instrucciones
-    if idioma != "Español":
-        prompt_ejercicios += f"\nTraduce las instrucciones y el título al {idioma}, pero mantén el contenido del ejercicio en español."
-
-    try:
-        # Llamada a la API
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            temperature=0.7,
-            messages=[{"role": "system", "content": "Eres un experto profesor de ELE especializado en crear ejercicios personalizados."},
-                      {"role": "user", "content": prompt_ejercicios}]
-        )
-
-        # Extraer JSON de la respuesta
-        content = response.choices[0].message.content
-
-        # Buscar JSON en el texto
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            json_str = match.group(0)
-            try:
-                ejercicios_data = json.loads(json_str)
-                return ejercicios_data
-            except json.JSONDecodeError as e:
-                # Si hay error de JSON, mostrar un ejercicio genérico como fallback
-                st.warning(f"Error al parsear JSON de ejercicios: {e}")
-                return {"ejercicios": [{"titulo": "Ejercicio de repaso", "tipo": "Ejercicio de práctica",
-                                       "instrucciones": "Revisa los elementos más problemáticos en tu texto",
-                                        "contenido": "Contenido genérico de práctica",
-                                        "solucion": "Consulta con tu profesor"}]}
-        else:
-            st.warning(
-                "No se pudo extraer JSON de la respuesta. Mostrando ejercicios genéricos.")
-            return {"ejercicios": [{"titulo": "Ejercicio de repaso general", "tipo": "Reflexión",
-                                    "instrucciones": "Revisa los errores más comunes en tu texto",
-                                    "contenido": "Identifica y corrige los errores destacados en tu texto",
-                                    "solucion": "Personalizada según tus errores específicos"}]}
-
-    except Exception as e:
-        st.error(f"Error al generar ejercicios: {str(e)}")
-        return {"ejercicios": [{"titulo": "Error en la generación", "tipo": "Error controlado",
-                                "instrucciones": "No se pudieron generar ejercicios personalizados",
-                                "contenido": f"Error: {str(e)}",
-                                "solucion": "Intenta de nuevo más tarde"}]}
-
-# Función para obtener recursos recomendados según errores
-
-
-def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
-    recursos_recomendados = []
-
-    # Determinar el nivel para buscar recursos
-    if "principiante" in nivel:
-        nivel_db = "A1-A2"
-    elif "intermedio" in nivel:
-        nivel_db = "B1-B2"
-    else:
-        nivel_db = "C1-C2"
-
-    # Verificar errores gramaticales
-    if len(errores_obj.get("Gramática", [])) > 0:
-        recursos_gramatica = RECURSOS_DB.get(nivel_db, {}).get("Gramática", [])
-        if recursos_gramatica:
-            recursos_recomendados.extend(recursos_gramatica[:2])
-
-    # Verificar errores léxicos
-    if len(errores_obj.get("Léxico", [])) > 0:
-        recursos_lexico = RECURSOS_DB.get(nivel_db, {}).get("Léxico", [])
-        if recursos_lexico:
-            recursos_recomendados.extend(recursos_lexico[:2])
-
-    # Verificar problemas de cohesión
-    if analisis_contextual.get("cohesion", {}).get("puntuacion", 10) < 7:
-        recursos_cohesion = RECURSOS_DB.get(nivel_db, {}).get("Cohesión", [])
-        if recursos_cohesion:
-            recursos_recomendados.extend(recursos_cohesion[:1])
-
-    # Verificar problemas de registro
-    if analisis_contextual.get("registro_linguistico", {}).get("puntuacion", 10) < 7:
-        recursos_registro = RECURSOS_DB.get(nivel_db, {}).get("Registro", [])
-        if recursos_registro:
-            recursos_recomendados.extend(recursos_registro[:1])
-
-    return recursos_recomendados
-
-# UI para mostrar recomendaciones
-
-
-def mostrar_seccion_recomendaciones(errores_obj, analisis_contextual, nivel, idioma, openai_api_key):
-    st.header("📚 Recomendaciones personalizadas")
-
-    # Pestañas para diferentes tipos de recomendaciones
-    tab1, tab2 = st.tabs(
-        ["📖 Recursos recomendados", "✏️ Ejercicios personalizados"])
-
-    with tab1:
-        recursos = obtener_recursos_recomendados(
-            errores_obj, analisis_contextual, nivel)
-
-        if recursos:
-            st.write("Basado en tu análisis, te recomendamos estos recursos:")
-
-            for i, recurso in enumerate(recursos):
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.markdown(f"**{recurso['título']}**")
-                with col2:
-                    st.write(f"Tipo: {recurso['tipo']}")
-                with col3:
-                    st.write(f"Nivel: {recurso['nivel']}")
-                st.markdown(f"[Ver recurso]({recurso['url']})")
-                if i < len(recursos) - 1:
-                    st.divider()
-        else:
-            st.info("No hay recursos específicos para recomendar en este momento.")
-
-    with tab2:
-        st.write("Ejercicios personalizados según tus necesidades:")
-
-        with st.spinner("Generando ejercicios personalizados..."):
-            ejercicios_data = generar_ejercicios_personalizado(
-                errores_obj, analisis_contextual, nivel, idioma, openai_api_key
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.3,  # Temperatura baja para resultados más precisos
+                messages=[
+                    {"role": "system", "content": "Eres un experto lingüista y analista textual especializado en complejidad lingüística."},
+                    {"role": "user", "content": prompt_analisis}
+                ]
             )
 
-            ejercicios = ejercicios_data.get("ejercicios", [])
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+        raw_output = response.choices[0].message.content
 
-            for i, ejercicio in enumerate(ejercicios):
-                # Usar st.expander para el ejercicio principal
-                with st.expander(f"{ejercicio.get('titulo', f'Ejercicio {i+1}')}"):
-                    # Crear pestañas para ejercicio y solución
-                    ejercicio_tab, solucion_tab = st.tabs(
-                        ["Ejercicio", "Solución"])
+        # Extraer JSON
+        analisis_data = extract_json_safely(raw_output)
 
-                    with ejercicio_tab:
-                        st.markdown(
-                            f"**{ejercicio.get('tipo', 'Actividad')}**")
-                        st.markdown(
-                            f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
-                        st.markdown("---")
-                        st.markdown(ejercicio.get('contenido', ''))
+        # Verificar si se obtuvo un resultado válido
+        if "error" in analisis_data:
+            circuit_breaker.record_failure("openai")
+            return {"error": "No se pudo procesar el análisis. Formato de respuesta incorrecto."}
 
-                    with solucion_tab:
-                        st.markdown(f"#### Solución del ejercicio:")
-                        st.markdown(ejercicio.get('solucion', ''))
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return analisis_data
 
-                        # --- 3. ESTRUCTURA DE LA APLICACIÓN ---
-st.title("📝 Textocorrector ELE")
-st.markdown("Corrige tus textos escritos y guarda automáticamente el feedback con análisis contextual avanzado. Creado por el profesor Diego Medina")
+    except Exception as e:
+        error_msg = f"Error al analizar complejidad: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return {"error": error_msg}
 
-# Pestañas principales
-tab_corregir, tab_progreso, tab_historial, tab_examenes, tab_herramientas = st.tabs([
-    "📝 Corregir texto",
-    "📊 Ver progreso",
-    "📚 Historial",
-    "🎓 Preparación para exámenes",
-    "🔧 Herramientas complementarias"
-])
+# --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO ---
 
-# --- PESTAÑA 1: CORREGIR TEXTO ---
-with tab_corregir:
-    with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
-        st.markdown("""
-    Esta versión mejorada del Textocorrector incluye:
-    - **Análisis de coherencia**: Evalúa si las ideas están conectadas de manera lógica y si el texto tiene sentido en su conjunto.
-    - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
-    - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
-    - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
-    - **Asistente de escritura en tiempo real**: Recibe sugerencias mientras escribes (activable/desactivable).
-    
-    Las correcciones se adaptan automáticamente al nivel del estudiante.
-""")
 
-    # IMPORTANTE: Capturamos nombre y nivel fuera de todo formulario
-    nombre = st.text_input("Nombre y apellido:", key="nombre_corregir_gral")
-    if nombre and " " not in nombre:
-        st.warning(
-            "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+def corregir_texto(texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional=""):
+    """
+    Realiza una corrección completa de un texto con análisis contextual.
 
-    nivel = st.selectbox("¿Cuál es tu nivel?", [
-        "Nivel principiante (A1-A2)",
-        "Nivel intermedio (B1-B2)",
-        "Nivel avanzado (C1-C2)"
-    ], key="nivel_corregir_gral")
+    Args:
+        texto: Texto a corregir
+        nombre: Nombre del estudiante
+        nivel: Nivel del estudiante
+        idioma: Idioma de corrección (Español, Francés, Inglés)
+        tipo_texto: Tipo de texto
+        contexto_cultural: Contexto cultural relevante
+        info_adicional: Información adicional o contexto
 
-    # Guardar nivel en formato simplificado para el asistente
-    nivel_map = {
-        "Nivel principiante (A1-A2)": "principiante",
-        "Nivel intermedio (B1-B2)": "intermedio",
-        "Nivel avanzado (C1-C2)": "avanzado"
+    Returns:
+        dict: Resultado de la corrección o mensaje de error
+    """
+    client = get_openai_client()
+    if client is None:
+        return {"error": "Servicio de corrección no disponible. Verifique la conexión."}
+
+    if not circuit_breaker.can_execute("openai"):
+        return {"error": "Servicio temporalmente no disponible. Inténtelo más tarde."}
+
+    # Validar la entrada
+    if not texto or not nombre:
+        return {"error": "El texto y el nombre son obligatorios."}
+
+    # Mapeo de niveles para instrucciones más específicas
+    nivel_map_instrucciones = {
+        "Nivel principiante (A1-A2)": {
+            "descripcion": "principiante (A1-A2)",
+            "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
+        },
+        "Nivel intermedio (B1-B2)": {
+            "descripcion": "intermedio (B1-B2)",
+            "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
+        },
+        "Nivel avanzado (C1-C2)": {
+            "descripcion": "avanzado (C1-C2)",
+            "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
+        }
     }
-    st.session_state.nivel_estudiante = nivel_map.get(nivel, "intermedio")
 
-    # IMPORTANTE: Generador de consignas TOTALMENTE FUERA del formulario
-    with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
-        tipo_consigna = st.selectbox(
-            "Tipo de texto a escribir:",
-            [
-                "Cualquiera (aleatorio)",
-                "Narración",
-                "Correo/Carta formal",
-                "Opinión/Argumentación",
-                "Descripción",
-                "Diálogo"
-            ],
-            key="tipo_consigna_corregir"
-        )
+    # Usar nivel intermedio como fallback
+    nivel_info = nivel_map_instrucciones.get(
+        nivel, nivel_map_instrucciones["Nivel intermedio (B1-B2)"])
 
-        if st.button("Generar consigna de escritura", key="generar_consigna"):
-            with st.spinner("Generando consigna adaptada a tu nivel..."):
-                # Determinar el nivel para la IA
-                nivel_actual = nivel_map.get(nivel, "intermedio")
-
-                # Generar la consigna
-                consigna_generada = generar_consigna_escritura(
-                    nivel_actual, tipo_consigna)
-
-                # Guardar en session_state para usarlo en el formulario
-                st.session_state.consigna_actual = consigna_generada
-
-            # Mostrar la consigna generada
-            st.success("✨ Consigna generada:")
-            st.info(st.session_state.consigna_actual)
-
-            # Opción para usar esta consigna
-            if st.button("Usar esta consigna como contexto", key="usar_consigna"):
-                st.session_state.info_adicional_corregir = f"Consigna: {st.session_state.consigna_actual}"
-                st.session_state.usar_consigna_como_texto = True
-                st.rerun()  # Recargar para actualizar el formulario
-
-    # AHORA: Formulario de corrección completamente separado
-    with st.form(key="formulario_corregir"):
-        # No repetimos nombre y nivel, ya que los capturamos fuera del formulario
-
-        idioma = st.selectbox("Selecciona lenguaje para la corrección", [
-                              "Español", "Francés", "Inglés"], key="idioma_corregir")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            tipo_texto = st.selectbox("Tipo de texto", [
-                "General/No especificado",
-                "Académico",
-                "Profesional/Laboral",
-                "Informal/Cotidiano",
-                "Creativo/Literario"
-            ], key="tipo_texto_corregir")
-
-        with col2:
-            contexto_cultural = st.selectbox("Contexto cultural", [
-                "General/Internacional",
-                "España",
-                "Latinoamérica",
-                "Contexto académico",
-                "Contexto empresarial"
-            ], key="contexto_cultural_corregir")
-
-        # Texto inicial con contenido de la consigna si está disponible
-        texto_inicial = ""
-        if "usar_consigna_como_texto" in st.session_state and st.session_state.usar_consigna_como_texto and "consigna_actual" in st.session_state:
-            texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
-            # Reset para no añadirlo cada vez
-            st.session_state.usar_consigna_como_texto = False
-
-        # Área de texto para la corrección
-        texto = st.text_area(
-            "Escribe tu texto aquí:",
-            value=texto_inicial,
-            height=250,
-            key="texto_correccion_corregir"
-        )
-
-        info_adicional = st.text_area(
-            "Información adicional o contexto (opcional):", height=100, key="info_adicional_corregir")
-
-        # IMPORTANTE: Único tipo de botón permitido dentro de un formulario
-        enviar = st.form_submit_button("Corregir")
-
-        # PROCESAMIENTO DEL FORMULARIO
-        if enviar and nombre and texto:
-            with st.spinner("Analizando texto y generando corrección contextual..."):
-                # CORREGIR TEXTO CON IA Y JSON ESTRUCTURADO
-                # Mapeo de niveles para instrucciones más específicas
-                nivel_map_instrucciones = {
-                    "Nivel principiante (A1-A2)": {
-                        "descripcion": "principiante (A1-A2)",
-                        "enfoque": "Enfócate en estructuras básicas, vocabulario fundamental y errores comunes. Utiliza explicaciones simples y claras. Evita terminología lingüística compleja."
-                    },
-                    "Nivel intermedio (B1-B2)": {
-                        "descripcion": "intermedio (B1-B2)",
-                        "enfoque": "Puedes señalar errores más sutiles de concordancia, uso de tiempos verbales y preposiciones. Puedes usar alguna terminología lingüística básica en las explicaciones."
-                    },
-                    "Nivel avanzado (C1-C2)": {
-                        "descripcion": "avanzado (C1-C2)",
-                        "enfoque": "Céntrate en matices, coloquialismos, registro lingüístico y fluidez. Puedes usar terminología lingüística específica y dar explicaciones más detalladas y técnicas."
-                    }
-                }
-
-                nivel_info = nivel_map_instrucciones.get(
-                    nivel, nivel_map_instrucciones["Nivel intermedio (B1-B2)"])
-
-                # Instrucciones para el modelo de IA con análisis contextual avanzado
-                system_message = f"""
+    # Instrucciones para el modelo de IA con análisis contextual avanzado
+    system_message = f"""
 Eres Diego, un profesor experto en ELE (Español como Lengua Extranjera) especializado en análisis lingüístico contextual.
 Tu objetivo es corregir textos adaptando tu feedback al nivel {nivel_info['descripcion']} del estudiante.
 {nivel_info['enfoque']}
@@ -1359,8 +1446,9 @@ IMPORTANTE:
 
 No devuelvas ningún texto extra fuera de este JSON.
 """
-                # Mensaje para el usuario con contexto adicional
-                user_message = f"""
+
+    # Mensaje para el usuario con contexto adicional
+    user_message = f"""
 Texto del alumno:
 \"\"\"
 {texto}
@@ -1373,419 +1461,2824 @@ Contexto cultural: {contexto_cultural}
 {f"Información adicional: {info_adicional}" if info_adicional else ""}
 """
 
-                try:
-                    raw_output, data_json = obtener_json_de_ia(
-                        system_message, user_message, max_retries=3)
+    try:
+        # Enviar solicitud a OpenAI
+        raw_output, data_json = obtener_json_de_ia(
+            system_message, user_message, model="gpt-4-turbo", max_retries=3)
 
-                    # Extraer campos del JSON
-                    saludo = data_json.get("saludo", "")
-                    tipo_texto_detectado = data_json.get("tipo_texto", "")
-                    errores_obj = data_json.get("errores", {})
-                    texto_corregido = data_json.get("texto_corregido", "")
-                    analisis_contextual = data_json.get(
-                        "analisis_contextual", {})
-                    consejo_final = data_json.get("consejo_final", "")
-                    fin = data_json.get("fin", "")
+        # Verificar si hay error en la respuesta
+        if raw_output is None or "error" in data_json:
+            error_msg = data_json.get(
+                "error", "Error desconocido en el procesamiento")
+            logger.error(f"Error en corrección: {error_msg}")
+            return {"error": error_msg}
 
-                    # Extraer puntuaciones del análisis contextual
-                    coherencia = analisis_contextual.get("coherencia", {})
-                    cohesion = analisis_contextual.get("cohesion", {})
-                    registro = analisis_contextual.get(
-                        "registro_linguistico", {})
-                    adecuacion = analisis_contextual.get(
-                        "adecuacion_cultural", {})
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
 
-                    puntuacion_coherencia = coherencia.get("puntuacion", 0)
-                    puntuacion_cohesion = cohesion.get("puntuacion", 0)
-                    puntuacion_registro = registro.get("puntuacion", 0)
-                    puntuacion_adecuacion = adecuacion.get("puntuacion", 0)
+        # Guardar corrección si hay conexión a Google Sheets
+        if sheets_connection is not None:
+            resultado_guardado = guardar_correccion(
+                nombre, nivel, idioma, texto, raw_output)
+            if not resultado_guardado["success"]:
+                logger.warning(
+                    f"No se pudo guardar la corrección: {resultado_guardado['message']}")
 
-                    # --- CONTEO DE ERRORES ---
-                    num_gramatica = len(errores_obj.get("Gramática", []))
-                    num_lexico = len(errores_obj.get("Léxico", []))
-                    num_puntuacion = len(errores_obj.get("Puntuación", []))
-                    num_estructura = len(
-                        errores_obj.get("Estructura textual", []))
-                    total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+        # Devolver resultado
+        return data_json
 
-                    # --- GUARDAR SEGUIMIENTO EN EL DOCUMENTO "Seguimiento" ---
-                    # Fecha actual para el registro
-                    fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+    except Exception as e:
+        error_msg = f"Error al corregir texto: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return {"error": error_msg}
+    # --- 1. GENERACIÓN DE INFORMES EN DIFERENTES FORMATOS ---
 
-                    # Primero guardar en Historial_Correcciones_ELE
-                    try:
-                        corrections_sheet.append_row(
-                            [nombre, nivel, idioma, fecha, texto, raw_output])
-                        st.success(
-                            "✅ Corrección guardada en Historial_Correcciones_ELE.")
-                    except Exception as e:
-                        st.warning(
-                            f"⚠️ No se pudo guardar en Historial_Correcciones_ELE: {str(e)}")
 
-                    # Luego intentar guardar en la hoja de seguimiento
-                    try:
-                        datos_seguimiento = [
-                            nombre,
-                            nivel,
-                            fecha,
-                            num_gramatica,
-                            num_lexico,
-                            num_puntuacion,
-                            num_estructura,
-                            total_errores,
-                            puntuacion_coherencia,
-                            puntuacion_cohesion,
-                            puntuacion_registro,
-                            puntuacion_adecuacion,
-                            consejo_final
-                        ]
+def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, errores_obj, analisis_contextual, consejo_final):
+    """
+    Genera un informe de corrección en formato Word (DOCX).
 
-                        tracking_sheet.append_row(datos_seguimiento)
-                        st.success(
-                            "✅ Estadísticas guardadas en hoja de Seguimiento.")
-                    except Exception as e:
-                        st.warning(
-                            f"⚠️ No se pudieron guardar estadísticas en Seguimiento: {str(e)}")
+    Args:
+        nombre: Nombre del estudiante
+        nivel: Nivel del estudiante
+        fecha: Fecha de la corrección
+        texto_original: Texto original del estudiante
+        texto_corregido: Texto con correcciones
+        errores_obj: Objeto con errores detectados
+        analisis_contextual: Objeto con análisis contextual
+        consejo_final: Consejo final para el estudiante
 
-                    # --- MOSTRAR RESULTADOS EN LA INTERFAZ ---
-                    # Mostrar el saludo y presentación directamente sin encabezados
-                    st.write(saludo)
+    Returns:
+        BytesIO: Buffer con el documento generado
+    """
+    try:
+        doc = Document()
 
-                    # Generar texto de presentación en el idioma seleccionado
-                    if idioma == "Español":
-                        presentacion = f"A continuación encontrarás el análisis completo de tu texto. He identificado tu escrito como un texto de tipo **{tipo_texto_detectado.lower()}**. He revisado aspectos gramaticales, léxicos, de puntuación y estructura, además de realizar un análisis de coherencia, cohesión, registro y adecuación cultural. Todas las correcciones están adaptadas a tu nivel {nivel_info['descripcion']}."
-                    elif idioma == "Francés":
-                        presentacion = f"Voici l'analyse complète de ton texte. J'ai identifié ton écrit comme un texte de type **{tipo_texto_detectado.lower()}**. J'ai examiné les aspects grammaticaux, lexicaux, de ponctuation et de structure, en plus de réaliser une analyse de cohérence, cohésion, registre et adaptation culturelle. Toutes les corrections sont adaptées à ton niveau {nivel_info['descripcion']}."
-                    elif idioma == "Inglés":
-                        presentacion = f"Below you will find the complete analysis of your text. I have identified your writing as a **{tipo_texto_detectado.lower()}** type text. I have reviewed grammatical, lexical, punctuation and structural aspects, as well as analyzing coherence, cohesion, register and cultural appropriateness. All corrections are adapted to your {nivel_info['descripcion']} level."
-                    else:
-                        presentacion = f"A continuación encontrarás el análisis completo de tu texto. He identificado tu escrito como un texto de tipo **{tipo_texto_detectado.lower()}**."
+        # Estilo del documento
+        doc.styles['Normal'].font.name = 'Calibri'
+        doc.styles['Normal'].font.size = Pt(11)
 
-                    st.markdown(presentacion)
+        # Título
+        doc.add_heading('Informe de corrección textual', 0)
 
-                    # Errores detectados
-                    st.subheader("Errores detectados")
-                    if not any(errores_obj.get(cat, []) for cat in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]):
-                        st.success(
-                            "¡Felicidades! No se han detectado errores significativos.")
-                    else:
-                        for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
-                            lista_errores = errores_obj.get(categoria, [])
-                            if lista_errores:
-                                with st.expander(f"**{categoria}** ({len(lista_errores)} errores)"):
-                                    for i, err in enumerate(lista_errores, 1):
-                                        st.markdown(f"**Error {i}:**")
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            st.error(
-                                                f"❌ {err.get('fragmento_erroneo', '')}")
-                                        with col2:
-                                            st.success(
-                                                f"✅ {err.get('correccion', '')}")
-                                        st.info(
-                                            f"💡 {err.get('explicacion', '')}")
-                                        if i < len(lista_errores):
-                                            st.divider()
+        # Información general
+        doc.add_heading('Información general', level=1)
+        doc.add_paragraph(f'Nombre: {nombre}')
+        doc.add_paragraph(f'Nivel: {nivel}')
+        doc.add_paragraph(f'Fecha: {fecha}')
 
-                    # Texto corregido
-                    st.subheader("Texto corregido completo")
-                    st.write(texto_corregido)
+        # Texto original
+        doc.add_heading('Texto original', level=1)
+        doc.add_paragraph(texto_original)
 
-                    # --- ANÁLISIS CONTEXTUAL ---
-                    st.header("Análisis contextual avanzado")
+        # Texto corregido
+        doc.add_heading('Texto corregido', level=1)
+        doc.add_paragraph(texto_corregido)
 
-                    # Crear columnas para las puntuaciones generales
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Coherencia", f"{puntuacion_coherencia}/10")
-                    with col2:
-                        st.metric("Cohesión", f"{puntuacion_cohesion}/10")
-                    with col3:
-                        st.metric("Registro", f"{puntuacion_registro}/10")
-                    with col4:
-                        st.metric("Adecuación cultural",
-                                  f"{puntuacion_adecuacion}/10")
+        # Análisis de errores
+        doc.add_heading('Análisis de errores', level=1)
 
-                    # Gráfico sencillo para visualizar las puntuaciones
-                    puntuaciones = [puntuacion_coherencia, puntuacion_cohesion,
-                                    puntuacion_registro, puntuacion_adecuacion]
-                    categorias = ["Coherencia", "Cohesión",
-                                  "Registro", "Ad. Cultural"]
+        # Verificar que errores_obj es un diccionario
+        if isinstance(errores_obj, dict):
+            for categoria, errores in errores_obj.items():
+                if errores and isinstance(errores, list):
+                    doc.add_heading(categoria, level=2)
+                    for error in errores:
+                        if isinstance(error, dict):
+                            p = doc.add_paragraph()
+                            p.add_run('Fragmento erróneo: ').bold = True
+                            p.add_run(error.get('fragmento_erroneo', '')
+                                      ).font.color.rgb = RGBColor(255, 0, 0)
 
-                    # Calcular el promedio de las puntuaciones
-                    promedio_contextual = sum(
-                        puntuaciones) / len(puntuaciones) if puntuaciones else 0
+                            p = doc.add_paragraph()
+                            p.add_run('Corrección: ').bold = True
+                            p.add_run(error.get('correccion', '')
+                                      ).font.color.rgb = RGBColor(0, 128, 0)
 
-                    # Mostrar un progreso general
+                            p = doc.add_paragraph()
+                            p.add_run('Explicación: ').bold = True
+                            p.add_run(error.get('explicacion', ''))
+
+                            doc.add_paragraph()  # Espacio
+
+        # Análisis contextual
+        doc.add_heading('Análisis contextual', level=1)
+
+        # Tabla de puntuaciones
+        doc.add_heading('Puntuaciones', level=2)
+        table = doc.add_table(rows=1, cols=5)
+        table.style = 'Table Grid'
+
+        # Encabezados
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Aspecto'
+        hdr_cells[1].text = 'Coherencia'
+        hdr_cells[2].text = 'Cohesión'
+        hdr_cells[3].text = 'Registro'
+        hdr_cells[4].text = 'Adecuación cultural'
+
+        # Verificar que analisis_contextual es un diccionario
+        if isinstance(analisis_contextual, dict):
+            # Datos
+            row_cells = table.add_row().cells
+            row_cells[0].text = 'Puntuación'
+            row_cells[1].text = str(analisis_contextual.get(
+                'coherencia', {}).get('puntuacion', 'N/A'))
+            row_cells[2].text = str(analisis_contextual.get(
+                'cohesion', {}).get('puntuacion', 'N/A'))
+            row_cells[3].text = str(analisis_contextual.get(
+                'registro_linguistico', {}).get('puntuacion', 'N/A'))
+            row_cells[4].text = str(analisis_contextual.get(
+                'adecuacion_cultural', {}).get('puntuacion', 'N/A'))
+
+        # Consejo final
+        doc.add_heading('Consejo final', level=1)
+        doc.add_paragraph(consejo_final)
+
+        # Generar QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+
+        # Generar un ID único para el informe
+        informe_id = f"{nombre.replace(' ', '')}_{fecha.replace(' ', '_').replace(':', '-')}"
+        qr_data = f"textocorrector://informe/{informe_id}"
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # Guardar QR como imagen temporal
+        qr_buffer = BytesIO()
+        img.save(qr_buffer)
+        qr_buffer.seek(0)
+
+        # Añadir la imagen del QR al documento
+        doc.add_heading('Acceso online', level=1)
+        doc.add_paragraph(
+            'Escanea este código QR para acceder a este informe online:')
+        doc.add_picture(qr_buffer, width=Inches(2.0))
+
+        # Guardar el documento en memoria
+        docx_buffer = BytesIO()
+        doc.save(docx_buffer)
+        docx_buffer.seek(0)
+
+        # Cerrar el buffer del QR
+        qr_buffer.close()
+
+        return docx_buffer
+
+    except Exception as e:
+        logger.error(f"Error al generar informe DOCX: {str(e)}")
+        # Devolver un documento simple con mensaje de error
+        try:
+            doc = Document()
+            doc.add_heading('Error al generar informe', 0)
+            doc.add_paragraph(
+                f"Se produjo un error al generar el informe: {str(e)}")
+            doc.add_paragraph("Por favor, contacte con soporte técnico.")
+
+            docx_buffer = BytesIO()
+            doc.save(docx_buffer)
+            docx_buffer.seek(0)
+            return docx_buffer
+        except:
+            # Si todo falla, devolver None
+            return None
+
+
+def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, analisis_contextual, consejo_final):
+    """
+    Genera un informe de corrección en formato HTML.
+
+    Args:
+        nombre: Nombre del estudiante
+        nivel: Nivel del estudiante
+        fecha: Fecha de la corrección
+        texto_original: Texto original del estudiante
+        texto_corregido: Texto con correcciones
+        analisis_contextual: Objeto con análisis contextual
+        consejo_final: Consejo final para el estudiante
+
+    Returns:
+        str: Contenido HTML del informe
+    """
+    try:
+        # Verificar entradas
+        nombre = nombre or "Estudiante"
+        nivel = nivel or "No especificado"
+        fecha = fecha or datetime.now().strftime("%Y-%m-%d %H:%M")
+        texto_original = texto_original or "No disponible"
+        texto_corregido = texto_corregido or "No disponible"
+        consejo_final = consejo_final or "No disponible"
+
+        # Verificar analisis_contextual
+        if not isinstance(analisis_contextual, dict):
+            analisis_contextual = {}
+
+        # Obtener puntuaciones
+        coherencia = analisis_contextual.get(
+            'coherencia', {}).get('puntuacion', 'N/A')
+        cohesion = analisis_contextual.get(
+            'cohesion', {}).get('puntuacion', 'N/A')
+        registro = analisis_contextual.get(
+            'registro_linguistico', {}).get('puntuacion', 'N/A')
+        adecuacion = analisis_contextual.get(
+            'adecuacion_cultural', {}).get('puntuacion', 'N/A')
+
+        # Crear HTML
+        html_content = f'''
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Informe de corrección - {nombre}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
+                h1 {{ color: #2c3e50; }}
+                h2 {{ color: #3498db; margin-top: 30px; }}
+                h3 {{ color: #2980b9; }}
+                .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
+                .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
+                .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
+                .fragmento {{ color: #dc3545; }}
+                .correccion {{ color: #28a745; }}
+                .explicacion {{ color: #17a2b8; font-style: italic; }}
+                .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
+                .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+                .puntuaciones th {{ background-color: #f2f2f2; }}
+                .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
+                .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Informe de corrección textual</h1>
+
+                <section>
+                    <h2>Información general</h2>
+                    <p><strong>Nombre:</strong> {nombre}</p>
+                    <p><strong>Nivel:</strong> {nivel}</p>
+                    <p><strong>Fecha:</strong> {fecha}</p>
+                </section>
+
+                <section>
+                    <h2>Texto original</h2>
+                    <div class="original">
+                        <p>{texto_original.replace(chr(10), '<br>')}</p>
+                    </div>
+
+                    <h2>Texto corregido</h2>
+                    <div class="corregido">
+                        <p>{texto_corregido.replace(chr(10), '<br>')}</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h2>Análisis contextual</h2>
+
+                    <h3>Puntuaciones</h3>
+                    <table class="puntuaciones">
+                        <tr>
+                            <th>Coherencia</th>
+                            <th>Cohesión</th>
+                            <th>Registro</th>
+                            <th>Adecuación cultural</th>
+                        </tr>
+                        <tr>
+                            <td>{coherencia}/10</td>
+                            <td>{cohesion}/10</td>
+                            <td>{registro}/10</td>
+                            <td>{adecuacion}/10</td>
+                        </tr>
+                    </table>
+                </section>
+
+                <section>
+                    <h2>Consejo final</h2>
+                    <div class="consejo">
+                        <p>{consejo_final}</p>
+                    </div>
+                </section>
+
+                <div class="footer">
+                    <p>Textocorrector ELE - Informe generado el {fecha} - Versión {APP_VERSION}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        '''
+
+        return html_content
+
+    except Exception as e:
+        logger.error(f"Error al generar informe HTML: {str(e)}")
+        # Crear HTML básico con mensaje de error
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head><title>Error en informe</title></head>
+        <body>
+            <h1>Error al generar informe</h1>
+            <p>Se produjo un error: {str(e)}</p>
+        </body>
+        </html>
+        '''
+
+
+def generar_csv_analisis(nombre, nivel, fecha, datos_analisis):
+    """
+    Genera un archivo CSV con los datos de análisis de una corrección.
+
+    Args:
+        nombre: Nombre del estudiante
+        nivel: Nivel del estudiante
+        fecha: Fecha de la corrección
+        datos_analisis: Diccionario con datos de análisis
+
+    Returns:
+        BytesIO: Buffer con el CSV generado
+    """
+    try:
+        # Verificar que datos_analisis es un diccionario
+        if not isinstance(datos_analisis, dict):
+            datos_analisis = {}
+
+        # Extraer datos
+        errores = datos_analisis.get("errores", {})
+        analisis_contextual = datos_analisis.get("analisis_contextual", {})
+
+        # Contar errores por categoría
+        num_gramatica = len(errores.get("Gramática", []))
+        num_lexico = len(errores.get("Léxico", []))
+        num_puntuacion = len(errores.get("Puntuación", []))
+        num_estructura = len(errores.get("Estructura textual", []))
+        total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+
+        # Extraer puntuaciones
+        coherencia = analisis_contextual.get(
+            "coherencia", {}).get("puntuacion", 0)
+        cohesion = analisis_contextual.get("cohesion", {}).get("puntuacion", 0)
+        registro = analisis_contextual.get(
+            "registro_linguistico", {}).get("puntuacion", 0)
+        adecuacion = analisis_contextual.get(
+            "adecuacion_cultural", {}).get("puntuacion", 0)
+
+        # Crear CSV en memoria
+        csv_buffer = StringIO()
+
+        # Encabezados y datos
+        csv_buffer.write("Categoría,Dato\n")
+        csv_buffer.write(f"Nombre,{nombre}\n")
+        csv_buffer.write(f"Nivel,{nivel}\n")
+        csv_buffer.write(f"Fecha,{fecha}\n")
+        csv_buffer.write(f"Errores Gramática,{num_gramatica}\n")
+        csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
+        csv_buffer.write(f"Errores Puntuación,{num_puntuacion}\n")
+        csv_buffer.write(f"Errores Estructura,{num_estructura}\n")
+        csv_buffer.write(f"Total Errores,{total_errores}\n")
+        csv_buffer.write(f"Puntuación Coherencia,{coherencia}\n")
+        csv_buffer.write(f"Puntuación Cohesión,{cohesion}\n")
+        csv_buffer.write(f"Puntuación Registro,{registro}\n")
+        csv_buffer.write(f"Puntuación Adecuación Cultural,{adecuacion}\n")
+
+        # Convertir a bytes
+        csv_bytes = csv_buffer.getvalue().encode()
+
+        # Crear buffer de bytes
+        bytes_buffer = BytesIO(csv_bytes)
+
+        return bytes_buffer
+
+    except Exception as e:
+        logger.error(f"Error al generar CSV: {str(e)}")
+        # Crear CSV básico con mensaje de error
+        csv_buffer = StringIO()
+        csv_buffer.write("Error,Mensaje\n")
+        csv_buffer.write(f"Error al generar CSV,{str(e)}\n")
+
+        return BytesIO(csv_buffer.getvalue().encode())
+
+# --- 2. VISUALIZACIÓN DE DATOS Y ESTADÍSTICAS ---
+
+
+def crear_grafico_radar(valores, categorias):
+    """
+    Crea un gráfico de radar para visualizar habilidades contextuales.
+
+    Args:
+        valores: Lista de valores numéricos
+        categorias: Lista de nombres de categorías
+
+    Returns:
+        matplotlib.figure.Figure: Figura con el gráfico
+    """
+    try:
+        # Verificar entradas
+        if not isinstance(valores, list) or not isinstance(categorias, list):
+            logger.error("Valores o categorías no son listas")
+            return None
+
+        if len(valores) != len(categorias) or len(valores) == 0:
+            logger.error(
+                f"Longitud incorrecta: valores={len(valores)}, categorias={len(categorias)}")
+            return None
+
+        # Crear figura
+        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+
+        # Número de categorías
+        N = len(categorias)
+
+        # Ángulos para cada eje
+        angulos = [n / float(N) * 2 * 3.14159 for n in range(N)]
+        angulos += angulos[:1]  # Cerrar el círculo
+
+        # Añadir los valores, repitiendo el primero
+        valores_radar = valores + [valores[0]]
+
+        # Dibujar los ejes
+        plt.xticks(angulos[:-1], categorias)
+
+        # Dibujar el polígono
+        ax.plot(angulos, valores_radar)
+        ax.fill(angulos, valores_radar, alpha=0.1)
+
+        # Ajustar escala
+        ax.set_yticks([2, 4, 6, 8, 10])
+        ax.set_ylim(0, 10)
+
+        plt.title("Habilidades contextuales")
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error al crear gráfico radar: {str(e)}")
+        return None
+
+
+def mostrar_progreso(df):
+    """
+    Crea gráficos de progreso a partir de un DataFrame con historial de correcciones.
+
+    Args:
+        df: DataFrame con historial de correcciones
+
+    Returns:
+        dict: Diccionario con gráficos generados (altair)
+    """
+    resultado = {
+        "errores_totales": None,
+        "tipos_error": None,
+        "radar": None,
+        "fecha_col": None
+    }
+
+    if df is None or df.empty:
+        logger.warning("DataFrame vacío o nulo")
+        return resultado
+
+    try:
+        # Verificar si existe la columna Fecha
+        fecha_col = None
+        # Buscar la columna de fecha de manera flexible
+        for col in df.columns:
+            if 'fecha' in col.lower().strip():
+                fecha_col = col
+                break
+
+        if fecha_col is None:
+            logger.error("No se encontró la columna 'Fecha' en los datos")
+            return resultado
+
+        resultado["fecha_col"] = fecha_col
+
+        # Asegurarse de que la columna Fecha está en formato datetime
+        try:
+            df[fecha_col] = pd.to_datetime(df[fecha_col], errors='coerce')
+            df = df.sort_values(fecha_col)
+        except Exception as e:
+            logger.error(f"Error al convertir fechas: {str(e)}")
+            return resultado
+
+        # Crear un gráfico con Altair para total de errores
+        chart_errores = alt.Chart(df).mark_line(point=True).encode(
+            x=alt.X(f'{fecha_col}:T', title='Fecha'),
+            y=alt.Y('Total Errores:Q', title='Total Errores'),
+            tooltip=[f'{fecha_col}:T', 'Total Errores:Q', 'Nivel:N']
+        ).properties(
+            title='Evolución de errores totales a lo largo del tiempo'
+        ).interactive()
+
+        resultado["errores_totales"] = chart_errores
+
+        # Gráfico de tipos de errores
+        columnas_errores = [
+            'Errores Gramática',
+            'Errores Léxico',
+            'Errores Puntuación',
+            'Errores Estructura'
+        ]
+
+        # Encontrar las columnas que realmente existen en el DataFrame
+        columnas_errores_existentes = [
+            col for col in columnas_errores if col in df.columns]
+
+        if columnas_errores_existentes:
+            # Usar solo las columnas que existen
+            tipos_error_df = pd.melt(
+                df,
+                id_vars=[fecha_col],
+                value_vars=columnas_errores_existentes,
+                var_name='Tipo de Error',
+                value_name='Cantidad'
+            )
+
+            chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
+                x=alt.X(f'{fecha_col}:T', title='Fecha'),
+                y=alt.Y('Cantidad:Q', title='Cantidad'),
+                color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
+                tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
+            ).properties(
+                title='Evolución por tipo de error'
+            ).interactive()
+
+            resultado["tipos_error"] = chart_tipos
+
+        # Datos para el gráfico de radar (última entrada)
+        if 'Puntuación Coherencia' in df.columns and len(df) > 0:
+            ultima_entrada = df.iloc[-1]
+
+            # Datos para el gráfico de radar
+            categorias = ['Coherencia', 'Cohesión', 'Registro', 'Ad. Cultural']
+            valores = [
+                ultima_entrada.get('Puntuación Coherencia', 0),
+                ultima_entrada.get('Puntuación Cohesión', 0),
+                ultima_entrada.get('Puntuación Registro', 0),
+                ultima_entrada.get('Puntuación Adecuación Cultural', 0)
+            ]
+
+            fig_radar = crear_grafico_radar(valores, categorias)
+            resultado["radar"] = fig_radar
+
+        return resultado
+
+    except Exception as e:
+        logger.error(f"Error al mostrar progreso: {str(e)}")
+        return resultado
+    # --- 2. GENERACIÓN DE EJERCICIOS PERSONALIZADOS ---
+
+
+def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma):
+    """
+    Genera ejercicios personalizados basados en los errores y análisis del estudiante.
+
+    Args:
+        errores_obj: Objeto con errores detectados
+        analisis_contextual: Objeto con análisis contextual
+        nivel: Nivel del estudiante
+        idioma: Idioma de las instrucciones
+
+    Returns:
+        dict: Datos de ejercicios generados
+    """
+    client = get_openai_client()
+    if client is None:
+        return {"ejercicios": [{"titulo": "Servicio no disponible",
+                                "tipo": "Error",
+                                "instrucciones": "El servicio de generación de ejercicios no está disponible en este momento.",
+                                "contenido": "Inténtelo más tarde.",
+                                "solucion": "N/A"}]}
+
+    if not circuit_breaker.can_execute("openai"):
+        return {"ejercicios": [{"titulo": "Servicio temporalmente no disponible",
+                                "tipo": "Error",
+                                "instrucciones": "El servicio está temporalmente deshabilitado debido a errores previos.",
+                                "contenido": "Inténtelo más tarde.",
+                                "solucion": "N/A"}]}
+
+    try:
+        # Verificar entradas
+        if not isinstance(errores_obj, dict):
+            errores_obj = {}
+        if not isinstance(analisis_contextual, dict):
+            analisis_contextual = {}
+
+        # Preparar datos para el prompt
+        errores_gramatica = errores_obj.get("Gramática", [])
+        errores_lexico = errores_obj.get("Léxico", [])
+        errores_puntuacion = errores_obj.get("Puntuación", [])
+        errores_estructura = errores_obj.get("Estructura textual", [])
+
+        # Extraer puntos débiles del análisis contextual
+        coherencia = analisis_contextual.get("coherencia", {})
+        cohesion = analisis_contextual.get("cohesion", {})
+        registro = analisis_contextual.get("registro_linguistico", {})
+
+        # Mapear nivel para el prompt
+        if "principiante" in nivel.lower():
+            nivel_prompt = "A1-A2"
+        elif "intermedio" in nivel.lower():
+            nivel_prompt = "B1-B2"
+        else:
+            nivel_prompt = "C1-C2"
+
+        # Obtener ejemplos de errores (con manejo seguro)
+        ejemplos_gramatica = ", ".join([e.get('fragmento_erroneo', '')
+                                       for e in errores_gramatica[:2]]) if errores_gramatica else ""
+        ejemplos_lexico = ", ".join([e.get('fragmento_erroneo', '')
+                                    for e in errores_lexico[:2]]) if errores_lexico else ""
+
+        # Construir prompt para OpenAI
+        prompt_ejercicios = f"""
+        Basándote en los errores y análisis contextual de un estudiante de español de nivel {nivel_prompt},
+        crea 3 ejercicios personalizados que le ayuden a mejorar. El estudiante tiene:
+        
+        - Errores gramaticales: {len(errores_gramatica)} {f"(ejemplos: {ejemplos_gramatica})" if ejemplos_gramatica else ""}
+        - Errores léxicos: {len(errores_lexico)} {f"(ejemplos: {ejemplos_lexico})" if ejemplos_lexico else ""}
+        - Errores de puntuación: {len(errores_puntuacion)}
+        - Errores de estructura: {len(errores_estructura)}
+        
+        - Puntuación en coherencia: {coherencia.get('puntuacion', 0)}/10
+        - Puntuación en cohesión: {cohesion.get('puntuacion', 0)}/10
+        - Registro lingüístico: {registro.get('tipo_detectado', 'No especificado')}
+        
+        Crea ejercicios breves y específicos en formato JSON con esta estructura:
+        {{
+          "ejercicios": [
+            {{
+              "titulo": "Título del ejercicio",
+              "tipo": "tipo de ejercicio (completar huecos, ordenar frases, etc.)",
+              "instrucciones": "instrucciones claras y breves",
+              "contenido": "el contenido del ejercicio",
+              "solucion": "la solución del ejercicio"
+            }}
+          ]
+        }}
+        """
+
+        # Idioma para las instrucciones
+        if idioma != "Español":
+            prompt_ejercicios += f"\nTraduce las instrucciones y el título al {idioma}, pero mantén el contenido del ejercicio en español."
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[{"role": "system", "content": "Eres un experto profesor de ELE especializado en crear ejercicios personalizados."},
+                          {"role": "user", "content": prompt_ejercicios}]
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+        raw_output = response.choices[0].message.content
+
+        # Extraer JSON
+        ejercicios_data = extract_json_safely(raw_output)
+
+        # Verificar si se obtuvo un resultado válido
+        if "error" in ejercicios_data:
+            logger.warning(
+                f"Error al extraer JSON de ejercicios: {ejercicios_data['error']}")
+            return {"ejercicios": [{"titulo": "Ejercicio de repaso",
+                                   "tipo": "Ejercicio de práctica",
+                                    "instrucciones": "Revisa los elementos más problemáticos en tu texto",
+                                    "contenido": "Contenido genérico de práctica",
+                                    "solucion": "Consulta con tu profesor"}]}
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return ejercicios_data
+
+    except Exception as e:
+        error_msg = f"Error al generar ejercicios: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return {"ejercicios": [{"titulo": "Error en la generación",
+                                "tipo": "Error controlado",
+                                "instrucciones": "No se pudieron generar ejercicios personalizados",
+                                "contenido": f"Error: {str(e)}",
+                                "solucion": "Intenta de nuevo más tarde"}]}
+
+
+def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
+    """
+    Obtiene recursos recomendados basados en los errores y análisis del estudiante.
+
+    Args:
+        errores_obj: Objeto con errores detectados
+        analisis_contextual: Objeto con análisis contextual
+        nivel: Nivel del estudiante
+
+    Returns:
+        list: Lista de recursos recomendados
+    """
+    recursos_recomendados = []
+
+    try:
+        # Verificar entradas
+        if not isinstance(errores_obj, dict):
+            errores_obj = {}
+        if not isinstance(analisis_contextual, dict):
+            analisis_contextual = {}
+
+        # Determinar el nivel para buscar recursos
+        if "principiante" in nivel.lower():
+            nivel_db = "A1-A2"
+        elif "intermedio" in nivel.lower():
+            nivel_db = "B1-B2"
+        else:
+            nivel_db = "C1-C2"
+
+        # Verificar errores gramaticales
+        if len(errores_obj.get("Gramática", [])) > 0:
+            recursos_gramatica = RECURSOS_DB.get(
+                nivel_db, {}).get("Gramática", [])
+            if recursos_gramatica:
+                recursos_recomendados.extend(recursos_gramatica[:2])
+
+        # Verificar errores léxicos
+        if len(errores_obj.get("Léxico", [])) > 0:
+            recursos_lexico = RECURSOS_DB.get(nivel_db, {}).get("Léxico", [])
+            if recursos_lexico:
+                recursos_recomendados.extend(recursos_lexico[:2])
+
+        # Verificar problemas de cohesión
+        if analisis_contextual.get("cohesion", {}).get("puntuacion", 10) < 7:
+            recursos_cohesion = RECURSOS_DB.get(
+                nivel_db, {}).get("Cohesión", [])
+            if recursos_cohesion:
+                recursos_recomendados.extend(recursos_cohesion[:1])
+
+        # Verificar problemas de registro
+        if analisis_contextual.get("registro_linguistico", {}).get("puntuacion", 10) < 7:
+            recursos_registro = RECURSOS_DB.get(
+                nivel_db, {}).get("Registro", [])
+            if recursos_registro:
+                recursos_recomendados.extend(recursos_registro[:1])
+
+    except Exception as e:
+        logger.error(f"Error al obtener recursos: {str(e)}")
+
+    return recursos_recomendados
+
+# --- 3. GENERACIÓN DE PLAN DE ESTUDIO PERSONALIZADO ---
+
+
+def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
+    """
+    Genera un plan de estudio personalizado basado en el historial del estudiante.
+
+    Args:
+        nombre: Nombre del estudiante
+        nivel: Nivel del estudiante
+        datos_historial: DataFrame con historial de correcciones
+
+    Returns:
+        dict: Plan de estudio generado
+    """
+    client = get_openai_client()
+    if client is None:
+        return {"error": "Servicio no disponible", "plan": None}
+
+    if not circuit_breaker.can_execute("openai"):
+        return {"error": "Servicio temporalmente no disponible", "plan": None}
+
+    if datos_historial is None or datos_historial.empty:
+        return {"error": "No hay suficientes datos para generar un plan personalizado", "plan": None}
+
+    try:
+        # Extraer estadísticas básicas
+        if 'Errores Gramática' in datos_historial.columns and 'Errores Léxico' in datos_historial.columns:
+            # Calcular promedios
+            promedio_gramatica = datos_historial['Errores Gramática'].mean()
+            promedio_lexico = datos_historial['Errores Léxico'].mean()
+
+            # Verificar columnas de análisis contextual
+            coherencia_promedio = datos_historial['Puntuación Coherencia'].mean(
+            ) if 'Puntuación Coherencia' in datos_historial.columns else 5
+            cohesion_promedio = datos_historial['Puntuación Cohesión'].mean(
+            ) if 'Puntuación Cohesión' in datos_historial.columns else 5
+
+            # Extraer nivel del último registro
+            if 'Nivel' in datos_historial.columns:
+                nivel_actual = datos_historial.iloc[-1]['Nivel']
+            else:
+                nivel_actual = nivel
+
+            # Verificar consejos finales para extraer temas recurrentes
+            temas_recurrentes = []
+            if 'Consejo Final' in datos_historial.columns:
+                # Aquí podríamos implementar un análisis más sofisticado de los consejos
+                temas_recurrentes = ["conjugación verbal",
+                                     "uso de preposiciones", "concordancia"]
+
+            # Construir contexto para la IA
+            errores_frecuentes = (
+                f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
+                f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
+                f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
+                f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
+                f"Temas recurrentes: {', '.join(temas_recurrentes)}."
+            )
+
+            # Prompt para la IA
+            prompt_plan = f"""
+            Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual} 
+            con los siguientes errores frecuentes: {errores_frecuentes} 
+            
+            Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
+            Para cada semana, incluye:
+            
+            1. Objetivos específicos
+            2. Temas gramaticales a trabajar
+            3. Vocabulario a practicar
+            4. 1-2 actividades concretas
+            5. Recursos o materiales recomendados
+            
+            Adapta todo el contenido al nivel del estudiante y sus necesidades específicas.
+            """
+
+            def send_request():
+                return client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
+                        {"role": "user", "content": prompt_plan}
+                    ]
+                )
+
+            # Usar sistema de reintentos
+            response = retry_with_backoff(send_request, max_retries=2)
+            plan_estudio = response.choices[0].message.content
+
+            # Registrar éxito
+            circuit_breaker.record_success("openai")
+
+            # Dividir el plan por semanas
+            semanas = plan_estudio.split("Semana")
+
+            # Procesar el resultado
+            plan_procesado = {
+                "completo": plan_estudio,
+                "semanas": []
+            }
+
+            # Ignorar el elemento vacío al inicio
+            for i, semana in enumerate(semanas[1:], 1):
+                titulo_semana = extraer_titulo(semana)
+                contenido_semana = semana.strip()
+                plan_procesado["semanas"].append({
+                    "numero": i,
+                    "titulo": titulo_semana,
+                    "contenido": contenido_semana
+                })
+
+            return {"error": None, "plan": plan_procesado}
+
+        else:
+            return {"error": "No se encontraron columnas necesarias en los datos", "plan": None}
+
+    except Exception as e:
+        error_msg = f"Error al generar plan de estudio: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return {"error": error_msg, "plan": None}
+
+# --- 4. GENERACIÓN DE TAREAS Y EJEMPLOS DE EXAMEN ---
+
+
+def generar_tarea_examen(tipo_examen, nivel_examen):
+    """
+    Genera una tarea de expresión escrita para un examen específico.
+
+    Args:
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
+
+    Returns:
+        str: Tarea generada para el examen
+    """
+    client = get_openai_client()
+    if client is None:
+        return "No se pudo generar la tarea. Servicio no disponible."
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Servicio temporalmente no disponible. Inténtelo más tarde."
+
+    try:
+        # Prompt para generación de tarea
+        prompt_tarea = f"""
+        Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
+        La tarea debe incluir:
+        1. Instrucciones claras y precisas
+        2. Contexto o situación comunicativa
+        3. Número de palabras requerido
+        4. Aspectos que se evaluarán
+        
+        El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
+        La tarea debe ser apropiada para el nivel {nivel_examen}, siguiendo los estándares oficiales.
+        """
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
+                    {"role": "user", "content": prompt_tarea}
+                ]
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content
+
+    except Exception as e:
+        error_msg = f"Error al generar tarea de examen: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return f"No se pudo generar la tarea. Error: {str(e)}"
+
+
+def generar_ejemplos_evaluados(tipo_examen, nivel_examen):
+    """
+    Genera ejemplos de textos evaluados para un examen específico.
+
+    Args:
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
+
+    Returns:
+        str: Ejemplos de textos evaluados
+    """
+    client = get_openai_client()
+    if client is None:
+        return "No se pudieron generar ejemplos. Servicio no disponible."
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Servicio temporalmente no disponible. Inténtelo más tarde."
+
+    try:
+        # Prompt para generación de ejemplos
+        prompt_ejemplos = f"""
+        Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen}, 
+        junto con una evaluación detallada usando los criterios oficiales.
+        Muestra: 
+        1. La tarea solicitada
+        2. El texto del estudiante (con algunos errores típicos de ese nivel)
+        3. Evaluación punto por punto según los criterios oficiales
+        4. Puntuación desglosada y comentarios
+        """
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "Eres un evaluador experto de exámenes oficiales de español."},
+                    {"role": "user", "content": prompt_ejemplos}
+                ]
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content
+
+    except Exception as e:
+        error_msg = f"Error al generar ejemplos evaluados: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        # --- 1. BASE DE DATOS DE RECURSOS EDUCATIVOS ---
+        return f"No se pudieron generar ejemplos. Error: {str(e)}"
+
+
+# Base de datos simplificada de recursos por niveles y categorías
+RECURSOS_DB = {
+    "A1-A2": {
+        "Gramática": [
+            {"título": "Presente de indicativo", "tipo": "Ficha",
+                "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
+            {"título": "Los artículos en español", "tipo": "Vídeo",
+                "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
+            {"título": "Ser y estar", "tipo": "Ejercicios",
+                "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
+            {"título": "Pretérito indefinido", "tipo": "Explicación",
+                "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
+        ],
+        "Léxico": [
+            {"título": "Vocabulario básico", "tipo": "Ficha",
+                "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
+            {"título": "Alimentos y comidas", "tipo": "Tarjetas",
+                "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
+            {"título": "La ciudad", "tipo": "Podcast",
+                "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
+        ],
+        "Cohesión": [
+            {"título": "Conectores básicos", "tipo": "Guía",
+                "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
+            {"título": "Organizar ideas", "tipo": "Ejercicios",
+                "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
+        ],
+        "Registro": [
+            {"título": "Saludos formales e informales", "tipo": "Vídeo",
+                "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
+            {"título": "Peticiones corteses", "tipo": "Diálogos",
+                "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
+        ]
+    },
+    "B1-B2": {
+        "Gramática": [
+            {"título": "Subjuntivo presente", "tipo": "Guía",
+                "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
+            {"título": "Estilo indirecto", "tipo": "Ejercicios",
+                "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
+        ],
+        "Léxico": [
+            {"título": "Expresiones idiomáticas", "tipo": "Podcast",
+                "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
+            {"título": "Vocabulario académico", "tipo": "Glosario",
+                "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
+        ],
+        "Cohesión": [
+            {"título": "Marcadores discursivos", "tipo": "Guía",
+                "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
+            {"título": "Conectores argumentativos", "tipo": "Ejercicios",
+                "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
+        ],
+        "Registro": [
+            {"título": "Lenguaje formal e informal", "tipo": "Curso",
+                "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
+            {"título": "Comunicación profesional", "tipo": "Ejemplos",
+                "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
+        ]
+    },
+    "C1-C2": {
+        "Gramática": [
+            {"título": "Construcciones pasivas", "tipo": "Análisis",
+                "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
+            {"título": "Subordinadas complejas", "tipo": "Guía",
+                "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
+        ],
+        "Léxico": [
+            {"título": "Lenguaje académico", "tipo": "Corpus",
+                "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
+            {"título": "Variantes dialectales", "tipo": "Curso",
+                "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
+        ],
+        "Cohesión": [
+            {"título": "Estructura textual avanzada", "tipo": "Manual",
+                "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
+            {"título": "Análisis del discurso", "tipo": "Investigación",
+                "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
+        ],
+        "Registro": [
+            {"título": "Pragmática intercultural", "tipo": "Seminario",
+                "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
+            {"título": "Lenguaje literario", "tipo": "Análisis",
+                "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
+        ]
+    }
+}
+# --- 1. COMPONENTES DE UI REUTILIZABLES ---
+
+
+def ui_header():
+    """Muestra el encabezado principal de la aplicación."""
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("📝 Textocorrector ELE")
+        st.markdown(
+            "Corrección de textos en español con análisis contextual avanzado.")
+
+    with col2:
+        # Mostrar indicador de versión
+        st.markdown(f"""
+        <div style="background-color:#f0f2f6;padding:8px;border-radius:5px;margin-top:20px;text-align:center">
+            <small>v{APP_VERSION}</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def ui_user_info_form():
+    """
+    Formulario para obtener información básica del usuario.
+
+    Returns:
+        dict: Datos del usuario (nombre, nivel)
+    """
+    with st.form(key="form_user_info"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            nombre = st.text_input(
+                "Nombre y apellido:",
+                value=get_session_var("usuario_actual", ""),
+                help="Por favor, introduce tanto tu nombre como tu apellido separados por un espacio."
+            )
+
+        with col2:
+            nivel = st.selectbox(
+                "¿Cuál es tu nivel?",
+                [
+                    "Nivel principiante (A1-A2)",
+                    "Nivel intermedio (B1-B2)",
+                    "Nivel avanzado (C1-C2)"
+                ],
+                index=["principiante", "intermedio", "avanzado"].index(
+                    get_session_var("nivel_estudiante", "intermedio")
+                )
+            )
+
+        submit = st.form_submit_button("Guardar", use_container_width=True)
+
+        if submit:
+            # Validar nombre
+            if not nombre or " " not in nombre:
+                st.warning(
+                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+                return None
+
+            # Guardar en session_state
+            set_session_var("usuario_actual", nombre)
+
+            # Guardar nivel en formato simplificado
+            nivel_map = {
+                "Nivel principiante (A1-A2)": "principiante",
+                "Nivel intermedio (B1-B2)": "intermedio",
+                "Nivel avanzado (C1-C2)": "avanzado"
+            }
+            set_session_var("nivel_estudiante",
+                            nivel_map.get(nivel, "intermedio"))
+
+            return {"nombre": nombre, "nivel": nivel}
+
+        return None
+
+
+def ui_idioma_correcciones_tipo():
+    """
+    Componente para seleccionar idioma de correcciones y tipo de texto.
+
+    Returns:
+        dict: Opciones seleccionadas
+    """
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        idioma = st.selectbox(
+            "Idioma de corrección",
+            ["Español", "Inglés", "Francés"],
+            help="Idioma en el que recibirás las explicaciones y análisis."
+        )
+
+    with col2:
+        tipo_texto = st.selectbox(
+            "Tipo de texto",
+            [
+                "General/No especificado",
+                "Académico",
+                "Profesional/Laboral",
+                "Informal/Cotidiano",
+                "Creativo/Literario"
+            ],
+            help="Tipo de texto que estás escribiendo."
+        )
+
+    with col3:
+        contexto_cultural = st.selectbox(
+            "Contexto cultural",
+            [
+                "General/Internacional",
+                "España",
+                "Latinoamérica",
+                "Contexto académico",
+                "Contexto empresarial"
+            ],
+            help="Contexto cultural relevante para tu texto."
+        )
+
+    return {
+        "idioma": idioma,
+        "tipo_texto": tipo_texto,
+        "contexto_cultural": contexto_cultural
+    }
+
+
+def ui_examen_options():
+    """
+    Componente para seleccionar opciones de examen.
+
+    Returns:
+        dict: Opciones de examen seleccionadas
+    """
+    col1, col2 = st.columns(2)
+
+    with col1:
+        tipo_examen = st.selectbox(
+            "Examen oficial:",
+            ["DELE", "SIELE", "CELU", "DUCLE"],
+            help="Selecciona el tipo de examen para el que quieres prepararte."
+        )
+
+    with col2:
+        nivel_examen = st.selectbox(
+            "Nivel:",
+            ["A1", "A2", "B1", "B2", "C1", "C2"],
+            help="Nivel del examen."
+        )
+
+    return {
+        "tipo_examen": tipo_examen,
+        "nivel_examen": nivel_examen
+    }
+
+
+def ui_loading_spinner(text="Procesando..."):
+    """
+    Spinner de carga con texto personalizable.
+
+    Args:
+        text: Texto a mostrar durante la carga
+
+    Returns:
+        st.spinner: Objeto spinner de Streamlit
+    """
+    return st.spinner(text)
+
+
+def ui_empty_placeholder():
+    """
+    Crea un placeholder vacío para contenido dinámico.
+
+    Returns:
+        st.empty: Objeto empty de Streamlit
+    """
+    return st.empty()
+
+
+def ui_countdown_timer(total_seconds, start_time=None):
+    """
+    Muestra un temporizador de cuenta regresiva.
+
+    Args:
+        total_seconds: Tiempo total en segundos
+        start_time: Tiempo de inicio (None = ahora)
+
+    Returns:
+        dict: Estado del temporizador
+    """
+    if start_time is None:
+        start_time = time.time()
+
+    # Calcular tiempo transcurrido
+    tiempo_transcurrido = time.time() - start_time
+    tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
+
+    # Formatear tiempo restante
+    minutos = int(tiempo_restante_segundos // 60)
+    segundos = int(tiempo_restante_segundos % 60)
+    tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
+
+    # Calcular porcentaje
+    porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+    porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
+
+    # Determinar color según tiempo restante
+    if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
+        color = "normal"  # Verde/Normal
+    elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
+        color = "warning"  # Amarillo/Advertencia
+    else:  # Menos del 25%
+        color = "error"  # Rojo/Error
+
+    return {
+        "tiempo_restante": tiempo_restante_segundos,
+        "tiempo_formateado": tiempo_formateado,
+        "porcentaje": porcentaje,
+        "color": color,
+        "terminado": tiempo_restante_segundos <= 0
+    }
+
+
+def ui_show_correction_results(result, show_export=True):
+    """
+    Muestra los resultados de una corrección de texto.
+
+    Args:
+        result: Resultados de la corrección
+        show_export: Mostrar opciones de exportación
+    """
+    if "error" in result:
+        st.error(f"Error en la corrección: {result['error']}")
+        return
+
+    # Extraer campos del JSON
+    saludo = result.get("saludo", "")
+    tipo_texto_detectado = result.get("tipo_texto", "")
+    errores_obj = result.get("errores", {})
+    texto_corregido = result.get("texto_corregido", "")
+    analisis_contextual = result.get("analisis_contextual", {})
+    consejo_final = result.get("consejo_final", "")
+    fin = result.get("fin", "")
+
+    # Extraer puntuaciones del análisis contextual
+    coherencia = analisis_contextual.get("coherencia", {})
+    cohesion = analisis_contextual.get("cohesion", {})
+    registro = analisis_contextual.get("registro_linguistico", {})
+    adecuacion = analisis_contextual.get("adecuacion_cultural", {})
+
+    puntuacion_coherencia = coherencia.get("puntuacion", 0)
+    puntuacion_cohesion = cohesion.get("puntuacion", 0)
+    puntuacion_registro = registro.get("puntuacion", 0)
+    puntuacion_adecuacion = adecuacion.get("puntuacion", 0)
+
+    # --- CONTEO DE ERRORES ---
+    num_gramatica = len(errores_obj.get("Gramática", []))
+    num_lexico = len(errores_obj.get("Léxico", []))
+    num_puntuacion = len(errores_obj.get("Puntuación", []))
+    num_estructura = len(errores_obj.get("Estructura textual", []))
+    total_errores = num_gramatica + num_lexico + num_puntuacion + num_estructura
+
+    # --- MOSTRAR RESULTADOS EN LA INTERFAZ ---
+    # Mostrar el saludo directamente
+    st.write(saludo)
+
+    # Mostrar tipo de texto detectado con contextualización
+    st.info(
+        f"He identificado tu escrito como un texto de tipo **{tipo_texto_detectado.lower()}**.")
+
+    # Errores detectados
+    st.subheader("Errores detectados")
+    if not any(errores_obj.get(cat, []) for cat in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]):
+        st.success("¡Felicidades! No se han detectado errores significativos.")
+    else:
+        for categoria in ["Gramática", "Léxico", "Puntuación", "Estructura textual"]:
+            lista_errores = errores_obj.get(categoria, [])
+            if lista_errores:
+                with st.expander(f"**{categoria}** ({len(lista_errores)} errores)"):
+                    for i, err in enumerate(lista_errores, 1):
+                        st.markdown(f"**Error {i}:**")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.error(f"❌ {err.get('fragmento_erroneo', '')}")
+                        with col2:
+                            st.success(f"✅ {err.get('correccion', '')}")
+                        st.info(f"💡 {err.get('explicacion', '')}")
+                        if i < len(lista_errores):
+                            st.divider()
+
+    # Texto corregido
+    st.subheader("Texto corregido completo")
+    st.write(texto_corregido)
+
+    # --- ANÁLISIS CONTEXTUAL ---
+    st.header("Análisis contextual avanzado")
+
+    # Crear columnas para las puntuaciones generales
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Coherencia", f"{puntuacion_coherencia}/10")
+    with col2:
+        st.metric("Cohesión", f"{puntuacion_cohesion}/10")
+    with col3:
+        st.metric("Registro", f"{puntuacion_registro}/10")
+    with col4:
+        st.metric("Adecuación cultural", f"{puntuacion_adecuacion}/10")
+
+    # Gráfico sencillo para visualizar las puntuaciones
+    puntuaciones = [puntuacion_coherencia, puntuacion_cohesion,
+                    puntuacion_registro, puntuacion_adecuacion]
+    categorias = ["Coherencia", "Cohesión", "Registro", "Ad. Cultural"]
+
+    # Calcular el promedio de las puntuaciones
+    promedio_contextual = sum(puntuaciones) / \
+        len(puntuaciones) if puntuaciones else 0
+
+    # Mostrar un progreso general
+    st.markdown(f"##### Evaluación global: {promedio_contextual:.1f}/10")
+    st.progress(promedio_contextual / 10)
+
+    # Detalles de coherencia
+    with st.expander("Coherencia textual", expanded=True):
+        st.markdown(f"**Comentario**: {coherencia.get('comentario', '')}")
+        sugerencias = coherencia.get("sugerencias", [])
+        if sugerencias:
+            st.markdown("**Sugerencias para mejorar:**")
+            for sug in sugerencias:
+                st.markdown(f"- {sug}")
+
+    # Detalles de cohesión
+    with st.expander("Cohesión textual", expanded=True):
+        st.markdown(f"**Comentario**: {cohesion.get('comentario', '')}")
+        sugerencias = cohesion.get("sugerencias", [])
+        if sugerencias:
+            st.markdown("**Sugerencias para mejorar:**")
+            for sug in sugerencias:
+                st.markdown(f"- {sug}")
+
+    # Detalles de registro lingüístico
+    with st.expander("Registro lingüístico", expanded=True):
+        st.markdown(
+            f"**Tipo de registro detectado**: {registro.get('tipo_detectado', '')}")
+        st.markdown(
+            f"**Adecuación al contexto**: {registro.get('adecuacion', '')}")
+        sugerencias = registro.get("sugerencias", [])
+        if sugerencias:
+            st.markdown("**Sugerencias para mejorar:**")
+            for sug in sugerencias:
+                st.markdown(f"- {sug}")
+
+    # Detalles de adecuación cultural
+    with st.expander("Adecuación cultural y pragmática", expanded=True):
+        st.markdown(f"**Comentario**: {adecuacion.get('comentario', '')}")
+        elementos = adecuacion.get("elementos_destacables", [])
+        if elementos:
+            st.markdown("**Elementos culturales destacables:**")
+            for elem in elementos:
+                st.markdown(f"- {elem}")
+        sugerencias = adecuacion.get("sugerencias", [])
+        if sugerencias:
+            st.markdown("**Sugerencias para mejorar:**")
+            for sug in sugerencias:
+                st.markdown(f"- {sug}")
+
+    # Consejo final
+    st.subheader("Consejo final")
+    st.info(consejo_final)
+    st.write(fin)
+
+    # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
+    if consejo_final:
+        st.markdown("**🔊 Consejo leído en voz alta:**")
+        with st.spinner("Generando audio con ElevenLabs..."):
+            audio_bytes = generar_audio_consejo(consejo_final)
+            if audio_bytes:
+                st.audio(audio_bytes, format="audio/mpeg")
+            else:
+                st.warning("⚠️ No se pudo generar el audio del consejo.")
+
+    # --- MOSTRAR RECOMENDACIONES PERSONALIZADAS ---
+    ui_show_recommendations(errores_obj, analisis_contextual, get_session_var(
+        "nivel_estudiante", "intermedio"), "Spanish")
+
+    # --- OPCIONES DE EXPORTACIÓN ---
+    if show_export:
+        ui_export_options(result)
+
+
+def ui_show_recommendations(errores_obj, analisis_contextual, nivel, idioma):
+    """
+    Muestra recomendaciones personalizadas basadas en el análisis.
+
+    Args:
+        errores_obj: Objeto con errores detectados
+        analisis_contextual: Objeto con análisis contextual
+        nivel: Nivel del estudiante
+        idioma: Idioma de las instrucciones
+    """
+    st.header("📚 Recomendaciones personalizadas")
+
+    # Pestañas para diferentes tipos de recomendaciones
+    tab1, tab2 = st.tabs(
+        ["📖 Recursos recomendados", "✏️ Ejercicios personalizados"])
+
+    with tab1:
+        recursos = obtener_recursos_recomendados(
+            errores_obj, analisis_contextual, nivel)
+
+        if recursos:
+            st.write("Basado en tu análisis, te recomendamos estos recursos:")
+
+            for i, recurso in enumerate(recursos):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.markdown(f"**{recurso['título']}**")
+                with col2:
+                    st.write(f"Tipo: {recurso['tipo']}")
+                with col3:
+                    st.write(f"Nivel: {recurso['nivel']}")
+                st.markdown(f"[Ver recurso]({recurso['url']})")
+                if i < len(recursos) - 1:
+                    st.divider()
+        else:
+            st.info("No hay recursos específicos para recomendar en este momento.")
+
+    with tab2:
+        st.write("Ejercicios personalizados según tus necesidades:")
+
+        with st.spinner("Generando ejercicios personalizados..."):
+            ejercicios_data = generar_ejercicios_personalizado(
+                errores_obj, analisis_contextual, nivel, idioma)
+
+            ejercicios = ejercicios_data.get("ejercicios", [])
+
+            for i, ejercicio in enumerate(ejercicios):
+                # Usar st.expander para el ejercicio principal
+                with st.expander(f"{ejercicio.get('titulo', f'Ejercicio {i+1}')}"):
+                    # Crear pestañas para ejercicio y solución
+                    ejercicio_tab, solucion_tab = st.tabs(
+                        ["Ejercicio", "Solución"])
+
+                    with ejercicio_tab:
+                        st.markdown(
+                            f"**{ejercicio.get('tipo', 'Actividad')}**")
+                        st.markdown(
+                            f"*Instrucciones:* {ejercicio.get('instrucciones', '')}")
+                        st.markdown("---")
+                        st.markdown(ejercicio.get('contenido', ''))
+
+                    with solucion_tab:
+                        st.markdown(f"#### Solución del ejercicio:")
+                        st.markdown(ejercicio.get('solucion', ''))
+
+
+def ui_export_options(data):
+    """
+    Muestra opciones para exportar los resultados de la corrección.
+
+    Args:
+        data: Resultados de la corrección
+    """
+    st.header("📊 Exportar informe")
+
+    # Verificar que existen campos necesarios
+    if not isinstance(data, dict) or "texto_corregido" not in data:
+        st.warning("⚠️ No hay datos suficientes para exportar.")
+        return
+
+    # Extraer datos para la exportación
+    nombre = get_session_var("usuario_actual", "Usuario")
+    nivel = get_session_var("nivel_estudiante", "intermedio")
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
+    texto_original = get_session_var("ultimo_texto", "")
+    texto_corregido = data.get("texto_corregido", "")
+    errores_obj = data.get("errores", {})
+    analisis_contextual = data.get("analisis_contextual", {})
+    consejo_final = data.get("consejo_final", "")
+
+    # Opciones de exportación en pestañas
+    export_tab1, export_tab2, export_tab3 = st.tabs(
+        ["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"]
+    )
+
+    with export_tab1:
+        st.write("Exporta este informe como documento Word (DOCX)")
+
+        if st.button("Generar documento Word", key="gen_docx"):
+            with st.spinner("Generando documento Word..."):
+                # Generar el documento
+                docx_buffer = generar_informe_docx(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    errores_obj, analisis_contextual, consejo_final
+                )
+
+                # Si el buffer se generó correctamente, mostrar el botón de descarga
+                if docx_buffer is not None:
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                    st.download_button(
+                        label="📥 Descargar documento Word",
+                        data=docx_buffer,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="docx_download_corregir"
+                    )
+                else:
+                    st.error("No se pudo generar el documento Word.")
+
+    with export_tab2:
+        st.write("Exporta este informe como página web (HTML)")
+
+        if st.button("Generar documento HTML", key="gen_html"):
+            with st.spinner("Generando HTML..."):
+                # Generar el HTML
+                html_content = generar_informe_html(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    analisis_contextual, consejo_final
+                )
+
+                # Convertir a bytes para descargar
+                html_bytes = html_content.encode()
+
+                # Botón de descarga
+                nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+                st.download_button(
+                    label="📥 Descargar página HTML",
+                    data=html_bytes,
+                    file_name=nombre_archivo,
+                    mime="text/html",
+                    key="html_download_corregir"
+                )
+
+                # Opción para previsualizar
+                with st.expander("Previsualizar HTML"):
                     st.markdown(
-                        f"##### Evaluación global: {promedio_contextual:.1f}/10")
-                    st.progress(promedio_contextual / 10)
+                        f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>',
+                        unsafe_allow_html=True
+                    )
 
-                    # Detalles de coherencia
-                    with st.expander("Coherencia textual", expanded=True):
-                        st.markdown(
-                            f"**Comentario**: {coherencia.get('comentario', '')}")
-                        st.markdown("**Sugerencias para mejorar:**")
-                        for sug in coherencia.get("sugerencias", []):
-                            st.markdown(f"- {sug}")
+    with export_tab3:
+        st.write("Exporta los datos del análisis en formato CSV")
 
-                    # Detalles de cohesión
-                    with st.expander("Cohesión textual", expanded=True):
-                        st.markdown(
-                            f"**Comentario**: {cohesion.get('comentario', '')}")
-                        st.markdown("**Sugerencias para mejorar:**")
-                        for sug in cohesion.get("sugerencias", []):
-                            st.markdown(f"- {sug}")
+        if st.button("Generar CSV", key="gen_csv"):
+            with st.spinner("Generando CSV..."):
+                # Generar el CSV
+                csv_buffer = generar_csv_analisis(
+                    nombre, nivel, fecha, data
+                )
 
-                    # Detalles de registro lingüístico
-                    with st.expander("Registro lingüístico", expanded=True):
-                        st.markdown(
-                            f"**Tipo de registro detectado**: {registro.get('tipo_detectado', '')}")
-                        st.markdown(
-                            f"**Adecuación al contexto**: {registro.get('adecuacion', '')}")
-                        st.markdown("**Sugerencias para mejorar:**")
-                        for sug in registro.get("sugerencias", []):
-                            st.markdown(f"- {sug}")
+                # Botón de descarga
+                nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+                st.download_button(
+                    label="📥 Descargar CSV",
+                    data=csv_buffer,
+                    file_name=nombre_archivo,
+                    mime="text/csv",
+                    key="csv_download_corregir"
+                )
 
-                    # Detalles de adecuación cultural
-                    with st.expander("Adecuación cultural y pragmática", expanded=True):
-                        st.markdown(
-                            f"**Comentario**: {adecuacion.get('comentario', '')}")
-                        if adecuacion.get("elementos_destacables", []):
-                            st.markdown(
-                                "**Elementos culturales destacables:**")
-                            for elem in adecuacion.get("elementos_destacables", []):
-                                st.markdown(f"- {elem}")
-                        st.markdown("**Sugerencias para mejorar:**")
-                        for sug in adecuacion.get("sugerencias", []):
-                            st.markdown(f"- {sug}")
+# --- 2. UTILIDADES DE INTERFAZ ---
 
-                    # Consejo final
-                    st.subheader("Consejo final")
-                    st.info(consejo_final)
-                    st.write(fin)
 
-                    # --- GENERAR AUDIO CON ELEVENLABS (Consejo final en español) ---
-                    if consejo_final:
-                        st.markdown("**🔊 Consejo leído en voz alta:**")
-                        with st.spinner("Generando audio con ElevenLabs..."):
-                            audio_bytes = generar_audio_consejo(
-                                consejo_final, elevenlabs_api_key, elevenlabs_voice_id)
-                            if audio_bytes:
-                                st.audio(audio_bytes, format="audio/mpeg")
-                            else:
-                                st.warning(
-                                    "⚠️ No se pudo generar el audio del consejo.")
+def ui_error_message(error_msg, show_details=True):
+    """
+    Muestra un mensaje de error formateado.
 
-                    # Mostrar recomendaciones personalizadas
-                    try:
-                        mostrar_seccion_recomendaciones(
-                            errores_obj, analisis_contextual, nivel, idioma, openai_api_key)
-                    except Exception as e:
-                        st.error(f"Error al mostrar recomendaciones: {str(e)}")
+    Args:
+        error_msg: Mensaje de error
+        show_details: Mostrar detalles adicionales
+    """
+    st.error(f"⚠️ {error_msg}")
 
-                    # 2. Opciones de exportación
-                    st.header("📊 Exportar informe")
+    if show_details:
+        with st.expander("Ver detalles del error"):
+            st.code(traceback.format_exc())
+            st.info(
+                "Si el problema persiste, contacta con el administrador del sistema.")
 
-                    # Verificar que existen todas las variables necesarias para la exportación
-                    required_vars_exist = all(var in locals() for var in [
-                        'nombre', 'nivel', 'fecha', 'texto', 'texto_corregido',
-                        'errores_obj', 'analisis_contextual', 'consejo_final',
-                        'num_gramatica', 'num_lexico', 'num_puntuacion', 'num_estructura',
-                        'total_errores', 'puntuacion_coherencia', 'puntuacion_cohesion',
-                        'puntuacion_registro', 'puntuacion_adecuacion'
-                    ])
 
-                    if not required_vars_exist:
-                        st.warning(
-                            "⚠️ Algunas variables necesarias para la exportación no están disponibles. Por favor, completa primero la corrección del texto.")
+def ui_success_message(msg):
+    """
+    Muestra un mensaje de éxito formateado.
+
+    Args:
+        msg: Mensaje de éxito
+    """
+    st.success(f"✅ {msg}")
+
+
+def ui_info_message(msg):
+    """
+    Muestra un mensaje informativo formateado.
+
+    Args:
+        msg: Mensaje informativo
+    """
+    st.info(f"ℹ️ {msg}")
+
+
+def ui_warning_message(msg):
+    """
+    Muestra un mensaje de advertencia formateado.
+
+    Args:
+        msg: Mensaje de advertencia
+    """
+    st.warning(f"⚠️ {msg}")
+
+
+def ui_show_progress(title, value, max_value=100, style="progress"):
+    """
+    Muestra una barra de progreso con diferentes estilos.
+
+    Args:
+        title: Título del progreso
+        value: Valor actual
+        max_value: Valor máximo
+        style: Estilo (progress/metric/percent)
+    """
+    if style == "progress":
+        st.markdown(f"#### {title}")
+        st.progress(value / max_value)
+    elif style == "metric":
+        st.metric(title, f"{value}/{max_value}")
+    elif style == "percent":
+        percent = (value / max_value) * 100
+        st.metric(title, f"{percent:.0f}%")
+    else:
+        st.markdown(f"**{title}:** {value}/{max_value}")
+
+
+def ui_confirm_dialog(title, message, ok_button="Confirmar", cancel_button="Cancelar"):
+    """
+    Muestra un diálogo de confirmación.
+
+    Args:
+        title: Título del diálogo
+        message: Mensaje del diálogo
+        ok_button: Texto del botón de confirmación
+        cancel_button: Texto del botón de cancelación
+
+    Returns:
+        bool: True si se confirma, False si se cancela
+    """
+    st.markdown(f"### {title}")
+    st.markdown(message)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        cancel = st.button(cancel_button, key=f"cancel_{hash(title)}")
+    with col2:
+        confirm = st.button(ok_button, key=f"confirm_{hash(title)}")
+
+    if confirm:
+        return True
+
+    if cancel:
+        return False
+
+    return None  # No se ha tomado decisión
+
+
+def ui_tooltip(text, tooltip):
+    """
+    Muestra un texto con tooltip al pasar el ratón.
+
+    Args:
+        text: Texto a mostrar
+        tooltip: Texto del tooltip
+    """
+    st.markdown(f"""
+    <span title="{tooltip}" style="border-bottom: 1px dotted #000; cursor: help;">
+        {text}
+    </span>
+    """, unsafe_allow_html=True)
+
+
+def ui_feedback_form():
+    """
+    Muestra un formulario de feedback para el usuario.
+
+    Returns:
+        dict: Datos del feedback o None si no se envía
+    """
+    with st.expander("📝 Danos tu opinión", expanded=False):
+        with st.form(key="feedback_form"):
+            st.markdown("### Nos gustaría conocer tu opinión")
+
+            rating = st.slider(
+                "¿Cómo valorarías la utilidad de esta herramienta?",
+                min_value=1,
+                max_value=5,
+                value=4,
+                help="1 = Poco útil, 5 = Muy útil"
+            )
+
+            feedback_text = st.text_area(
+                "Comentarios o sugerencias:",
+                height=100,
+                help="¿Qué podríamos mejorar?"
+            )
+
+            submit = st.form_submit_button("Enviar feedback")
+
+            if submit:
+                # En una implementación real, aquí se enviaría el feedback a una base de datos
+                ui_success_message("¡Gracias por tu feedback!")
+                return {
+                    "rating": rating,
+                    "feedback": feedback_text,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+            return None
+        # --- 1. PESTAÑA DE CORRECCIÓN DE TEXTO ---
+
+
+def tab_corregir():
+    """Implementación de la pestaña de corrección de texto."""
+    st.header("📝 Corrección de texto")
+
+    with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
+        st.markdown("""
+        Esta versión mejorada del Textocorrector incluye:
+        - **Análisis de coherencia**: Evalúa si las ideas están conectadas de manera lógica y si el texto tiene sentido en su conjunto.
+        - **Análisis de cohesión**: Revisa los mecanismos lingüísticos que conectan las diferentes partes del texto.
+        - **Evaluación del registro lingüístico**: Determina si el lenguaje usado es apropiado para el contexto y propósito del texto.
+        - **Análisis de adecuación cultural**: Identifica si hay expresiones o referencias culturalmente apropiadas o inapropiadas.
+        
+        Las correcciones se adaptan automáticamente al nivel del estudiante.
+        """)
+
+    # Obtener datos del usuario
+    user_data = ui_user_info_form()
+
+    # Si no hay datos, no continuar
+    if not user_data:
+        if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+            st.info("👆 Por favor, introduce tu nombre y nivel para comenzar.")
+        return
+
+    # GENERADOR DE CONSIGNAS
+    with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
+        tipo_consigna = st.selectbox(
+            "Tipo de texto a escribir:",
+            [
+                "Cualquiera (aleatorio)",
+                "Narración",
+                "Correo/Carta formal",
+                "Opinión/Argumentación",
+                "Descripción",
+                "Diálogo"
+            ],
+            key="tipo_consigna_corregir"
+        )
+
+        if st.button("Generar consigna de escritura", key="generar_consigna"):
+            with st.spinner("Generando consigna adaptada a tu nivel..."):
+                # Determinar el nivel para la IA
+                nivel_actual = get_session_var(
+                    "nivel_estudiante", "intermedio")
+
+                # Generar la consigna
+                consigna_generada = generar_consigna_escritura(
+                    nivel_actual, tipo_consigna)
+
+                # Guardar en session_state
+                set_session_var("consigna_actual", consigna_generada)
+
+            # Mostrar la consigna generada
+            if "consigna_actual" in st.session_state and st.session_state.consigna_actual:
+                st.success("✨ Consigna generada:")
+                st.info(st.session_state.consigna_actual)
+
+                # Opción para usar esta consigna
+                if st.button("Usar esta consigna como contexto", key="usar_consigna"):
+                    set_session_var("info_adicional_corregir",
+                                    f"Consigna: {st.session_state.consigna_actual}")
+                    set_session_var("usar_consigna_como_texto", True)
+                    st.rerun()  # Recargar para actualizar el formulario
+
+    # FORMULARIO DE CORRECCIÓN
+    with st.form(key="formulario_corregir"):
+        # Opciones de corrección
+        options = ui_idioma_correcciones_tipo()
+
+        # Texto inicial con contenido de la consigna si está disponible
+        texto_inicial = ""
+        if get_session_var("usar_consigna_como_texto", False) and "consigna_actual" in st.session_state:
+            texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
+            # Reset para no añadirlo cada vez
+            set_session_var("usar_consigna_como_texto", False)
+
+        # Área de texto para la corrección
+        texto = st.text_area(
+            "Escribe tu texto aquí:",
+            value=texto_inicial,
+            height=250,
+            key="texto_correccion_corregir"
+        )
+
+        info_adicional = st.text_area(
+            "Información adicional o contexto (opcional):",
+            value=get_session_var("info_adicional_corregir", ""),
+            height=100,
+            key="info_adicional_corregir"
+        )
+
+        # Guardar para referencia futura
+        set_session_var("info_adicional_corregir", info_adicional)
+
+        # Botón de envío
+        enviar = st.form_submit_button("Corregir", use_container_width=True)
+
+    # PROCESAMIENTO DEL FORMULARIO
+    if enviar:
+        if not texto.strip():
+            st.warning("Por favor, escribe un texto para corregir.")
+            return
+
+        # Guardar el texto para posible uso futuro
+        set_session_var("ultimo_texto", texto)
+
+        with st.spinner("Analizando texto y generando corrección contextual..."):
+            # Obtener los datos del usuario
+            nombre = get_session_var("usuario_actual", "")
+            nivel = user_data.get("nivel") if user_data else get_session_var(
+                "nivel_estudiante", "intermedio")
+
+            # Obtener las opciones seleccionadas
+            idioma = options.get("idioma", "Español")
+            tipo_texto = options.get("tipo_texto", "General/No especificado")
+            contexto_cultural = options.get(
+                "contexto_cultural", "General/Internacional")
+
+            # Llamar a la función de corrección
+            resultado = corregir_texto(
+                texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional
+            )
+
+            # Guardar el resultado para futuras referencias
+            set_session_var("correction_result", resultado)
+            set_session_var("last_correction_time", datetime.now().isoformat())
+
+        # Mostrar los resultados
+        if "error" not in resultado:
+            ui_show_correction_results(resultado)
+        else:
+            st.error(f"Error en la corrección: {resultado['error']}")
+
+            # Mostrar sugerencia de reintentar
+            st.info(
+                "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
+
+# --- 2. FUNCIÓN DE VISUALIZACIÓN DE TEXTO TRANSCRITO ---
+
+
+def visualizar_texto_manuscrito():
+    """Función para visualizar y corregir texto transcrito de imágenes."""
+    st.subheader("Corrección de texto manuscrito transcrito")
+
+    if "ultimo_texto_transcrito" not in st.session_state or not st.session_state.ultimo_texto_transcrito:
+        st.info("No hay texto transcrito para corregir.")
+        return
+
+    texto_transcrito = st.session_state.ultimo_texto_transcrito
+
+    # Mostrar texto transcrito
+    st.text_area(
+        "Texto transcrito (puedes editarlo si hay errores):",
+        value=texto_transcrito,
+        height=200,
+        key="texto_transcrito_editable"
+    )
+
+    # Opciones de corrección
+    options = ui_idioma_correcciones_tipo()
+
+    # Botón para enviar a corrección
+    if st.button("Enviar a corrección", key="corregir_texto_transcrito_btn"):
+        texto_final = st.session_state.texto_transcrito_editable
+
+        if not texto_final.strip():
+            st.warning(
+                "El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
+            return
+
+        # Guardar para futura referencia
+        set_session_var("ultimo_texto", texto_final)
+
+        with st.spinner("Analizando texto transcrito..."):
+            # Obtener datos necesarios
+            nombre = get_session_var("usuario_actual", "Usuario")
+            nivel = get_session_var("nivel_estudiante", "intermedio")
+
+            # Llamar a la función de corrección
+            resultado = corregir_texto(
+                texto_final, nombre, nivel, options["idioma"],
+                options["tipo_texto"], options["contexto_cultural"],
+                "Texto transcrito de imagen manuscrita"
+            )
+
+            # Guardar resultado
+            set_session_var("correction_result", resultado)
+            set_session_var("last_correction_time", datetime.now().isoformat())
+
+        # Mostrar resultados
+        if "error" not in resultado:
+            ui_show_correction_results(resultado)
+        else:
+            st.error(f"Error en la corrección: {resultado['error']}")
+
+# --- 3. FUNCIÓN DE CORRECCIÓN DE EXAMEN ---
+
+
+def corregir_examen(texto, tipo_examen, nivel_examen, tiempo_usado=None):
+    """
+    Corrige un texto de examen específico.
+
+    Args:
+        texto: Texto a corregir
+        tipo_examen: Tipo de examen
+        nivel_examen: Nivel del examen
+        tiempo_usado: Tiempo usado (opcional)
+
+    Returns:
+        dict: Resultado de la corrección
+    """
+    if not texto.strip():
+        return {"error": "El texto está vacío. Por favor, escribe una respuesta."}
+
+    # Guardar para futura referencia
+    set_session_var("ultimo_texto", texto)
+
+    # Obtener datos necesarios
+    nombre = get_session_var("usuario_actual", "Usuario")
+
+    # Mapear nivel del examen al formato de nivel de la aplicación
+    nivel_map = {
+        "A1": "Nivel principiante (A1-A2)",
+        "A2": "Nivel principiante (A1-A2)",
+        "B1": "Nivel intermedio (B1-B2)",
+        "B2": "Nivel intermedio (B1-B2)",
+        "C1": "Nivel avanzado (C1-C2)",
+        "C2": "Nivel avanzado (C1-C2)"
+    }
+    nivel = nivel_map.get(nivel_examen, "Nivel intermedio (B1-B2)")
+
+    # Construir información adicional
+    info_adicional = f"Examen {tipo_examen} nivel {nivel_examen}"
+    if tiempo_usado:
+        info_adicional += f" (Tiempo usado: {tiempo_usado})"
+
+    # Llamar a la función de corrección
+    resultado = corregir_texto(
+        texto, nombre, nivel, "Español", "Académico",
+        "Contexto académico", info_adicional
+    )
+
+    # Guardar resultado
+    set_session_var("correction_result", resultado)
+    set_session_var("last_correction_time", datetime.now().isoformat())
+    set_session_var("examen_result", resultado)
+
+    return resultado
+
+# --- 4. FUNCIÓN DE CORRECCIÓN DE DESCRIPCIÓN DE IMAGEN ---
+
+
+def corregir_descripcion_imagen(descripcion, tema_imagen, nivel):
+    """
+    Corrige una descripción de imagen.
+
+    Args:
+        descripcion: Texto de la descripción
+        tema_imagen: Tema de la imagen
+        nivel: Nivel del estudiante
+
+    Returns:
+        dict: Resultado de la corrección
+    """
+    if not descripcion.strip():
+        return {"error": "La descripción está vacía. Por favor, escribe una descripción."}
+
+    # Guardar para futura referencia
+    set_session_var("ultimo_texto", descripcion)
+
+    # Obtener datos necesarios
+    nombre = get_session_var("usuario_actual", "Usuario")
+
+    # Información adicional
+    info_adicional = f"Descripción de imagen sobre '{tema_imagen}'"
+
+    # Llamar a la función de corrección
+    resultado = corregir_texto(
+        descripcion, nombre, nivel, "Español", "Descriptivo",
+        "General/Internacional", info_adicional
+    )
+
+    # Guardar resultado
+    set_session_var("correction_result", resultado)
+    set_session_var("last_correction_time", datetime.now().isoformat())
+
+    return resultado
+# --- 1. PESTAÑA DE EXÁMENES ---
+
+
+def tab_examenes():
+    """Implementación de la pestaña de exámenes."""
+    st.header("🎓 Preparación para exámenes oficiales")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario
+        user_data = ui_user_info_form()
+        if not user_data:
+            return
+
+    # Selector de examen y nivel
+    exam_options = ui_examen_options()
+    tipo_examen = exam_options["tipo_examen"]
+    nivel_examen = exam_options["nivel_examen"]
+
+    # Pestañas para las diferentes funcionalidades
+    tabs_examen = st.tabs([
+        "Modelo de examen",
+        "Simulacro cronometrado",
+        "Criterios de evaluación"
+    ])
+
+    # --- Pestaña 1: Modelo de examen ---
+    with tabs_examen[0]:
+        modelo_examen_tab(tipo_examen, nivel_examen)
+
+    # --- Pestaña 2: Simulacro cronometrado ---
+    with tabs_examen[1]:
+        simulacro_cronometrado_tab(tipo_examen, nivel_examen)
+
+    # --- Pestaña 3: Criterios de evaluación ---
+    with tabs_examen[2]:
+        criterios_evaluacion_tab(tipo_examen, nivel_examen)
+
+
+def modelo_examen_tab(tipo_examen, nivel_examen):
+    """
+    Implementación de la pestaña de modelo de examen.
+
+    Args:
+        tipo_examen: Tipo de examen seleccionado
+        nivel_examen: Nivel de examen seleccionado
+    """
+    st.subheader("Modelo de prueba escrita")
+    st.markdown("""
+    Aquí encontrarás un modelo de tarea de expresión escrita similar a la que encontrarás en el examen.
+    Practica sin límite de tiempo y recibe correcciones detalladas.
+    """)
+
+    # Inicialización de variables de sesión para el modelo de examen
+    if "tarea_modelo_generada" not in st.session_state:
+        set_session_var("tarea_modelo_generada", None)
+    if "respuesta_modelo_examen" not in st.session_state:
+        set_session_var("respuesta_modelo_examen", "")
+
+    # Botón para generar tarea
+    if st.button("Generar tarea de examen", key="generar_tarea_examen"):
+        # Generar tarea específica para el examen y nivel seleccionados
+        with st.spinner("Generando tarea oficial..."):
+            tarea_generada = generar_tarea_examen(tipo_examen, nivel_examen)
+            set_session_var("tarea_modelo_generada", tarea_generada)
+            st.success("✅ Tarea generada correctamente")
+            st.rerun()  # Refrescar para mostrar la tarea generada
+
+    # Mostrar la tarea y área de respuesta si hay una tarea generada
+    tarea_modelo = get_session_var("tarea_modelo_generada", None)
+    if tarea_modelo:
+        with st.expander("Ver instrucciones de la tarea", expanded=True):
+            st.markdown(tarea_modelo)
+
+        # Área para que el estudiante escriba su respuesta
+        st.subheader("Tu respuesta:")
+        respuesta_estudiante = st.text_area(
+            "Escribe tu respuesta a la tarea aquí:",
+            value=get_session_var("respuesta_modelo_examen", ""),
+            height=250,
+            key="respuesta_modelo_examen_area"
+        )
+
+        # Guardar respuesta en session_state
+        set_session_var("respuesta_modelo_examen", respuesta_estudiante)
+
+        # Botones para opciones
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Corregir respuesta", key="finalizar_modelo_examen"):
+                if respuesta_estudiante.strip():
+                    # Mostrar spinner durante la corrección
+                    with st.spinner("Analizando respuesta..."):
+                        # Corrección integrada (sin redirección)
+                        resultado = corregir_examen(
+                            respuesta_estudiante,
+                            tipo_examen,
+                            nivel_examen
+                        )
+
+                    # Mostrar resultados directamente aquí
+                    if "error" not in resultado:
+                        ui_show_correction_results(resultado)
                     else:
-                        # Opciones de exportación en pestañas
-                        export_tab1, export_tab2, export_tab3 = st.tabs(
-                            ["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"])
+                        st.error(
+                            f"Error en la corrección: {resultado['error']}")
+                else:
+                    st.warning(
+                        "Por favor, escribe una respuesta antes de enviar a corrección.")
 
-                        with export_tab1:
-                            st.write(
-                                "Exporta este informe como documento Word (DOCX)")
+        with col2:
+            if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
+                # Reiniciar variables
+                set_session_var("tarea_modelo_generada", None)
+                set_session_var("respuesta_modelo_examen", "")
+                st.rerun()
 
-                            # Generar el buffer por adelantado
-                            docx_buffer = None
-                            try:
-                                docx_buffer = generar_informe_docx(
-                                    nombre, nivel, fecha, texto, texto_corregido,
-                                    errores_obj, analisis_contextual, consejo_final
-                                )
-                            except Exception as e:
-                                st.error(
-                                    f"Error al generar el documento Word: {e}")
 
-                            # Si el buffer se generó correctamente, mostrar el botón de descarga
-                            if docx_buffer is not None:
-                                nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                                st.download_button(
-                                    label="📥 Descargar documento Word",
-                                    data=docx_buffer,
-                                    file_name=nombre_archivo,
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                    key="docx_download_corregir"
-                                )
+def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
+    """
+    Implementación de la pestaña de simulacro cronometrado.
 
-                        with export_tab2:
-                            st.write(
-                                "Exporta este informe como página web (HTML)")
+    Args:
+        tipo_examen: Tipo de examen seleccionado
+        nivel_examen: Nivel de examen seleccionado
+    """
+    st.subheader("Simulacro cronometrado")
+    st.markdown("""
+    Pon a prueba tus habilidades bajo las condiciones reales del examen.
+    Esta prueba está cronometrada según los tiempos oficiales.
+    """)
 
-                            # Generar el HTML directamente
-                            html_content = f'''
-                            <!DOCTYPE html>
-                            <html lang="es">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Informe de corrección - {nombre}</title>
-                                <style>
-                                    body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                                    .container {{ max-width: 800px; margin: 0 auto; padding: 20px; }}
-                                    h1 {{ color: #2c3e50; }}
-                                    h2 {{ color: #3498db; margin-top: 30px; }}
-                                    h3 {{ color: #2980b9; }}
-                                    .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
-                                    .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
-                                    .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
-                                    .fragmento {{ color: #dc3545; }}
-                                    .correccion {{ color: #28a745; }}
-                                    .explicacion {{ color: #17a2b8; font-style: italic; }}
-                                    .puntuaciones {{ width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; }}
-                                    .puntuaciones th, .puntuaciones td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
-                                    .puntuaciones th {{ background-color: #f2f2f2; }}
-                                    .consejo {{ background-color: #e7f5fe; padding: 15px; border-left: 4px solid #17a2b8; margin-top: 20px; }}
-                                    .footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; color: #6c757d; font-size: 0.8em; }}
-                                </style>
-                            </head>
-                            <body>
-                                <div class="container">
-                                    <h1>Informe de corrección textual</h1>
+    # Placeholder para el temporizador
+    tiempo_restante_placeholder = st.empty()
 
-                                    <section>
-                                        <h2>Información general</h2>
-                                        <p><strong>Nombre:</strong> {nombre}</p>
-                                        <p><strong>Nivel:</strong> {nivel}</p>
-                                        <p><strong>Fecha:</strong> {fecha}</p>
-                                    </section>
+    # Verificar si el simulacro está en progreso
+    if "inicio_simulacro" not in st.session_state:
+        if st.button("Iniciar simulacro", key="iniciar_simulacro"):
+            # Configurar el temporizador
+            set_session_var("inicio_simulacro", time.time())
+            set_session_var("duracion_simulacro",
+                            obtener_duracion_examen(tipo_examen, nivel_examen))
 
-                                    <section>
-                                        <h2>Texto original</h2>
-                                        <div class="original">
-                                            <p>{texto.replace(chr(10), '<br>')}</p>
-                                        </div>
+            # Inicializar variable para la respuesta
+            if "simulacro_respuesta_texto" not in st.session_state:
+                set_session_var("simulacro_respuesta_texto", "")
 
-                                        <h2>Texto corregido</h2>
-                                        <div class="corregido">
-                                            <p>{texto_corregido.replace(chr(10), '<br>')}</p>
-                                        </div>
-                                    </section>
+            # Generar tarea para el simulacro
+            tarea_simulacro = generar_tarea_examen(tipo_examen, nivel_examen)
+            set_session_var("tarea_simulacro", tarea_simulacro)
 
-                                    <section>
-                                        <h2>Análisis contextual</h2>
+            st.rerun()  # Refrescar para mostrar el simulacro
+    else:
+        # Simulacro en progreso
+        inicio_simulacro = get_session_var("inicio_simulacro")
+        duracion_simulacro = get_session_var("duracion_simulacro")
 
-                                        <h3>Puntuaciones</h3>
-                                        <table class="puntuaciones">
-                                            <tr>
-                                                <th>Coherencia</th>
-                                                <th>Cohesión</th>
-                                                <th>Registro</th>
-                                                <th>Adecuación cultural</th>
-                                            </tr>
-                                            <tr>
-                                                <td>{analisis_contextual.get('coherencia', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('cohesion', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('registro_linguistico', {}).get('puntuacion', 'N/A')}/10</td>
-                                                <td>{analisis_contextual.get('adecuacion_cultural', {}).get('puntuacion', 'N/A')}/10</td>
-                                            </tr>
-                                        </table>
-                                    </section>
+        # Obtener estado del temporizador
+        timer_state = ui_countdown_timer(duracion_simulacro, inicio_simulacro)
 
-                                    <section>
-                                        <h2>Consejo final</h2>
-                                        <div class="consejo">
-                                            <p>{consejo_final}</p>
-                                        </div>
-                                    </section>
+        # Mostrar temporizador según el estado
+        if timer_state["color"] == "normal":
+            tiempo_restante_placeholder.info(
+                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+        elif timer_state["color"] == "warning":
+            tiempo_restante_placeholder.warning(
+                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+        else:
+            tiempo_restante_placeholder.error(
+                f"⏱️ Tiempo agotado: {timer_state['tiempo_formateado']}")
 
-                                    <div class="footer">
-                                        <p>Textocorrector ELE - Informe generado el {fecha} - Todos los derechos reservados</p>
-                                    </div>
-                                </div>
-                            </body>
-                            </html>
-                            '''
+        # Mostrar la tarea
+        tarea_simulacro = get_session_var("tarea_simulacro")
+        with st.expander("Tarea del simulacro:", expanded=True):
+            st.markdown(tarea_simulacro)
 
-                            # Convertir a bytes para descargar
-                            html_bytes = html_content.encode()
+        # Área de texto para respuesta
+        simulacro_respuesta = st.text_area(
+            "Tu respuesta:",
+            value=get_session_var("simulacro_respuesta_texto", ""),
+            height=300,
+            key="simulacro_respuesta_area"
+        )
 
-                            # Botón de descarga
-                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                            st.download_button(
-                                label="📥 Descargar página HTML",
-                                data=html_bytes,
-                                file_name=nombre_archivo,
-                                mime="text/html",
-                                key="html_download_corregir"
+        # Guardar respuesta en tiempo real
+        set_session_var("simulacro_respuesta_texto", simulacro_respuesta)
+
+        # Opciones para finalizar o reiniciar
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Finalizar y corregir", key="finalizar_simulacro"):
+                if simulacro_respuesta.strip():
+                    # Calcular tiempo usado
+                    tiempo_final = time.time() - inicio_simulacro
+                    minutos_usados = int(tiempo_final // 60)
+                    segundos_usados = int(tiempo_final % 60)
+                    tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
+
+                    # Mostrar spinner durante la corrección
+                    with st.spinner("Analizando respuesta..."):
+                        # Corrección integrada (sin redirección)
+                        resultado = corregir_examen(
+                            simulacro_respuesta,
+                            tipo_examen,
+                            nivel_examen,
+                            tiempo_usado
+                        )
+
+                    # Limpiar variables de control
+                    set_session_var("inicio_simulacro", None)
+                    set_session_var("duracion_simulacro", None)
+                    set_session_var("tarea_simulacro", None)
+                    set_session_var("simulacro_respuesta_texto", "")
+
+                    # Mensaje de éxito
+                    st.success(f"Simulacro completado en {tiempo_usado}.")
+
+                    # Mostrar resultados directamente aquí
+                    if "error" not in resultado:
+                        ui_show_correction_results(resultado)
+                    else:
+                        st.error(
+                            f"Error en la corrección: {resultado['error']}")
+                else:
+                    st.warning(
+                        "Por favor, escribe una respuesta antes de finalizar.")
+
+        with col2:
+            if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
+                # Limpiar todas las variables del simulacro
+                set_session_var("inicio_simulacro", None)
+                set_session_var("duracion_simulacro", None)
+                set_session_var("tarea_simulacro", None)
+                set_session_var("simulacro_respuesta_texto", "")
+                st.rerun()
+
+        # Verificar si se acabó el tiempo
+        if timer_state["terminado"]:
+            st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
+            # Guardar automáticamente (opcional)
+            st.info(
+                "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
+
+
+def criterios_evaluacion_tab(tipo_examen, nivel_examen):
+    """
+    Implementación de la pestaña de criterios de evaluación.
+
+    Args:
+        tipo_examen: Tipo de examen seleccionado
+        nivel_examen: Nivel de examen seleccionado
+    """
+    st.subheader("Criterios de evaluación")
+    st.markdown("""
+    Conocer cómo se evalúa tu texto es fundamental para prepararte adecuadamente.
+    Aquí encontrarás las rúbricas oficiales y ejemplos de textos evaluados.
+    """)
+
+    # Mostrar los criterios específicos según el examen seleccionado
+    criterios = obtener_criterios_evaluacion(tipo_examen, nivel_examen)
+    st.markdown(criterios)
+
+    # Opción para ver ejemplos evaluados
+    if st.button("Ver ejemplos de textos evaluados", key="ver_ejemplos_evaluados"):
+        with st.spinner("Generando ejemplos..."):
+            ejemplos = generar_ejemplos_evaluados(tipo_examen, nivel_examen)
+            st.markdown(ejemplos)
+            # --- 1. PESTAÑA DE HERRAMIENTAS COMPLEMENTARIAS ---
+
+
+def tab_herramientas():
+    """Implementación de la pestaña de herramientas complementarias."""
+    st.header("🔧 Herramientas complementarias")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario
+        user_data = ui_user_info_form()
+        if not user_data:
+            return
+
+    # Pestañas para diferentes herramientas
+    subtabs = st.tabs([
+        "Análisis de complejidad",
+        "Biblioteca de recursos",
+        "Descripción de imágenes",
+        "Texto manuscrito"
+    ])
+
+    # --- Subpestaña 1: Análisis de complejidad ---
+    with subtabs[0]:
+        herramienta_analisis_complejidad()
+
+    # --- Subpestaña 2: Biblioteca de recursos ---
+    with subtabs[1]:
+        herramienta_biblioteca_recursos()
+
+    # --- Subpestaña 3: Descripción de imágenes ---
+    with subtabs[2]:
+        herramienta_descripcion_imagenes()
+
+    # --- Subpestaña 4: Texto manuscrito ---
+    with subtabs[3]:
+        herramienta_texto_manuscrito()
+
+# --- 2. HERRAMIENTAS INDIVIDUALES ---
+
+
+def herramienta_analisis_complejidad():
+    """Implementación de la herramienta de análisis de complejidad textual."""
+    st.subheader("Análisis de complejidad textual")
+    st.markdown("""
+    Esta herramienta analiza la complejidad léxica, sintáctica y estructural de tu texto 
+    para ayudarte a entender tu nivel actual y cómo mejorar.
+    """)
+
+    # Código para el análisis de complejidad
+    texto_analisis = st.text_area(
+        "Ingresa el texto a analizar:",
+        height=200,
+        key="texto_analisis"
+    )
+
+    if st.button("Analizar complejidad", key="analizar_complejidad") and texto_analisis.strip():
+        with st.spinner("Analizando la complejidad de tu texto..."):
+            analisis_data = analizar_complejidad_texto(texto_analisis)
+
+            if "error" in analisis_data:
+                st.error(f"Error al analizar: {analisis_data['error']}")
+                return
+
+            # Mostrar resultados
+            st.subheader("Resultados del análisis")
+
+            # Nivel MCER estimado
+            nivel_mcer = analisis_data.get("nivel_mcer", {})
+            st.info(
+                f"📊 **Nivel MCER estimado: {nivel_mcer.get('nivel', 'No disponible')}**")
+            st.write(nivel_mcer.get("justificacion", ""))
+
+            # Métricas principales en columnas
+            indices = analisis_data.get("indices", {})
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("TTR", f"{indices.get('ttr', 0):.2f}")
+                st.caption("Ratio tipo/token - variedad léxica")
+            with col2:
+                st.metric("Densidad léxica",
+                          f"{indices.get('densidad_lexica', 0):.2f}")
+                st.caption("Proporción palabras contenido/total")
+            with col3:
+                st.metric("Índice Szigriszt",
+                          f"{indices.get('szigriszt', 0):.1f}")
+                st.caption("Legibilidad (70-80: estándar)")
+
+            # Interpretación general
+            st.markdown(
+                f"**Interpretación general**: {indices.get('interpretacion', '')}")
+
+            # Detalles por áreas
+            tabs = st.tabs(["Léxico", "Sintaxis", "Textual"])
+
+            with tabs[0]:
+                lex = analisis_data.get("complejidad_lexica", {})
+                st.markdown(
+                    f"**Nivel de complejidad léxica**: {lex.get('nivel', '')}")
+                st.write(lex.get("descripcion", ""))
+
+                palabras = lex.get("palabras_destacadas", [])
+                if palabras:
+                    st.markdown("**Palabras destacadas:**")
+                    st.write(", ".join(palabras))
+
+            with tabs[1]:
+                sint = analisis_data.get("complejidad_sintactica", {})
+                st.markdown(
+                    f"**Nivel de complejidad sintáctica**: {sint.get('nivel', '')}")
+                st.write(sint.get("descripcion", ""))
+
+                estructuras = sint.get("estructuras_destacadas", [])
+                if estructuras:
+                    st.markdown("**Estructuras destacadas:**")
+                    for est in estructuras:
+                        st.markdown(f"- {est}")
+
+            with tabs[2]:
+                text = analisis_data.get("complejidad_textual", {})
+                st.markdown(
+                    f"**Nivel de complejidad textual**: {text.get('nivel', '')}")
+                st.write(text.get("descripcion", ""))
+
+            # Recomendaciones
+            recomendaciones = analisis_data.get("recomendaciones", [])
+            if recomendaciones:
+                with st.expander("Recomendaciones para mejorar", expanded=True):
+                    for rec in recomendaciones:
+                        st.markdown(f"- {rec}")
+
+
+def herramienta_biblioteca_recursos():
+    """Implementación de la herramienta de biblioteca de recursos."""
+    st.subheader("Biblioteca de recursos")
+    st.markdown("""
+    Accede a recursos didácticos para mejorar tu español, 
+    organizados por nivel y categoría gramatical.
+    """)
+
+    # Organización de recursos en categorías
+    col1, col2 = st.columns(2)
+
+    with col1:
+        categoria = st.selectbox(
+            "Categoría:",
+            [
+                "Gramática", "Vocabulario", "Expresiones",
+                "Ortografía", "Conectores", "Cultura"
+            ],
+            key="categoria_recursos"
+        )
+
+    with col2:
+        nivel_recursos = st.selectbox(
+            "Nivel:",
+            ["A1", "A2", "B1", "B2", "C1", "C2", "Todos los niveles"],
+            key="nivel_recursos"
+        )
+
+    # Mapear al nivel en la base de datos
+    if nivel_recursos in ["A1", "A2"]:
+        nivel_db = "A1-A2"
+    elif nivel_recursos in ["B1", "B2"]:
+        nivel_db = "B1-B2"
+    elif nivel_recursos in ["C1", "C2"]:
+        nivel_db = "C1-C2"
+    else:
+        nivel_db = None  # Todos los niveles
+
+    # Generar recursos basados en la selección
+    if st.button("Buscar recursos", key="buscar_recursos"):
+        recursos_mostrados = []
+
+        # Buscar en la base de datos estática
+        if nivel_db:
+            # Filtramos por nivel específico
+            nivel_recursos_db = RECURSOS_DB.get(nivel_db, {})
+            for cat, recursos in nivel_recursos_db.items():
+                if categoria.lower() in cat.lower() or "todos" in categoria.lower():
+                    recursos_mostrados.extend(recursos)
+        else:
+            # Mostrar todos los niveles
+            for nivel, categorias in RECURSOS_DB.items():
+                for cat, recursos in categorias.items():
+                    if categoria.lower() in cat.lower() or "todos" in categoria.lower():
+                        recursos_mostrados.extend(recursos)
+
+        # Si no hay recursos, generar con IA
+        if not recursos_mostrados:
+            with st.spinner("Generando recomendaciones de recursos..."):
+                # Generar recursos con OpenAI
+                client = get_openai_client()
+                if client and circuit_breaker.can_execute("openai"):
+                    try:
+                        nivel_str = nivel_recursos if nivel_recursos != "Todos los niveles" else "todos los niveles"
+
+                        prompt_recursos = f"""
+                        Genera una lista de 5 recursos didácticos reales y relevantes para estudiantes de español 
+                        de nivel {nivel_str} enfocados en {categoria}.
+                        
+                        Cada recurso debe incluir:
+                        1. Título descriptivo
+                        2. Tipo de recurso (libro, página web, app, podcast, vídeo, etc.)
+                        3. URL real (o editorial en caso de libros)
+                        4. Breve descripción de su contenido y utilidad
+                        5. Nivel específico (si aplica)
+                        
+                        Devuelve SOLO la información en formato JSON con la estructura:
+                        {{
+                          "recursos": [
+                            {{
+                              "titulo": "string",
+                              "tipo": "string",
+                              "url": "string",
+                              "descripcion": "string",
+                              "nivel": "string"
+                            }}
+                          ]
+                        }}
+                        """
+
+                        response = client.chat.completions.create(
+                            model="gpt-4-turbo",
+                            temperature=0.5,
+                            messages=[
+                                {"role": "system", "content": "Eres un especialista en recursos didácticos para aprendizaje de español como lengua extranjera."},
+                                {"role": "user", "content": prompt_recursos}
+                            ]
+                        )
+
+                        # Extraer JSON
+                        content = response.choices[0].message.content
+                        recursos_data = extract_json_safely(content)
+
+                        # Verificar si se obtuvo un resultado válido
+                        if "error" not in recursos_data:
+                            recursos_ia = recursos_data.get("recursos", [])
+
+                            # Convertir al formato de nuestros recursos
+                            for recurso in recursos_ia:
+                                recursos_mostrados.append({
+                                    "título": recurso.get("titulo", ""),
+                                    "tipo": recurso.get("tipo", ""),
+                                    "url": recurso.get("url", ""),
+                                    "nivel": recurso.get("nivel", ""),
+                                    "descripcion": recurso.get("descripcion", "")
+                                })
+
+                            # Registrar éxito
+                            circuit_breaker.record_success("openai")
+                        else:
+                            st.error(
+                                f"Error al generar recursos: {recursos_data['error']}")
+                    except Exception as e:
+                        st.error(f"Error al generar recursos: {str(e)}")
+                        circuit_breaker.record_failure("openai")
+                else:
+                    st.warning(
+                        "Servicio de generación de recursos no disponible en este momento.")
+
+        # Mostrar los recursos
+        if recursos_mostrados:
+            st.subheader(
+                f"Recursos de {categoria} para nivel {nivel_recursos}")
+
+            for i, recurso in enumerate(recursos_mostrados):
+                with st.expander(f"{i+1}. {recurso.get('título', '')} ({recurso.get('nivel', '')})", expanded=i == 0):
+                    st.markdown(f"**Tipo:** {recurso.get('tipo', '')}")
+                    st.markdown(
+                        f"**URL:** [{recurso.get('url', '').split('/')[-1]}]({recurso.get('url', '')})")
+                    if "descripcion" in recurso:
+                        st.markdown(
+                            f"**Descripción:** {recurso.get('descripcion', '')}")
+        else:
+            st.info(
+                f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
+            # --- 3. HERRAMIENTAS INDIVIDUALES (CONTINUACIÓN) ---
+
+
+def herramienta_descripcion_imagenes():
+    """Implementación de la herramienta de descripción de imágenes con DALL-E."""
+    st.subheader("🖼️ Descripción de imágenes generadas por IA")
+    st.markdown("""
+    Esta herramienta genera imágenes adaptadas a tu nivel de español y proporciona actividades
+    de descripción para practicar vocabulario y estructuras descriptivas.
+    """)
+
+    # Selección de nivel
+    nivel_imagen = st.selectbox(
+        "Nivel de español:",
+        [
+            "Nivel principiante (A1-A2)",
+            "Nivel intermedio (B1-B2)",
+            "Nivel avanzado (C1-C2)"
+        ],
+        index=["principiante", "intermedio", "avanzado"].index(
+            get_session_var("nivel_estudiante", "intermedio")
+        ),
+        key="nivel_imagen_dalle"
+    )
+
+    # Tema para la imagen
+    tema_imagen = st.text_input(
+        "Tema o escena para la imagen (por ejemplo: 'un parque en primavera', 'una oficina moderna'):",
+        key="tema_imagen_dalle"
+    )
+
+    if st.button("Generar imagen y actividad", key="generar_imagen_dalle") and tema_imagen:
+        with st.spinner("Generando imagen con DALL-E..."):
+            # Obtener nivel en formato simplificado
+            nivel_map = {
+                "Nivel principiante (A1-A2)": "principiante",
+                "Nivel intermedio (B1-B2)": "intermedio",
+                "Nivel avanzado (C1-C2)": "avanzado"
+            }
+            nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
+
+            # Generar imagen y descripción
+            imagen_url, descripcion = generar_imagen_dalle(
+                tema_imagen, nivel_dalle)
+
+            if imagen_url:
+                # Mostrar la imagen
+                st.image(
+                    imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_container_width=True)
+
+                # Guardar en session_state para usos futuros
+                set_session_var("ultima_imagen_url", imagen_url)
+                set_session_var("ultima_descripcion", descripcion)
+
+                # Mostrar la descripción y actividades
+                with st.expander("Descripción y actividades de práctica", expanded=True):
+                    st.markdown(descripcion)
+
+                # Área para que el estudiante escriba su descripción
+                st.subheader("Tu descripción:")
+                descripcion_estudiante = st.text_area(
+                    "Describe la imagen con tus propias palabras:",
+                    height=200,
+                    key="descripcion_imagen_estudiante"
+                )
+
+                # Botón para enviar a corrección
+                if st.button("Corregir descripción", key="corregir_descripcion_imagen"):
+                    if descripcion_estudiante.strip():
+                        with st.spinner("Analizando descripción..."):
+                            # Corrección integrada (sin redirección)
+                            resultado = corregir_descripcion_imagen(
+                                descripcion_estudiante,
+                                tema_imagen,
+                                nivel_imagen
                             )
 
-                            # Opción para previsualizar
-                            with st.expander("Previsualizar HTML"):
-                                st.markdown(
-                                    f'<iframe srcdoc="{html_content.replace(chr(34), chr(39))}" width="100%" height="600"></iframe>', unsafe_allow_html=True)
+                        # Mostrar resultados directamente aquí
+                        if "error" not in resultado:
+                            ui_show_correction_results(resultado)
+                        else:
+                            st.error(
+                                f"Error en la corrección: {resultado['error']}")
+                    else:
+                        st.warning(
+                            "Por favor, escribe una descripción antes de enviar a corrección.")
+            else:
+                st.error(
+                    "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
 
-                        with export_tab3:
-                            st.write(
-                                "Exporta los datos del análisis en formato CSV")
 
-                            # Crear CSV en memoria
-                            csv_buffer = StringIO()
+def herramienta_texto_manuscrito():
+    """Implementación de la herramienta de transcripción de textos manuscritos."""
+    st.subheader("✍️ Transcripción de textos manuscritos")
+    st.markdown("""
+    Esta herramienta te permite subir imágenes de textos manuscritos para transcribirlos
+    automáticamente y luego enviarlos a corrección.
+    """)
 
-                            # Encabezados
-                            csv_buffer.write("Categoría,Dato\n")
-                            csv_buffer.write(f"Nombre,{nombre}\n")
-                            csv_buffer.write(f"Nivel,{nivel}\n")
-                            csv_buffer.write(f"Fecha,{fecha}\n")
-                            csv_buffer.write(
-                                f"Errores Gramática,{num_gramatica}\n")
-                            csv_buffer.write(f"Errores Léxico,{num_lexico}\n")
-                            csv_buffer.write(
-                                f"Errores Puntuación,{num_puntuacion}\n")
-                            csv_buffer.write(
-                                f"Errores Estructura,{num_estructura}\n")
-                            csv_buffer.write(
-                                f"Total Errores,{total_errores}\n")
-                            csv_buffer.write(
-                                f"Puntuación Coherencia,{puntuacion_coherencia}\n")
-                            csv_buffer.write(
-                                f"Puntuación Cohesión,{puntuacion_cohesion}\n")
-                            csv_buffer.write(
-                                f"Puntuación Registro,{puntuacion_registro}\n")
-                            csv_buffer.write(
-                                f"Puntuación Adecuación Cultural,{puntuacion_adecuacion}\n")
+    # Selección de idioma para la transcripción
+    idioma_manuscrito = st.selectbox(
+        "Idioma del texto manuscrito:",
+        ["Español", "Francés", "Inglés"],
+        key="idioma_manuscrito"
+    )
 
-                            csv_bytes = csv_buffer.getvalue().encode()
+    # Mapeo de idiomas para la API
+    idioma_map = {
+        "Español": "es",
+        "Francés": "fr",
+        "Inglés": "en"
+    }
 
-                            # Botón de descarga
-                            nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                            st.download_button(
-                                label="📥 Descargar CSV",
-                                data=csv_bytes,
-                                file_name=nombre_archivo,
-                                mime="text/csv",
-                                key="csv_download_corregir"
-                            )
+    # Subida de imagen
+    imagen_manuscrito = st.file_uploader(
+        "Sube una imagen de tu texto manuscrito (JPG, PNG):",
+        type=["jpg", "jpeg", "png"],
+        key="imagen_manuscrito"
+    )
 
-                except Exception as e:
-                    st.error(f"Error al procesar la corrección: {e}")
-                    st.code(traceback.format_exc())
+    if imagen_manuscrito is not None:
+        # Mostrar la imagen subida
+        imagen = Image.open(imagen_manuscrito)
+        st.image(imagen, caption="Imagen subida", use_column_width=True)
 
-                    # --- PESTAÑA 2: VER PROGRESO ---
-with tab_progreso:
-    st.header("Seguimiento del progreso")
+        # Botón para transcribir
+        if st.button("Transcribir texto", key="transcribir_manuscrito"):
+            with st.spinner("Transcribiendo texto manuscrito..."):
+                # Leer bytes de la imagen
+                imagen_bytes = imagen_manuscrito.getvalue()
+
+                # Obtener código de idioma
+                codigo_idioma = idioma_map.get(idioma_manuscrito, "es")
+
+                # Transcribir la imagen
+                texto_transcrito = transcribir_imagen_texto(
+                    imagen_bytes, codigo_idioma)
+
+                if texto_transcrito and not texto_transcrito.startswith("Error"):
+                    # Mostrar el texto transcrito
+                    st.success("✅ Texto transcrito correctamente")
+
+                    with st.expander("Texto transcrito", expanded=True):
+                        st.write(texto_transcrito)
+
+                        # Guardar en session_state
+                        set_session_var(
+                            "ultimo_texto_transcrito", texto_transcrito)
+
+                    # Enviar a corrección
+                    if st.button("Corregir texto transcrito", key="corregir_texto_transcrito"):
+                        # Redirigir a la función específica
+                        visualizar_texto_manuscrito()
+                else:
+                    st.error(
+                        texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+
+# --- 4. PESTAÑA DE PROGRESO ---
+
+
+def tab_progreso():
+    """Implementación de la pestaña de progreso."""
+    st.header("📊 Seguimiento del progreso")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario
+        user_data = ui_user_info_form()
+        if not user_data:
+            return
 
     # Subtabs para diferentes vistas de progreso
     subtab_estadisticas, subtab_plan_estudio = st.tabs([
@@ -1793,84 +4286,113 @@ with tab_progreso:
     ])
 
     with subtab_estadisticas:
-        nombre_estudiante = st.text_input(
-            "Nombre y apellido del estudiante para ver progreso:", key="nombre_progreso")
-        if nombre_estudiante and " " not in nombre_estudiante:
-            st.warning(
-                "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+        estadisticas_progreso_tab()
 
-        if nombre_estudiante:
-            with st.spinner("Cargando datos de progreso..."):
-                try:
-                    df = obtener_historial_estudiante(
-                        nombre_estudiante, tracking_sheet)
-                    if df is not None and not df.empty:
-                        mostrar_progreso(df)
+    with subtab_plan_estudio:
+        plan_estudio_tab()
 
-                        # Mostrar tabla con historial completo
-                        with st.expander("Ver datos completos"):
-                            st.dataframe(df)
 
-                        # Verificar si existe la columna Fecha
-                        fecha_col = None
-                        for col in df.columns:
-                            if col.lower() == 'fecha':
-                                fecha_col = col
-                                break
+def estadisticas_progreso_tab():
+    """Implementación de la pestaña de estadísticas de progreso."""
+    nombre_estudiante = st.text_input(
+        "Nombre y apellido del estudiante para ver progreso:",
+        value=get_session_var("usuario_actual", ""),
+        key="nombre_progreso"
+    )
 
-                        if fecha_col is not None:
-                            # Consejo basado en tendencias
-                            if len(df) >= 2:
-                                st.subheader("Consejo basado en tendencias")
+    if nombre_estudiante and " " not in nombre_estudiante:
+        st.warning(
+            "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
 
-                                # Calcular tendencias simples
-                                df[fecha_col] = pd.to_datetime(df[fecha_col])
-                                df = df.sort_values(fecha_col)
+    if nombre_estudiante and " " in nombre_estudiante:
+        with st.spinner("Cargando datos de progreso..."):
+            try:
+                df = obtener_historial_estudiante(nombre_estudiante)
+                if df is not None and not df.empty:
+                    # Generar gráficos
+                    graficos = mostrar_progreso(df)
 
-                                # Extraer primera y última entrada para comparar
-                                primera = df.iloc[0]
-                                ultima = df.iloc[-1]
+                    # Mostrar gráficos si existen
+                    if graficos["errores_totales"] is not None:
+                        st.subheader("Progreso en la reducción de errores")
+                        st.altair_chart(
+                            graficos["errores_totales"], use_container_width=True)
 
-                                # Comparar total de errores
-                                dif_errores = ultima['Total Errores'] - \
-                                    primera['Total Errores']
+                    if graficos["tipos_error"] is not None:
+                        st.altair_chart(
+                            graficos["tipos_error"], use_container_width=True)
 
-                                if dif_errores < 0:
-                                    st.success(
-                                        f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                                elif dif_errores > 0:
-                                    st.warning(
-                                        f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                                else:
-                                    st.info(
-                                        "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                    if graficos["radar"] is not None:
+                        st.pyplot(graficos["radar"])
 
-                                # Identificar área con mayor progreso y área que necesita más trabajo
-                                categorias = [
-                                    'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                    # Mostrar tabla con historial completo
+                    with st.expander("Ver datos completos"):
+                        st.dataframe(df)
+
+                    # Verificar si hay suficientes datos para análisis de tendencias
+                    if len(df) >= 2 and graficos["fecha_col"] is not None:
+                        fecha_col = graficos["fecha_col"]
+
+                        # Consejo basado en tendencias
+                        st.subheader("Consejo basado en tendencias")
+
+                        # Calcular tendencias simples
+                        df[fecha_col] = pd.to_datetime(df[fecha_col])
+                        df = df.sort_values(fecha_col)
+
+                        # Extraer primera y última entrada para comparar
+                        primera = df.iloc[0]
+                        ultima = df.iloc[-1]
+
+                        # Comparar total de errores
+                        if "Total Errores" in primera and "Total Errores" in ultima:
+                            dif_errores = ultima['Total Errores'] - \
+                                primera['Total Errores']
+
+                            if dif_errores < 0:
+                                st.success(
+                                    f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                            elif dif_errores > 0:
+                                st.warning(
+                                    f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                            else:
+                                st.info(
+                                    "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+
+                            # Identificar área con mayor progreso y área que necesita más trabajo
+                            categorias = [
+                                'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                            categorias_existentes = [
+                                cat for cat in categorias if cat in df.columns]
+
+                            if categorias_existentes:
                                 difs = {}
-                                for cat in categorias:
-                                    difs[cat] = ultima[cat] - primera[cat]
+                                for cat in categorias_existentes:
+                                    if cat in primera and cat in ultima:
+                                        difs[cat] = ultima[cat] - primera[cat]
 
-                                mejor_area = min(difs.items(), key=lambda x: x[1])[
-                                    0] if difs else None
-                                peor_area = max(difs.items(), key=lambda x: x[1])[
-                                    0] if difs else None
+                                if difs:
+                                    mejor_area = min(
+                                        difs.items(), key=lambda x: x[1])[0]
+                                    peor_area = max(
+                                        difs.items(), key=lambda x: x[1])[0]
 
-                                if mejor_area and difs[mejor_area] < 0:
-                                    st.success(
-                                        f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                                    if difs[mejor_area] < 0:
+                                        st.success(
+                                            f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
 
-                                if peor_area and difs[peor_area] > 0:
-                                    st.warning(
-                                        f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
-                    else:
-                        st.info(
-                            f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
+                                    if difs[peor_area] > 0:
+                                        st.warning(
+                                            f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                else:
+                    st.info(
+                        f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
 
-                        # Nuevo código para mostrar nombres disponibles
+                    # Mostrar nombres disponibles
+                    if sheets_connection is not None and sheets_connection["tracking"] is not None:
                         try:
-                            todos_datos = tracking_sheet.get_all_records()
+                            todos_datos = sheets_connection["tracking"].get_all_records(
+                            )
                             if todos_datos:
                                 columnas = list(todos_datos[0].keys())
                                 nombre_col = next(
@@ -1883,7 +4405,6 @@ with tab_progreso:
                                     if nombres_disponibles:
                                         st.write(
                                             "Nombres disponibles en el historial:")
-                                        nombres_botones = []
 
                                         # Dividir en filas de 3 botones
                                         for i in range(0, len(nombres_disponibles), 3):
@@ -1891,132 +4412,110 @@ with tab_progreso:
                                             cols = st.columns(3)
                                             for j, nombre in enumerate(fila):
                                                 if j < len(fila) and cols[j].button(nombre, key=f"btn_progreso_{nombre}_{i+j}"):
-                                                    st.experimental_set_query_params(
-                                                        nombre_seleccionado=nombre)
+                                                    # Establecer el nombre seleccionado
+                                                    set_session_var(
+                                                        "nombre_seleccionado", nombre)
                                                     st.rerun()
                         except Exception as e:
                             st.error(
-                                f"Error al listar nombres disponibles: {e}")
-                except Exception as e:
-                    st.error(f"Error al obtener historial: {e}")
-                    st.info("Detalles para depuración:")
-                    st.code(str(e))
+                                f"Error al listar nombres disponibles: {str(e)}")
+            except Exception as e:
+                st.error(f"Error al obtener historial: {str(e)}")
+                with st.expander("Detalles del error"):
+                    st.code(traceback.format_exc())
 
-    # NUEVO: Plan de estudio personalizado
-    with subtab_plan_estudio:
-        st.header("📚 Plan de estudio personalizado")
 
-        nombre_estudiante_plan = st.text_input(
-            "Nombre y apellido:", key="nombre_plan_estudio")
+def plan_estudio_tab():
+    """Implementación de la pestaña de plan de estudio personalizado."""
+    st.header("📚 Plan de estudio personalizado")
 
-        if nombre_estudiante_plan and " " not in nombre_estudiante_plan:
-            st.warning(
-                "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+    nombre_estudiante_plan = st.text_input(
+        "Nombre y apellido:",
+        value=get_session_var("usuario_actual", ""),
+        key="nombre_plan_estudio"
+    )
 
-        if nombre_estudiante_plan:
-            with st.spinner("Analizando tu historial de errores y generando plan personalizado..."):
-                # Obtener historial del estudiante
-                df = obtener_historial_estudiante(
-                    nombre_estudiante_plan, tracking_sheet)
+    if nombre_estudiante_plan and " " not in nombre_estudiante_plan:
+        st.warning(
+            "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
 
-                if df is not None and not df.empty:
-                    # Analizar patrones de error frecuentes
-                    # Suponemos que tenemos estas columnas en el df
-                    if 'Errores Gramática' in df.columns and 'Errores Léxico' in df.columns:
-                        # Extraer estadísticas básicas
-                        promedio_gramatica = df['Errores Gramática'].mean()
-                        promedio_lexico = df['Errores Léxico'].mean()
+    if nombre_estudiante_plan and " " in nombre_estudiante_plan:
+        with st.spinner("Analizando tu historial de errores y generando plan personalizado..."):
+            # Obtener historial del estudiante
+            df = obtener_historial_estudiante(nombre_estudiante_plan)
 
-                        # Verificar si tenemos las columnas contextuales
-                        coherencia_promedio = df['Puntuación Coherencia'].mean(
-                        ) if 'Puntuación Coherencia' in df.columns else 5
-                        cohesion_promedio = df['Puntuación Cohesión'].mean(
-                        ) if 'Puntuación Cohesión' in df.columns else 5
+            if df is not None and not df.empty:
+                # Generar plan de estudio personalizado
+                resultado = generar_plan_estudio_personalizado(
+                    nombre_estudiante_plan,
+                    get_session_var("nivel_estudiante", "intermedio"),
+                    df
+                )
 
-                        # Extraer nivel del último registro
-                        if 'Nivel' in df.columns:
-                            nivel_actual = df.iloc[-1]['Nivel']
-                        else:
-                            nivel_actual = "intermedio"
+                if resultado["error"] is None and resultado["plan"] is not None:
+                    plan = resultado["plan"]
 
-                        # Verificar si tenemos consejos finales para extraer temas recurrentes
-                        temas_recurrentes = []
-                        if 'Consejo Final' in df.columns:
-                            # Aquí podríamos implementar un análisis más sofisticado de los consejos
-                            temas_recurrentes = [
-                                "conjugación verbal", "uso de preposiciones", "concordancia"]
+                    st.markdown("### Tu plan de estudio personalizado")
+                    st.markdown(
+                        "Basado en tu historial de errores, hemos creado este plan de estudio de 4 semanas para ayudarte a mejorar tus habilidades:")
 
-                        # Construir contexto para la IA
-                        errores_frecuentes = (
-                            f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
-                            f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
-                            f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
-                            f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
-                            f"Temas recurrentes: {', '.join(temas_recurrentes)}."
-                        )
+                    # Mostrar cada semana en un expander
+                    for semana in plan["semanas"]:
+                        with st.expander(f"Semana {semana['numero']}: {semana['titulo']}", expanded=semana['numero'] == 1):
+                            st.markdown(semana['contenido'])
 
-                        # Generar plan de estudio con IA
-                        client = OpenAI(api_key=openai_api_key)
+                            # Generar ejercicios específicos para esta parte
+                            if st.button(f"Generar ejercicios para Semana {semana['numero']}", key=f"ejercicios_semana_{semana['numero']}"):
+                                with st.spinner("Creando ejercicios personalizados..."):
+                                    client = get_openai_client()
+                                    if client and circuit_breaker.can_execute("openai"):
+                                        try:
+                                            prompt_ejercicios = f"Crea 2 ejercicios breves para practicar los temas de la semana {semana['numero']} del plan: {semana['contenido'][:300]}... Los ejercicios deben ser específicos para un estudiante de nivel {get_session_var('nivel_estudiante', 'intermedio')}."
 
-                        response = client.chat.completions.create(
-                            model="gpt-4-turbo",
-                            temperature=0.7,
-                            messages=[
-                                {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
-                                {"role": "user",
-                                    "content": f"Crea un plan de estudio personalizado para un estudiante de nivel {nivel_actual} con los siguientes errores frecuentes: {errores_frecuentes} Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados."}
-                            ]
-                        )
+                                            response = client.chat.completions.create(
+                                                model="gpt-4-turbo",
+                                                temperature=0.7,
+                                                messages=[
+                                                    {"role": "system", "content": "Eres un profesor de español especializado en crear actividades didácticas."},
+                                                    {"role": "user",
+                                                        "content": prompt_ejercicios}
+                                                ]
+                                            )
 
-                        plan_estudio = response.choices[0].message.content
+                                            ejercicios = response.choices[0].message.content
+                                            st.markdown(
+                                                "#### Ejercicios recomendados")
+                                            st.markdown(ejercicios)
 
-                        # Mostrar el plan en pestañas organizadas por semanas
-                        # Podría necesitar ajustes según el formato de salida
-                        semanas = plan_estudio.split("Semana")
-
-                        st.markdown("### Tu plan de estudio personalizado")
-                        st.markdown(
-                            "Basado en tu historial de errores, hemos creado este plan de estudio de 4 semanas para ayudarte a mejorar tus habilidades:")
-
-                        # Ignorar el elemento vacío al inicio
-                        for i, semana in enumerate(semanas[1:], 1):
-                            titulo_semana = extraer_titulo(semana)
-                            with st.expander(f"Semana {i}: {titulo_semana}"):
-                                st.markdown(semana)
-
-                                # Generar ejercicios específicos para esta parte
-                                if st.button(f"Generar ejercicios para Semana {i}", key=f"ejercicios_semana_{i}"):
-                                    with st.spinner("Creando ejercicios personalizados..."):
-                                        prompt_ejercicios = f"Crea 2 ejercicios breves para practicar los temas de la semana {i} del plan: {semana[:300]}... Los ejercicios deben ser específicos para un estudiante de nivel {nivel_actual}."
-
-                                        response_ej = client.chat.completions.create(
-                                            model="gpt-4-turbo",
-                                            temperature=0.7,
-                                            messages=[
-                                                {"role": "system", "content": "Eres un profesor de español especializado en crear actividades didácticas."},
-                                                {"role": "user",
-                                                    "content": prompt_ejercicios}
-                                            ]
-                                        )
-
-                                        ejercicios = response_ej.choices[0].message.content
-                                        st.markdown(
-                                            "#### Ejercicios recomendados")
-                                        st.markdown(ejercicios)
-                    else:
-                        st.warning(
-                            "No se encontraron columnas de errores en los datos. El análisis no puede ser completo.")
+                                            # Registrar éxito
+                                            circuit_breaker.record_success(
+                                                "openai")
+                                        except Exception as e:
+                                            st.error(
+                                                f"Error al generar ejercicios: {str(e)}")
+                                            circuit_breaker.record_failure(
+                                                "openai")
+                                    else:
+                                        st.warning(
+                                            "Servicio de generación de ejercicios no disponible en este momento.")
                 else:
-                    st.info(
-                        "No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
+                    st.error(resultado["error"])
+            else:
+                st.info("No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
+                # --- 1. PESTAÑA DE HISTORIAL ---
 
-# --- PESTAÑA 3: HISTORIAL ---
-with tab_historial:
-    st.header("Historial de correcciones")
+
+def tab_historial():
+    """Implementación de la pestaña de historial."""
+    st.header("📚 Historial de correcciones")
+
+    if sheets_connection is None or sheets_connection["corrections"] is None:
+        st.warning("⚠️ No hay conexión con la base de datos de correcciones.")
+        return
 
     try:
         # Obtener todas las correcciones
-        correcciones = corrections_sheet.get_all_records()
+        correcciones = sheets_connection["corrections"].get_all_records()
 
         if correcciones:
             # Convertir a dataframe
@@ -2037,8 +4536,28 @@ with tab_historial:
                     df_display = df_correcciones[[
                         nombre_col, nivel_col, fecha_col]]
 
-                    # Mostrar tabla de historial
-                    st.dataframe(df_display)
+                    # Mostrar tabla de historial con filtro
+                    st.subheader("Correcciones guardadas")
+
+                    # Filtro por nombre
+                    nombres_unicos = sorted(
+                        df_correcciones[nombre_col].unique().tolist())
+                    nombre_filtro = st.selectbox(
+                        "Filtrar por nombre:",
+                        ["Todos"] + nombres_unicos,
+                        index=0,
+                        key="nombre_filtro_historial"
+                    )
+
+                    # Aplicar filtro
+                    if nombre_filtro != "Todos":
+                        df_filtrado = df_display[df_display[nombre_col]
+                                                 == nombre_filtro]
+                    else:
+                        df_filtrado = df_display
+
+                    # Mostrar datos filtrados
+                    st.dataframe(df_filtrado)
 
                     # Opciones para ver detalles
                     if st.checkbox("Ver detalles de una corrección", key="checkbox_historial"):
@@ -2048,7 +4567,10 @@ with tab_historial:
 
                         # Selector de nombre
                         nombre_select = st.selectbox(
-                            "Selecciona un nombre:", nombres, key="nombre_select_historial")
+                            "Selecciona un nombre:",
+                            nombres,
+                            key="nombre_select_historial"
+                        )
 
                         # Filtrar por nombre
                         correcciones_filtradas = df_correcciones[df_correcciones[nombre_col]
@@ -2059,7 +4581,10 @@ with tab_historial:
 
                         # Selector de fecha
                         fecha_select = st.selectbox(
-                            "Selecciona una fecha:", fechas, key="fecha_select_historial")
+                            "Selecciona una fecha:",
+                            fechas,
+                            key="fecha_select_historial"
+                        )
 
                         # Mostrar corrección seleccionada
                         correccion = correcciones_filtradas[correcciones_filtradas[fecha_col]
@@ -2071,7 +4596,8 @@ with tab_historial:
 
                         # Pestañas para texto original y datos
                         tab_original, tab_datos = st.tabs(
-                            ["Texto original", "Datos de corrección"])
+                            ["Texto original", "Datos de corrección"]
+                        )
 
                         with tab_original:
                             texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
@@ -2089,24 +4615,33 @@ with tab_historial:
                                 if raw_output_col in correccion:
                                     raw_output = correccion.get(
                                         raw_output_col, '{}')
-                                    data_json = json.loads(raw_output)
+                                    data_json = extract_json_safely(raw_output)
 
-                                    # Mostrar campos específicos
-                                    if 'texto_corregido' in data_json:
-                                        st.subheader("Texto corregido")
-                                        st.write(data_json['texto_corregido'])
+                                    # Verificar si se obtuvo un resultado válido
+                                    if "error" not in data_json:
+                                        # Mostrar campos específicos
+                                        if 'texto_corregido' in data_json:
+                                            st.subheader("Texto corregido")
+                                            st.write(
+                                                data_json['texto_corregido'])
 
-                                    if 'consejo_final' in data_json:
-                                        st.subheader("Consejo final")
-                                        st.info(data_json['consejo_final'])
+                                        if 'consejo_final' in data_json:
+                                            st.subheader("Consejo final")
+                                            st.info(data_json['consejo_final'])
+                                    else:
+                                        st.warning(
+                                            "No se pudieron cargar los datos de corrección en formato estructurado.")
+                                        # Mostrar parte del texto crudo
+                                        st.code(raw_output[:500] + "...")
                                 else:
                                     st.warning(
                                         "No se encontraron datos de corrección.")
-                            except json.JSONDecodeError:
+                            except Exception as e:
                                 st.warning(
                                     "No se pudieron cargar los datos de corrección en formato estructurado.")
-                                # Mostrar parte del texto crudo
-                                st.code(raw_output[:500] + "...")
+                                # Mostrar parte del texto crudo como fallback
+                                st.code(
+                                    raw_output_col[:500] + "..." if raw_output_col else "Datos no disponibles")
                 else:
                     st.warning("Algunas columnas necesarias no se encuentran en los datos. Columnas disponibles: " +
                                ", ".join(df_correcciones.columns))
@@ -2116,762 +4651,304 @@ with tab_historial:
         else:
             st.info("No hay correcciones guardadas en el historial.")
     except Exception as e:
-        st.error(f"Error al cargar el historial: {e}")
-        st.code(str(e))  # Mostrar el error para depuración
-
-# --- PESTAÑA 4: PREPARACIÓN PARA EXÁMENES ---
-with tab_examenes:
-    st.header("🎓 Preparación para exámenes oficiales")
-
-    # Selector de examen y nivel
-    col1, col2 = st.columns(2)
-    with col1:
-        tipo_examen = st.selectbox(
-            "Examen oficial:",
-            ["DELE", "SIELE", "CELU", "DUCLE"],
-            key="tipo_examen"
-        )
-
-    with col2:
-        nivel_examen = st.selectbox(
-            "Nivel:",
-            ["A1", "A2", "B1", "B2", "C1", "C2"],
-            key="nivel_examen"
-        )
-
-    # Pestañas para las diferentes funcionalidades
-    tabs_examen = st.tabs(
-        ["Modelo de examen", "Simulacro cronometrado", "Criterios de evaluación"])
-
-    with tabs_examen[0]:
-        st.subheader("Modelo de prueba escrita")
-        st.markdown("""
-        Aquí encontrarás un modelo de tarea de expresión escrita similar a la que encontrarás en el examen.
-        Practica sin límite de tiempo y recibe correcciones detalladas.
-        """)
-
-        # Inicialización de variables de sesión para el modelo de examen
-        if "tarea_modelo_generada" not in st.session_state:
-            st.session_state.tarea_modelo_generada = None
-        if "respuesta_modelo_examen" not in st.session_state:
-            st.session_state.respuesta_modelo_examen = ""
-
-        # Botón para generar tarea
-        if st.button("Generar tarea de examen", key="generar_tarea_examen"):
-            # Generar tarea específica para el examen y nivel seleccionados
-            with st.spinner("Generando tarea oficial..."):
-                client = OpenAI(api_key=openai_api_key)
-
-                prompt_tarea = f"""
-                Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
-                La tarea debe incluir:
-                1. Instrucciones claras y precisas
-                2. Contexto o situación comunicativa
-                3. Número de palabras requerido
-                4. Aspectos que se evaluarán
-                
-                El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
-                """
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    temperature=0.7,
-                    messages=[
-                        {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
-                        {"role": "user", "content": prompt_tarea}
-                    ]
-                )
-
-                st.session_state.tarea_modelo_generada = response.choices[0].message.content
-                st.success("✅ Tarea generada correctamente")
-
-        # Mostrar la tarea y área de respuesta si hay una tarea generada
-        if st.session_state.tarea_modelo_generada:
-            with st.expander("Ver instrucciones de la tarea", expanded=True):
-                st.markdown(st.session_state.tarea_modelo_generada)
-
-            # Área para que el estudiante escriba su respuesta
-            st.subheader("Tu respuesta:")
-            respuesta_estudiante = st.text_area(
-                "Escribe tu respuesta a la tarea aquí:",
-                value=st.session_state.respuesta_modelo_examen,
-                height=250,
-                key="respuesta_modelo_examen_area"
-            )
-
-            # Guardar respuesta en session_state
-            st.session_state.respuesta_modelo_examen = respuesta_estudiante
-
-            # Botones para opciones
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Finalizar y enviar a corrección", key="finalizar_modelo_examen"):
-                    if respuesta_estudiante.strip():
-                        # Preparar datos para la corrección
-                        st.session_state.texto_correccion_corregir = respuesta_estudiante
-                        st.session_state.info_adicional_corregir = f"Tarea {tipo_examen} {nivel_examen}: {st.session_state.tarea_modelo_generada}"
-
-                        # Indicar redirección
-                        st.success(
-                            "Respuesta guardada. Redirigiendo a la pestaña de corrección...")
-
-                        # Intentar cambiar a la pestaña de corrección
-                        js = """
-                        <script>
-                            window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
-
-                        # Como fallback, proporcionar instrucciones manuales
-                        st.info(
-                            "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una respuesta antes de enviar a corrección.")
-
-            with col2:
-                if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
-                    # Reiniciar variables
-                    st.session_state.tarea_modelo_generada = None
-                    st.session_state.respuesta_modelo_examen = ""
-                    st.rerun()
-
-    with tabs_examen[1]:
-        st.subheader("Simulacro cronometrado")
-        st.markdown("""
-        Pon a prueba tus habilidades bajo las condiciones reales del examen.
-        Esta prueba está cronometrada según los tiempos oficiales.
-        """)
-
-        tiempo_restante = st.empty()
-
-        if "inicio_simulacro" not in st.session_state:
-            if st.button("Iniciar simulacro", key="iniciar_simulacro"):
-                # Configurar el temporizador
-                st.session_state.inicio_simulacro = time.time()
-                st.session_state.duracion_simulacro = obtener_duracion_examen(
-                    tipo_examen, nivel_examen)
-
-                # Inicializar variable para la respuesta
-                if "simulacro_respuesta_texto" not in st.session_state:
-                    st.session_state.simulacro_respuesta_texto = ""
-
-                st.rerun()
-        else:
-            # Calcular tiempo transcurrido
-            tiempo_transcurrido = time.time() - st.session_state.inicio_simulacro
-            tiempo_restante_segundos = max(
-                0, st.session_state.duracion_simulacro - tiempo_transcurrido)
-
-            # Formatear tiempo restante
-            minutos = int(tiempo_restante_segundos // 60)
-            segundos = int(tiempo_restante_segundos % 60)
-
-            # Mostrar temporizador
-            tiempo_restante.warning(
-                f"⏱️ Tiempo restante: {minutos:02d}:{segundos:02d}")
-
-            # Generar tarea para el simulacro si no existe
-            if "tarea_simulacro" not in st.session_state:
-                with st.spinner("Generando tarea para el simulacro..."):
-                    client = OpenAI(api_key=openai_api_key)
-
-                    prompt_tarea = f"""
-                    Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
-                    La tarea debe ser concisa e incluir:
-                    1. Instrucciones claras
-                    2. Contexto comunicativo
-                    3. Extensión requerida
-                    """
-
-                    response = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        temperature=0.7,
-                        messages=[
-                            {"role": "system",
-                                "content": "Eres un experto en exámenes oficiales de español."},
-                            {"role": "user", "content": prompt_tarea}
-                        ]
-                    )
-
-                    st.session_state.tarea_simulacro = response.choices[0].message.content
-
-            # Mostrar la tarea
-            with st.expander("Tarea del simulacro:", expanded=True):
-                st.markdown(st.session_state.tarea_simulacro)
-
-            # Área de texto para respuesta
-            simulacro_respuesta = st.text_area(
-                "Tu respuesta:",
-                value=st.session_state.simulacro_respuesta_texto,
-                height=300,
-                key="simulacro_respuesta_area"
-            )
-
-            # Guardar respuesta en tiempo real
-            st.session_state.simulacro_respuesta_texto = simulacro_respuesta
-
-            # Opciones para finalizar o reiniciar
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Finalizar y enviar a corrección", key="finalizar_simulacro"):
-                    if simulacro_respuesta.strip():
-                        # Calcular tiempo usado
-                        tiempo_final = time.time() - st.session_state.inicio_simulacro
-                        minutos_usados = int(tiempo_final // 60)
-                        segundos_usados = int(tiempo_final % 60)
-                        tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
-
-                        # Guardar en variables de sesión para corrección
-                        st.session_state.texto_correccion_corregir = simulacro_respuesta
-                        st.session_state.info_adicional_corregir = f"Simulacro {tipo_examen} {nivel_examen} (Tiempo: {tiempo_usado}): {st.session_state.tarea_simulacro}"
-
-                        # Limpiar variables de control
-                        for key in ["inicio_simulacro", "duracion_simulacro"]:
-                            if key in st.session_state:
-                                del st.session_state[key]
-
-                        # Mensaje de éxito
-                        st.success(
-                            f"Simulacro completado en {tiempo_usado}. Redirigiendo a corrección...")
-
-                        # Intentar redirigir a la pestaña de corrección
-                        js = """
-                        <script>
-                            window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
-
-                        # Instrucciones de fallback
-                        st.info(
-                            "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una respuesta antes de finalizar.")
-
-            with col2:
-                if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
-                    # Limpiar todas las variables del simulacro
-                    for key in ["inicio_simulacro", "duracion_simulacro", "tarea_simulacro", "simulacro_respuesta_texto"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
-
-            # Verificar si se acabó el tiempo
-            if tiempo_restante_segundos <= 0:
-                st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
-                # Guardar automáticamente (opcional)
-                st.info(
-                    "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
-
-    with tabs_examen[2]:
-        st.subheader("Criterios de evaluación")
-        st.markdown("""
-        Conocer cómo se evalúa tu texto es fundamental para prepararte adecuadamente.
-        Aquí encontrarás las rúbricas oficiales y ejemplos de textos evaluados.
-        """)
-
-        # Mostrar los criterios específicos según el examen seleccionado
-        criterios = obtener_criterios_evaluacion(tipo_examen, nivel_examen)
-        st.markdown(criterios)
-
-        # Opción para ver ejemplos evaluados
-        if st.button("Ver ejemplos de textos evaluados", key="ver_ejemplos_evaluados"):
-            with st.spinner("Generando ejemplos..."):
-                client = OpenAI(api_key=openai_api_key)
-
-                prompt_ejemplos = f"""
-                Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen}, 
-                junto con una evaluación detallada usando los criterios oficiales.
-                Muestra: 
-                1. La tarea solicitada
-                2. El texto del estudiante (con algunos errores típicos)
-                3. Evaluación punto por punto según los criterios
-                4. Puntuación desglosada y comentarios
-                """
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    temperature=0.7,
-                    messages=[
-                        {"role": "system", "content": "Eres un evaluador experto de exámenes oficiales de español."},
-                        {"role": "user", "content": prompt_ejemplos}
-                    ]
-                )
-
-                ejemplos = response.choices[0].message.content
-                st.markdown(ejemplos)
-
-# --- PESTAÑA 5: HERRAMIENTAS COMPLEMENTARIAS ---
-with tab_herramientas:
-    st.header("🔧 Herramientas complementarias")
-
-    # Rediseño: Añadiendo nuevas herramientas
-    subtab_complejidad, subtab_recursos, subtab_imagen, subtab_manuscrito = st.tabs([
-        "Análisis de complejidad", "Biblioteca de recursos", "Descripción de imágenes", "Texto manuscrito"
-    ])
-
-    # --- Subpestaña 1: Análisis de complejidad ---
-    with subtab_complejidad:
-        st.subheader("Análisis de complejidad textual")
-        st.markdown("""
-        Esta herramienta analiza la complejidad léxica, sintáctica y estructural de tu texto 
-        para ayudarte a entender tu nivel actual y cómo mejorar.
-        """)
-
-        # Código para el análisis de complejidad
-        texto_analisis = st.text_area(
-            "Ingresa el texto a analizar:",
-            height=200,
-            key="texto_analisis"
-        )
-
-        if st.button("Analizar complejidad", key="analizar_complejidad") and texto_analisis.strip():
-            with st.spinner("Analizando la complejidad de tu texto..."):
-                # Llamada a la API para analizar complejidad
-                client = OpenAI(api_key=openai_api_key)
-
-                prompt_analisis = f"""
-                Analiza la complejidad lingüística del siguiente texto en español. 
-                Proporciona un análisis detallado que incluya:
-                
-                1. Complejidad léxica (variedad de vocabulario, riqueza léxica, palabras poco comunes)
-                2. Complejidad sintáctica (longitud de frases, subordinación, tipos de oraciones)
-                3. Complejidad textual (coherencia, cohesión, estructura general)
-                4. Nivel MCER estimado (A1-C2) con explicación
-                5. Índices estadísticos: TTR (type-token ratio), densidad léxica, índice Flesh-Szigriszt (adaptado al español)
-                
-                Texto a analizar:
-                "{texto_analisis}"
-                
-                Devuelve el análisis en formato JSON con la siguiente estructura:
-                {{
-                  "complejidad_lexica": {{
-                    "nivel": "string",
-                    "descripcion": "string",
-                    "palabras_destacadas": ["string1", "string2"]
-                  }},
-                  "complejidad_sintactica": {{
-                    "nivel": "string",
-                    "descripcion": "string",
-                    "estructuras_destacadas": ["string1", "string2"]
-                  }},
-                  "complejidad_textual": {{
-                    "nivel": "string",
-                    "descripcion": "string"
-                  }},
-                  "nivel_mcer": {{
-                    "nivel": "string",
-                    "justificacion": "string"
-                  }},
-                  "indices": {{
-                    "ttr": number,
-                    "densidad_lexica": number,
-                    "szigriszt": number,
-                    "interpretacion": "string"
-                  }},
-                  "recomendaciones": ["string1", "string2"]
-                }}
-                """
-
-                response = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    temperature=0.3,
-                    messages=[
-                        {"role": "system", "content": "Eres un experto lingüista y analista textual especializado en complejidad lingüística."},
-                        {"role": "user", "content": prompt_analisis}
-                    ]
-                )
-
-                try:
-                    # Extraer JSON de la respuesta
-                    content = response.choices[0].message.content
-                    match = re.search(r"\{.*\}", content, re.DOTALL)
-                    if match:
-                        json_str = match.group(0)
-                        analisis_data = json.loads(json_str)
-
-                        # Mostrar resultados
-                        st.subheader("Resultados del análisis")
-
-                        # Nivel MCER estimado
-                        nivel_mcer = analisis_data.get("nivel_mcer", {})
-                        st.info(
-                            f"📊 **Nivel MCER estimado: {nivel_mcer.get('nivel', 'No disponible')}**")
-                        st.write(nivel_mcer.get("justificacion", ""))
-
-                        # Métricas principales en columnas
-                        indices = analisis_data.get("indices", {})
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("TTR", f"{indices.get('ttr', 0):.2f}")
-                            st.caption("Ratio tipo/token - variedad léxica")
-                        with col2:
-                            st.metric("Densidad léxica",
-                                      f"{indices.get('densidad_lexica', 0):.2f}")
-                            st.caption("Proporción palabras contenido/total")
-                        with col3:
-                            st.metric("Índice Szigriszt",
-                                      f"{indices.get('szigriszt', 0):.1f}")
-                            st.caption("Legibilidad (70-80: estándar)")
-
-                        # Interpretación general
-                        st.markdown(
-                            f"**Interpretación general**: {indices.get('interpretacion', '')}")
-
-                        # Detalles por áreas
-                        tabs = st.tabs(["Léxico", "Sintaxis", "Textual"])
-
-                        with tabs[0]:
-                            lex = analisis_data.get("complejidad_lexica", {})
-                            st.markdown(
-                                f"**Nivel de complejidad léxica**: {lex.get('nivel', '')}")
-                            st.write(lex.get("descripcion", ""))
-
-                            palabras = lex.get("palabras_destacadas", [])
-                            if palabras:
-                                st.markdown("**Palabras destacadas:**")
-                                st.write(", ".join(palabras))
-
-                        with tabs[1]:
-                            sint = analisis_data.get(
-                                "complejidad_sintactica", {})
-                            st.markdown(
-                                f"**Nivel de complejidad sintáctica**: {sint.get('nivel', '')}")
-                            st.write(sint.get("descripcion", ""))
-
-                            estructuras = sint.get(
-                                "estructuras_destacadas", [])
-                            if estructuras:
-                                st.markdown("**Estructuras destacadas:**")
-                                for est in estructuras:
-                                    st.markdown(f"- {est}")
-
-                        with tabs[2]:
-                            text = analisis_data.get("complejidad_textual", {})
-                            st.markdown(
-                                f"**Nivel de complejidad textual**: {text.get('nivel', '')}")
-                            st.write(text.get("descripcion", ""))
-
-                        # Recomendaciones
-                        recomendaciones = analisis_data.get(
-                            "recomendaciones", [])
-                        if recomendaciones:
-                            with st.expander("Recomendaciones para mejorar", expanded=True):
-                                for rec in recomendaciones:
-                                    st.markdown(f"- {rec}")
-                    else:
-                        st.error(
-                            "No se pudo extraer el análisis en formato estructurado. Mostrando respuesta cruda.")
-                        st.write(content)
-                except Exception as e:
-                    st.error(f"Error al procesar el análisis: {str(e)}")
-                    st.code(content)  # Mostrar respuesta cruda para depuración
-
-    # --- Subpestaña 2: Biblioteca de recursos ---
-    with subtab_recursos:
-        st.subheader("Biblioteca de recursos")
-        st.markdown("""
-        Accede a recursos didácticos para mejorar tu español, 
-        organizados por nivel y categoría gramatical.
-        """)
-
-        # Organización de recursos en categorías
-        col1, col2 = st.columns(2)
-
-        with col1:
-            categoria = st.selectbox(
-                "Categoría:",
-                [
-                    "Gramática", "Vocabulario", "Expresiones",
-                    "Ortografía", "Conectores", "Cultura"
-                ],
-                key="categoria_recursos"
-            )
-
-        with col2:
-            nivel_recursos = st.selectbox(
-                "Nivel:",
-                ["A1", "A2", "B1", "B2", "C1", "C2", "Todos los niveles"],
-                key="nivel_recursos"
-            )
-
-        # Mapear al nivel en la base de datos
-        if nivel_recursos in ["A1", "A2"]:
-            nivel_db = "A1-A2"
-        elif nivel_recursos in ["B1", "B2"]:
-            nivel_db = "B1-B2"
-        elif nivel_recursos in ["C1", "C2"]:
-            nivel_db = "C1-C2"
-        else:
-            nivel_db = None  # Todos los niveles
-
-        # Generar recursos basados en la selección
-        if st.button("Buscar recursos", key="buscar_recursos"):
-            recursos_mostrados = []
-
-            # Buscar en la base de datos estática
-            if nivel_db:
-                # Filtramos por nivel específico
-                nivel_recursos_db = RECURSOS_DB.get(nivel_db, {})
-                for cat, recursos in nivel_recursos_db.items():
-                    if categoria.lower() in cat.lower() or "todos" in categoria.lower():
-                        recursos_mostrados.extend(recursos)
-            else:
-                # Mostrar todos los niveles
-                for nivel, categorias in RECURSOS_DB.items():
-                    for cat, recursos in categorias.items():
-                        if categoria.lower() in cat.lower() or "todos" in categoria.lower():
-                            recursos_mostrados.extend(recursos)
-
-            # Si no hay recursos en la base de datos, generar con IA
-            if not recursos_mostrados:
-                with st.spinner("Generando recomendaciones de recursos..."):
-                    # Llamar a la API para generar recursos
-                    client = OpenAI(api_key=openai_api_key)
-
-                    nivel_str = nivel_recursos if nivel_recursos != "Todos los niveles" else "todos los niveles"
-
-                    prompt_recursos = f"""
-                    Genera una lista de 5 recursos didácticos reales y relevantes para estudiantes de español 
-                    de nivel {nivel_str} enfocados en {categoria}.
-                    
-                    Cada recurso debe incluir:
-                    1. Título descriptivo
-                    2. Tipo de recurso (libro, página web, app, podcast, vídeo, etc.)
-                    3. URL real (o editorial en caso de libros)
-                    4. Breve descripción de su contenido y utilidad
-                    5. Nivel específico (si aplica)
-                    
-                    Devuelve SOLO la información en formato JSON con la estructura:
-                    {{
-                      "recursos": [
-                        {{
-                          "titulo": "string",
-                          "tipo": "string",
-                          "url": "string",
-                          "descripcion": "string",
-                          "nivel": "string"
-                        }}
-                      ]
-                    }}
-                    """
-
-                    response = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        temperature=0.5,
-                        messages=[
-                            {"role": "system", "content": "Eres un especialista en recursos didácticos para aprendizaje de español como lengua extranjera."},
-                            {"role": "user", "content": prompt_recursos}
-                        ]
-                    )
-
-                    try:
-                        # Extraer JSON
-                        content = response.choices[0].message.content
-                        match = re.search(r"\{.*\}", content, re.DOTALL)
-                        if match:
-                            json_str = match.group(0)
-                            recursos_data = json.loads(json_str)
-                            recursos_ia = recursos_data.get("recursos", [])
-
-                            # Convertir al formato de nuestros recursos
-                            for recurso in recursos_ia:
-                                recursos_mostrados.append({
-                                    "título": recurso.get("titulo", ""),
-                                    "tipo": recurso.get("tipo", ""),
-                                    "url": recurso.get("url", ""),
-                                    "nivel": recurso.get("nivel", "")
-                                })
-                    except Exception as e:
-                        st.error(f"Error al generar recursos: {str(e)}")
-
-            # Mostrar los recursos
-            if recursos_mostrados:
-                st.subheader(
-                    f"Recursos de {categoria} para nivel {nivel_recursos}")
-
-                for i, recurso in enumerate(recursos_mostrados):
-                    with st.expander(f"{i+1}. {recurso.get('título', '')} ({recurso.get('nivel', '')})", expanded=i == 0):
-                        st.markdown(f"**Tipo:** {recurso.get('tipo', '')}")
-                        st.markdown(
-                            f"**URL:** [{recurso.get('url', '').split('/')[-1]}]({recurso.get('url', '')})")
-                        if "descripcion" in recurso:
-                            st.markdown(
-                                f"**Descripción:** {recurso.get('descripcion', '')}")
-            else:
-                st.info(
-                    f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
-
-    # --- Nueva subpestaña: Descripción de imágenes con DALL-E
-    with subtab_imagen:
-        st.subheader("🖼️ Descripción de imágenes generadas por IA")
-        st.markdown("""
-        Esta herramienta genera imágenes adaptadas a tu nivel de español y proporciona actividades
-        de descripción para practicar vocabulario y estructuras descriptivas.
-        """)
-
-        # Selección de nivel
-        nivel_imagen = st.selectbox(
-            "Nivel de español:",
-            [
-                "Nivel principiante (A1-A2)",
-                "Nivel intermedio (B1-B2)",
-                "Nivel avanzado (C1-C2)"
-            ],
-            key="nivel_imagen_dalle"
-        )
-
-        # Tema para la imagen
-        tema_imagen = st.text_input(
-            "Tema o escena para la imagen (por ejemplo: 'un parque en primavera', 'una oficina moderna'):",
-            key="tema_imagen_dalle"
-        )
-
-        if st.button("Generar imagen y actividad", key="generar_imagen_dalle") and tema_imagen:
-            with st.spinner("Generando imagen con DALL-E..."):
-                # Obtener nivel en formato simplificado
-                nivel_map = {
-                    "Nivel principiante (A1-A2)": "principiante",
-                    "Nivel intermedio (B1-B2)": "intermedio",
-                    "Nivel avanzado (C1-C2)": "avanzado"
-                }
-                nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
-
-                # Generar imagen y descripción
-                imagen_url, descripcion = generar_imagen_dalle(
-                    tema_imagen, nivel_dalle, openai_api_key)
-
-                if imagen_url:
-                    # Mostrar la imagen
-                    st.image(
-                        imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_container_width=True)
-
-                    # Guardar en session_state para usos futuros
-                    st.session_state.ultima_imagen_url = imagen_url
-                    st.session_state.ultima_descripcion = descripcion
-
-                    # Mostrar la descripción y actividades
-                    with st.expander("Descripción y actividades de práctica", expanded=True):
-                        st.markdown(descripcion)
-
-                    # Área para que el estudiante escriba su descripción
-                    st.subheader("Tu descripción:")
-                    descripcion_estudiante = st.text_area(
-                        "Describe la imagen con tus propias palabras:",
-                        height=200,
-                        key="descripcion_imagen_estudiante"
-                    )
-
-                    # Botón para enviar a corrección
-                    if st.button("Enviar descripción a corrección", key="corregir_descripcion_imagen"):
-                        if descripcion_estudiante.strip():
-                            # Guardar en variables para la corrección
-                            st.session_state.texto_correccion_corregir = descripcion_estudiante
-                            st.session_state.info_adicional_corregir = f"Descripción de imagen sobre '{tema_imagen}'. Nivel: {nivel_imagen}"
-
-                            # Mensaje de éxito y redirección
-                            st.success(
-                                "Descripción guardada. Redirigiendo a la pestaña de corrección...")
-
-                            # Script de redirección
-                            js = """
-                            <script>
-                                window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
-
-                            # Instrucciones de fallback
-                            st.info(
-                                "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                        else:
-                            st.warning(
-                                "Por favor, escribe una descripción antes de enviar a corrección.")
-                else:
-                    st.error(
-                        "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
-
-    # --- Nueva subpestaña: Transcripción de textos manuscritos
-    with subtab_manuscrito:
-        st.subheader("✍️ Transcripción de textos manuscritos")
-        st.markdown("""
-        Esta herramienta te permite subir imágenes de textos manuscritos para transcribirlos
-        automáticamente y luego enviarlos a corrección.
-        """)
-
-        # Selección de idioma para la transcripción
-        idioma_manuscrito = st.selectbox(
-            "Idioma del texto manuscrito:",
-            ["Español", "Francés", "Inglés"],
-            key="idioma_manuscrito"
-        )
-
-        # Mapeo de idiomas para la API
-        idioma_map = {
-            "Español": "es",
-            "Francés": "fr",
-            "Inglés": "en"
+        st.error(f"Error al cargar el historial: {str(e)}")
+        with st.expander("Detalles del error"):
+            st.code(traceback.format_exc())
+
+# --- 2. FUNCIONES DE BÚSQUEDA Y FILTRADO DE HISTORIAL ---
+
+
+def buscar_correccion_por_texto(texto_busqueda, max_resultados=5):
+    """
+    Busca correcciones que contengan un texto específico.
+
+    Args:
+        texto_busqueda: Texto a buscar
+        max_resultados: Número máximo de resultados a devolver
+
+    Returns:
+        list: Lista de correcciones que coinciden con la búsqueda
+    """
+    if sheets_connection is None or sheets_connection["corrections"] is None:
+        return []
+
+    if not texto_busqueda:
+        return []
+
+    try:
+        # Obtener todas las correcciones
+        correcciones = sheets_connection["corrections"].get_all_records()
+
+        # Convertir a dataframe
+        df_correcciones = pd.DataFrame(correcciones)
+
+        # Buscar en el texto original y en las correcciones
+        texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
+        resultado_busqueda = []
+
+        if texto_col in df_correcciones.columns:
+            # Buscar en el texto original
+            for idx, row in df_correcciones.iterrows():
+                texto_original = str(row.get(texto_col, "")).lower()
+                if texto_busqueda.lower() in texto_original:
+                    resultado_busqueda.append(row.to_dict())
+                    if len(resultado_busqueda) >= max_resultados:
+                        break
+
+        return resultado_busqueda
+    except Exception as e:
+        logger.error(f"Error en búsqueda de correcciones: {str(e)}")
+        return []
+
+
+def filtrar_correcciones_por_fecha(fecha_inicio, fecha_fin):
+    """
+    Filtra correcciones por un rango de fechas.
+
+    Args:
+        fecha_inicio: Fecha de inicio (datetime)
+        fecha_fin: Fecha de fin (datetime)
+
+    Returns:
+        pd.DataFrame: DataFrame con las correcciones filtradas
+    """
+    if sheets_connection is None or sheets_connection["corrections"] is None:
+        return None
+
+    try:
+        # Obtener todas las correcciones
+        correcciones = sheets_connection["corrections"].get_all_records()
+
+        # Convertir a dataframe
+        df_correcciones = pd.DataFrame(correcciones)
+
+        # Determinar la columna de fecha
+        fecha_col = None
+        for col in df_correcciones.columns:
+            if 'fecha' in col.lower().strip():
+                fecha_col = col
+                break
+
+        if fecha_col is None:
+            logger.error("No se encontró columna de fecha en las correcciones")
+            return None
+
+        # Convertir fechas a datetime
+        df_correcciones[fecha_col] = pd.to_datetime(
+            df_correcciones[fecha_col], errors='coerce')
+
+        # Filtrar por rango de fechas
+        mask = (df_correcciones[fecha_col] >= fecha_inicio) & (
+            df_correcciones[fecha_col] <= fecha_fin)
+        df_filtrado = df_correcciones.loc[mask]
+
+        return df_filtrado
+    except Exception as e:
+        logger.error(f"Error al filtrar correcciones por fecha: {str(e)}")
+        return None
+
+
+def generar_estadisticas_globales():
+    """
+    Genera estadísticas globales de todas las correcciones.
+
+    Returns:
+        dict: Estadísticas globales
+    """
+    if sheets_connection is None or sheets_connection["tracking"] is None:
+        return None
+
+    try:
+        # Obtener todos los datos de seguimiento
+        datos_seguimiento = sheets_connection["tracking"].get_all_records()
+
+        # Convertir a dataframe
+        df = pd.DataFrame(datos_seguimiento)
+
+        # Inicializar estadísticas
+        estadisticas = {
+            "total_correcciones": len(df),
+            "total_estudiantes": 0,
+            "promedio_errores": 0,
+            "tipos_error": {},
+            "niveles": {},
+            "mejoras": {}
         }
 
-        # Subida de imagen
-        imagen_manuscrito = st.file_uploader(
-            "Sube una imagen de tu texto manuscrito (JPG, PNG):",
-            type=["jpg", "jpeg", "png"],
-            key="imagen_manuscrito"
-        )
+        # Calcular estadísticas si hay datos
+        if not df.empty:
+            # Total de estudiantes únicos
+            if 'Nombre' in df.columns:
+                estadisticas["total_estudiantes"] = df['Nombre'].nunique()
 
-        if imagen_manuscrito is not None:
-            # Mostrar la imagen subida
-            imagen = Image.open(imagen_manuscrito)
-            st.image(imagen, caption="Imagen subida", use_column_width=True)
+            # Promedio de errores totales
+            if 'Total Errores' in df.columns:
+                estadisticas["promedio_errores"] = df['Total Errores'].mean()
 
-            # Botón para transcribir
-            if st.button("Transcribir texto", key="transcribir_manuscrito"):
-                with st.spinner("Transcribiendo texto manuscrito..."):
-                    # Leer bytes de la imagen
-                    imagen_bytes = imagen_manuscrito.getvalue()
+            # Distribución de tipos de error
+            for tipo in ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']:
+                if tipo in df.columns:
+                    estadisticas["tipos_error"][tipo] = df[tipo].sum()
 
-                    # Obtener código de idioma
-                    codigo_idioma = idioma_map.get(idioma_manuscrito, "es")
+            # Distribución por niveles
+            if 'Nivel' in df.columns:
+                for nivel, grupo in df.groupby('Nivel'):
+                    estadisticas["niveles"][nivel] = len(grupo)
 
-                    # Transcribir la imagen
-                    texto_transcrito = transcribir_imagen_texto(
-                        imagen_bytes, codigo_idioma)
+            # Cálculo de mejoras (para estudiantes con más de una corrección)
+            if 'Nombre' in df.columns and 'Total Errores' in df.columns and 'Fecha' in df.columns:
+                df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
 
-                    if texto_transcrito:
-                        # Mostrar el texto transcrito
-                        st.success("✅ Texto transcrito correctamente")
+                # Estudiantes con múltiples correcciones
+                estudiantes_multiples = df['Nombre'].value_counts()
+                estudiantes_multiples = estudiantes_multiples[estudiantes_multiples > 1].index.tolist(
+                )
 
-                        with st.expander("Texto transcrito", expanded=True):
-                            st.write(texto_transcrito)
+                mejoras_count = 0
+                for estudiante in estudiantes_multiples:
+                    df_est = df[df['Nombre'] ==
+                                estudiante].sort_values('Fecha')
+                    if len(df_est) >= 2:
+                        primera = df_est.iloc[0]['Total Errores']
+                        ultima = df_est.iloc[-1]['Total Errores']
+                        if ultima < primera:
+                            mejoras_count += 1
 
-                            # Guardar en session_state
-                            st.session_state.ultimo_texto_transcrito = texto_transcrito
+                if estudiantes_multiples:
+                    estadisticas["mejoras"] = {
+                        "total_estudiantes_multiples": len(estudiantes_multiples),
+                        "estudiantes_con_mejora": mejoras_count,
+                        "porcentaje_mejora": (mejoras_count / len(estudiantes_multiples)) * 100 if estudiantes_multiples else 0
+                    }
 
-                        # Enviar a corrección
-                        if st.button("Enviar texto transcrito a corrección", key="corregir_texto_transcrito"):
-                            # Guardar en variables para la corrección
-                            st.session_state.texto_correccion_corregir = texto_transcrito
-                            st.session_state.info_adicional_corregir = f"Texto manuscrito transcrito en {idioma_manuscrito}"
+        return estadisticas
+    except Exception as e:
+        logger.error(f"Error al generar estadísticas globales: {str(e)}")
+        return None
+    # --- 1. CONFIGURACIÓN DE LA APLICACIÓN PRINCIPAL ---
 
-                            # Mensaje de éxito y redirección
-                            st.success(
-                                "Texto transcrito guardado. Redirigiendo a la pestaña de corrección...")
 
-                            # Script de redirección
-                            js = """
-                            <script>
-                                window.parent.document.querySelector('button[data-baseweb="tab"][aria-controls="tabs-bui11-tabpanel-0"]').click();
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
+def main():
+    """Función principal de la aplicación Textocorrector ELE."""
+    # Título y descripción
+    ui_header()
 
-                            # Instrucciones de fallback
-                            st.info(
-                                "Si la redirección automática no funciona, por favor haz clic en la pestaña 'Corregir texto' manualmente.")
-                    else:
-                        st.error(
-                            "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+    # Pestañas principales
+    tab_corregir_texto, tab_ver_progreso, tab_ver_historial, tab_preparar_examenes, tab_usar_herramientas = st.tabs([
+        "📝 Corrección de texto",
+        "📊 Ver progreso",
+        "📚 Historial",
+        "🎓 Preparación para exámenes",
+        "🔧 Herramientas complementarias"
+    ])
+
+    # --- Pestaña 1: Corrección de Texto ---
+    with tab_corregir_texto:
+        tab_corregir()
+
+    # --- Pestaña 2: Ver Progreso ---
+    with tab_ver_progreso:
+        tab_progreso()
+
+    # --- Pestaña 3: Historial ---
+    with tab_ver_historial:
+        tab_historial()
+
+    # --- Pestaña 4: Preparación para Exámenes ---
+    with tab_preparar_examenes:
+        tab_examenes()
+
+    # --- Pestaña 5: Herramientas Complementarias ---
+    with tab_usar_herramientas:
+        tab_herramientas()
+
+    # Formulario de feedback al final
+    ui_feedback_form()
+
+# --- 2. MANEJO DE COMANDOS DE URL Y PARÁMETROS ---
+
+
+def handle_url_params():
+    """Maneja los parámetros de URL para navegación entre páginas."""
+    # Obtener parámetros de URL
+    query_params = st.experimental_get_query_params()
+
+    # Manejar la selección de nombre
+    if "nombre_seleccionado" in query_params:
+        nombre = query_params["nombre_seleccionado"][0]
+        if nombre:
+            set_session_var("usuario_actual", nombre)
+
+    # Manejar redirección a pestañas
+    if "tab" in query_params:
+        tab = query_params["tab"][0]
+        st.session_state.active_tab = tab
+
+    # Limpiar parámetros después de procesarlos
+    st.experimental_set_query_params()
+
+# --- 3. INICIALIZACIÓN DE LA APLICACIÓN ---
+
+
+def init_app():
+    """Inicializa la aplicación con comprobaciones y configuraciones necesarias."""
+    # Verificar dependencias externas
+    dependencies_ok = True
+
+    # Verificar API keys
+    if api_keys["openai"] is None:
+        dependencies_ok = False
+        logger.warning("OpenAI API key no configurada")
+
+    if api_keys["elevenlabs"]["api_key"] is None or api_keys["elevenlabs"]["voice_id"] is None:
+        logger.warning("ElevenLabs no configurado completamente")
+
+    if sheets_connection is None:
+        logger.warning("Conexión a Google Sheets no disponible")
+
+    # Configurar el estado de la página
+    if not dependencies_ok:
+        st.sidebar.warning(
+            "⚠️ Algunas funcionalidades están limitadas debido a configuraciones incompletas.")
+
+    # Manejar parámetros de URL
+    handle_url_params()
+
+    # Comprobar si es la primera ejecución
+    if "app_initialized" not in st.session_state:
+        set_session_var("app_initialized", True)
+        logger.info(
+            f"Aplicación inicializada con ID de sesión: {st.session_state.session_id}")
+
+    # Mostrar información de versión y estado en el pie de página
+    with st.sidebar.expander("ℹ️ Acerca de la aplicación"):
+        st.write(f"Versión: {APP_VERSION}")
+        st.write(f"ID de sesión: {st.session_state.session_id[:8]}")
+
+        # Mostrar estado de conexiones
+        st.subheader("Estado de servicios")
+        circuit_status = circuit_breaker.get_status()
+
+        for service, status in circuit_status.items():
+            if status["open"]:
+                st.error(f"❌ {service.title()}: No disponible")
+            else:
+                st.success(f"✅ {service.title()}: Disponible")
+
+# --- 4. PUNTO DE ENTRADA PRINCIPAL ---
+
+
+# Llamar a la inicialización
+init_app()
+
+# Ejecutar la aplicación principal
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        st.error("❌ Se ha producido un error en la aplicación.")
+        with st.expander("Detalles del error", expanded=False):
+            st.code(traceback.format_exc())
+
+        logger.error(f"Error en la aplicación: {str(e)}")
+        logger.error(traceback.format_exc())
