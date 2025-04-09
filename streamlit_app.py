@@ -3272,6 +3272,7 @@ def ui_feedback_form():
         # --- 1. PESTAÑA DE CORRECCIÓN DE TEXTO ---
 
 
+# Actualización del llamado a la función en tab_corregir
 def tab_corregir():
     """Implementación de la pestaña de corrección de texto."""
     st.header("📝 Corrección de texto")
@@ -3287,10 +3288,10 @@ def tab_corregir():
         Las correcciones se adaptan automáticamente al nivel del estudiante.
         """)
 
-    # Obtener datos del usuario
+    # Obtener datos del usuario - usando key única para este formulario
     user_data = ui_user_info_form(form_key="form_user_info_corregir")
 
-    # Si no hay datos, no continuar
+    # El resto del código permanece igual...
     if not user_data:
         if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
             st.info("👆 Por favor, introduce tu nombre y nivel para comenzar.")
@@ -3571,7 +3572,7 @@ def tab_examenes():
         st.info(
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
-        # Mostrar formulario básico de usuario
+        # Mostrar formulario básico de usuario con key única para este contexto
         user_data = ui_user_info_form(form_key="form_user_info_examenes")
         if not user_data:
             return
@@ -3841,7 +3842,7 @@ def tab_herramientas():
         st.info(
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
-        # Mostrar formulario básico de usuario
+        # Mostrar formulario básico de usuario con key única para este contexto
         user_data = ui_user_info_form(form_key="form_user_info_herramientas")
         if not user_data:
             return
@@ -4278,7 +4279,7 @@ def tab_progreso():
         st.info(
             "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
 
-        # Mostrar formulario básico de usuario
+        # Mostrar formulario básico de usuario con key única para este contexto
         user_data = ui_user_info_form(form_key="form_user_info_progreso")
         if not user_data:
             return
@@ -4511,6 +4512,16 @@ def plan_estudio_tab():
 def tab_historial():
     """Implementación de la pestaña de historial."""
     st.header("📚 Historial de correcciones")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario con key única para este contexto
+        user_data = ui_user_info_form(form_key="form_user_info_historial")
+        if not user_data:
+            return
 
     if sheets_connection is None or sheets_connection["corrections"] is None:
         st.warning("⚠️ No hay conexión con la base de datos de correcciones.")
@@ -4871,27 +4882,23 @@ def main():
 # --- 2. MANEJO DE COMANDOS DE URL Y PARÁMETROS ---
 
 
-def handle_url_params():
+def handle_url_params_fix():
     """Maneja los parámetros de URL para navegación entre páginas."""
-    # Obtener parámetros de URL - usar API actual en lugar de experimental
-    query_params = st.query_params
+    # Al usar st.query_params, se accede como un dict pero los valores no vienen en listas
+    # Actualización para mantener comportamiento compatible con el código existente
 
-    # Manejar la selección de nombre
-    if "nombre_seleccionado" in query_params:
-        nombre = query_params["nombre_seleccionado"]
+    # Verificar si hay parámetros que necesitamos procesar
+    if "nombre_seleccionado" in st.query_params:
+        nombre = st.query_params["nombre_seleccionado"]
         if nombre:
             set_session_var("usuario_actual", nombre)
-
-    # Manejar redirección a pestañas
-    if "tab" in query_params:
-        tab = query_params["tab"]
-        st.session_state.active_tab = tab
-
-    # Limpiar parámetros después de procesarlos - usar API actual
-    # Nota: Con la nueva API, debemos eliminar cada parámetro individualmente
-    if "nombre_seleccionado" in query_params:
+        # Eliminar el parámetro después de usarlo
         del st.query_params["nombre_seleccionado"]
-    if "tab" in query_params:
+
+    if "tab" in st.query_params:
+        tab = st.query_params["tab"]
+        st.session_state.active_tab = tab
+        # Eliminar el parámetro después de usarlo
         del st.query_params["tab"]
 
 # --- 3. INICIALIZACIÓN DE LA APLICACIÓN ---
