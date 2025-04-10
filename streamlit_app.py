@@ -3830,13 +3830,12 @@ def modelo_examen_tab(tipo_examen, nivel_examen):
                     st.warning(
                         "Por favor, escribe una respuesta antes de enviar a corrección.")
 
-
-with col2:
-    if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
-        # Reiniciar variables
-        set_session_var("tarea_modelo_generada", None)
-        set_session_var("respuesta_modelo_examen", "")
-        st.rerun()
+        with col2:
+            if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
+                # Reiniciar variables
+                set_session_var("tarea_modelo_generada", None)
+                set_session_var("respuesta_modelo_examen", "")
+                st.rerun()
 
 # Definición de función fuera del bloque "with"
 
