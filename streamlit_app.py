@@ -4316,6 +4316,18 @@ def herramienta_descripcion_imagenes():
     de descripción para practicar vocabulario y estructuras descriptivas.
     """)
 
+    # Inicializar variables de estado si no existen
+    if "imagen_generada_state" not in st.session_state:
+        st.session_state.imagen_generada_state = False
+    if "imagen_url_state" not in st.session_state:
+        st.session_state.imagen_url_state = None
+    if "descripcion_state" not in st.session_state:
+        st.session_state.descripcion_state = None
+    if "tema_imagen_state" not in st.session_state:
+        st.session_state.tema_imagen_state = None
+    if "descripcion_estudiante_state" not in st.session_state:
+        st.session_state.descripcion_estudiante_state = ""
+
     # Selección de nivel
     nivel_imagen = st.selectbox(
         "Nivel de español:",
@@ -4333,66 +4345,110 @@ def herramienta_descripcion_imagenes():
     # Tema para la imagen
     tema_imagen = st.text_input(
         "Tema o escena para la imagen (por ejemplo: 'un parque en primavera', 'una oficina moderna'):",
-        key="tema_imagen_dalle"
+        key="tema_imagen_dalle",
+        value=st.session_state.tema_imagen_state if st.session_state.tema_imagen_state else ""
     )
 
-    if st.button("Generar imagen y actividad", key="generar_imagen_dalle") and tema_imagen:
-        with st.spinner("Generando imagen con DALL-E..."):
-            # Obtener nivel en formato simplificado
-            nivel_map = {
-                "Nivel principiante (A1-A2)": "principiante",
-                "Nivel intermedio (B1-B2)": "intermedio",
-                "Nivel avanzado (C1-C2)": "avanzado"
-            }
-            nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
+    # Función para manejar la generación de imagen
+    def generar_imagen_callback():
+        if tema_imagen:
+            with st.spinner("Generando imagen con DALL-E..."):
+                # Obtener nivel en formato simplificado
+                nivel_map = {
+                    "Nivel principiante (A1-A2)": "principiante",
+                    "Nivel intermedio (B1-B2)": "intermedio",
+                    "Nivel avanzado (C1-C2)": "avanzado"
+                }
+                nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
 
-            # Generar imagen y descripción
-            imagen_url, descripcion = generar_imagen_dalle(
-                tema_imagen, nivel_dalle)
+                # Generar imagen y descripción
+                imagen_url, descripcion = generar_imagen_dalle(
+                    tema_imagen, nivel_dalle)
 
-            if imagen_url:
-                # Mostrar la imagen
-                st.image(
-                    imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_column_width=True)
+                if imagen_url:
+                    # Guardar en session_state
+                    st.session_state.imagen_generada_state = True
+                    st.session_state.imagen_url_state = imagen_url
+                    st.session_state.descripcion_state = descripcion
+                    st.session_state.tema_imagen_state = tema_imagen
 
-                # Guardar en session_state para usos futuros
-                set_session_var("ultima_imagen_url", imagen_url)
-                set_session_var("ultima_descripcion", descripcion)
+                    # También guardar en las variables originales
+                    set_session_var("ultima_imagen_url", imagen_url)
+                    set_session_var("ultima_descripcion", descripcion)
+                else:
+                    st.error(
+                        "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
 
-                # Mostrar la descripción y actividades
-                with st.expander("Descripción y actividades de práctica", expanded=True):
-                    st.markdown(descripcion)
+    # Botón para generar imagen
+    if st.button("Generar imagen y actividad", key="generar_imagen_dalle", on_click=generar_imagen_callback) and not st.session_state.imagen_generada_state:
+        pass  # La lógica se ejecuta en el callback
 
-                # Área para que el estudiante escriba su descripción
-                descripcion_estudiante = st.text_area(
-                    "Describe la imagen con tus propias palabras:",
-                    height=200,
-                    key="descripcion_imagen_estudiante"
+    # Mostrar la imagen si existe
+    if st.session_state.imagen_generada_state and st.session_state.imagen_url_state:
+        # Mostrar la imagen
+        st.image(
+            st.session_state.imagen_url_state,
+            caption=f"Imagen generada sobre: {st.session_state.tema_imagen_state}",
+            use_container_width=True
+        )
+
+        # Mostrar la descripción y actividades
+        with st.expander("Descripción y actividades de práctica", expanded=True):
+            st.markdown(st.session_state.descripcion_state)
+
+        # Área para que el estudiante escriba su descripción
+        descripcion_estudiante = st.text_area(
+            "Describe la imagen con tus propias palabras:",
+            height=200,
+            key="descripcion_imagen_estudiante",
+            value=st.session_state.descripcion_estudiante_state
+        )
+
+        # Actualizar el valor en la sesión cuando cambie
+        st.session_state.descripcion_estudiante_state = descripcion_estudiante
+
+        # Función para manejar la corrección
+        def corregir_descripcion_callback():
+            if descripcion_estudiante.strip():
+                # No es necesario un spinner aquí ya que la página se recargará
+                st.session_state.correcting_description = True
+            else:
+                st.warning(
+                    "Por favor, escribe una descripción antes de enviar a corrección.")
+
+        # Botón para enviar a corrección
+        if st.button("Corregir descripción", key="corregir_descripcion_imagen", on_click=corregir_descripcion_callback):
+            pass  # La lógica se ejecuta en el callback
+
+        # Realizar la corrección después de la recarga de la página si es necesario
+        if st.session_state.get("correcting_description", False):
+            with st.spinner("Analizando descripción..."):
+                # Corrección integrada
+                resultado = corregir_descripcion_imagen(
+                    descripcion_estudiante,
+                    st.session_state.tema_imagen_state,
+                    nivel_imagen
                 )
 
-                # Botón para enviar a corrección
-                if st.button("Corregir descripción", key="corregir_descripcion_imagen"):
-                    if descripcion_estudiante.strip():
-                        with st.spinner("Analizando descripción..."):
-                            # Corrección integrada (sin redirección)
-                            resultado = corregir_descripcion_imagen(
-                                descripcion_estudiante,
-                                tema_imagen,
-                                nivel_imagen
-                            )
+            # Restablecer la bandera
+            st.session_state.correcting_description = False
 
-                        # Mostrar resultados directamente aquí
-                        if "error" not in resultado:
-                            ui_show_correction_results(resultado)
-                        else:
-                            st.error(
-                                f"Error en la corrección: {resultado['error']}")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una descripción antes de enviar a corrección.")
+            # Mostrar resultados
+            if "error" not in resultado:
+                ui_show_correction_results(resultado)
             else:
-                st.error(
-                    "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
+                st.error(f"Error en la corrección: {resultado['error']}")
+
+    # Botón para reiniciar
+    if st.session_state.imagen_generada_state:
+        if st.button("Generar nueva imagen", key="nueva_imagen_dalle"):
+            # Reiniciar estados
+            st.session_state.imagen_generada_state = False
+            st.session_state.imagen_url_state = None
+            st.session_state.descripcion_state = None
+            st.session_state.tema_imagen_state = None
+            st.session_state.descripcion_estudiante_state = ""
+            st.rerun()
 
 
 def herramienta_texto_manuscrito():
