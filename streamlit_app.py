@@ -4316,9 +4316,17 @@ def herramienta_descripcion_imagenes():
     de descripción para practicar vocabulario y estructuras descriptivas.
     """)
 
-    # Asegurar que estamos en la pestaña correcta
-    st.session_state.active_main_tab = 4  # Índice de "Herramientas complementarias"
-    st.session_state.active_tools_tab = 2  # Índice de "Descripción de imágenes"
+    # Usamos un enfoque diferente para mantener el estado, sin modificar directamente
+    # las claves de session_state vinculadas a widgets
+    if "tab_navigate_to" not in st.session_state:
+        st.session_state.tab_navigate_to = None
+
+    # Establecer las pestañas correctas para futuras navegaciones
+    # Esto sólo afecta a futuras recargas de la página, no a la actual
+    st.session_state.tab_navigate_to = {
+        "main_tab": 4,  # Índice de "Herramientas complementarias"
+        "tools_tab": 2  # Índice de "Descripción de imágenes"
+    }
 
     # Inicializar variables de estado si no existen
     if "imagen_generada_state" not in st.session_state:
@@ -4353,8 +4361,8 @@ def herramienta_descripcion_imagenes():
         value=st.session_state.tema_imagen_state if st.session_state.tema_imagen_state else ""
     )
 
-    # Función para generar la imagen manteniendo el estado
-    def generar_imagen_action():
+    # Función para generar la imagen
+    def generar_imagen_callback():
         if not tema_imagen:
             st.warning("Por favor, introduce un tema para la imagen.")
             return
@@ -4383,19 +4391,27 @@ def herramienta_descripcion_imagenes():
                 set_session_var("ultima_imagen_url", imagen_url)
                 set_session_var("ultima_descripcion", descripcion)
 
-                # Asegurar que permanecemos en la pestaña correcta
-                st.session_state.active_main_tab = 4  # Herramientas complementarias
-                st.session_state.active_tools_tab = 2  # Descripción de imágenes
+                # Asegurar que estamos en las pestañas correctas para la próxima recarga
+                if "tab_navigate_to" not in st.session_state:
+                    st.session_state.tab_navigate_to = {}
+                st.session_state.tab_navigate_to = {
+                    "main_tab": 4,  # Herramientas complementarias
+                    "tools_tab": 2   # Descripción de imágenes
+                }
 
-                # Mostrar éxito
-                st.success("Imagen generada correctamente")
+                # Forzar navegación a las pestañas correctas en el inicio de la app
+                st.session_state.active_tab_index = 4
+                st.session_state.active_tools_tab_index = 2
+
+                st.success("Imagen generada con éxito")
+                # No usamos st.rerun() aquí para evitar problemas con session_state
             else:
                 st.error(
                     "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
 
     # Botón para generar imagen
-    if st.button("Generar imagen y actividad", key="generar_imagen_dalle"):
-        generar_imagen_action()
+    if st.button("Generar imagen y actividad", key="generar_imagen_dalle", on_click=generar_imagen_callback):
+        pass  # La lógica se maneja en el callback
 
     # Mostrar la imagen si existe
     if st.session_state.imagen_generada_state and st.session_state.imagen_url_state:
@@ -4421,18 +4437,27 @@ def herramienta_descripcion_imagenes():
         # Actualizar el valor en la sesión cuando cambie
         st.session_state.descripcion_estudiante_state = descripcion_estudiante
 
-        # Función para corregir la descripción manteniendo el estado
-        def corregir_descripcion_action():
+        # Función para corregir la descripción
+        def corregir_descripcion_callback():
             if not descripcion_estudiante.strip():
                 st.warning(
                     "Por favor, escribe una descripción antes de enviar a corrección.")
                 return
 
-            with st.spinner("Analizando descripción..."):
-                # Asegurar que permanecemos en la pestaña correcta
-                st.session_state.active_main_tab = 4  # Herramientas complementarias
-                st.session_state.active_tools_tab = 2  # Descripción de imágenes
+            # Asegurar que estamos en las pestañas correctas para la próxima recarga
+            st.session_state.active_tab_index = 4
+            st.session_state.active_tools_tab_index = 2
 
+            # Indicar que queremos mostrar la corrección
+            st.session_state.mostrar_correccion_imagen = True
+
+        # Botón para enviar a corrección
+        if st.button("Corregir descripción", key="corregir_descripcion_imagen", on_click=corregir_descripcion_callback):
+            pass  # La lógica se maneja en el callback
+
+        # Mostrar resultados de corrección si es necesario
+        if st.session_state.get("mostrar_correccion_imagen", False):
+            with st.spinner("Analizando descripción..."):
                 # Corrección integrada
                 resultado = corregir_descripcion_imagen(
                     descripcion_estudiante,
@@ -4442,22 +4467,15 @@ def herramienta_descripcion_imagenes():
 
                 # Mostrar resultados
                 if "error" not in resultado:
-                    st.session_state.correction_result = resultado
-                    st.session_state.showing_correction = True
+                    # Mostrar la corrección
+                    ui_show_correction_results(resultado)
                 else:
                     st.error(f"Error en la corrección: {resultado['error']}")
 
-        # Botón para enviar a corrección
-        if st.button("Corregir descripción", key="corregir_descripcion_imagen"):
-            corregir_descripcion_action()
-
-        # Mostrar resultados de corrección si es necesario
-        if st.session_state.get("showing_correction", False):
-            ui_show_correction_results(st.session_state.correction_result)
-            # Opción para volver a la imagen
-            if st.button("Volver a la imagen", key="volver_a_imagen"):
-                st.session_state.showing_correction = False
-                st.rerun()
+                # Opción para volver a la imagen
+                if st.button("Volver a la descripción de imagen", key="volver_a_imagen"):
+                    st.session_state.mostrar_correccion_imagen = False
+                    st.experimental_rerun()
 
     # Botón para reiniciar
     if st.session_state.imagen_generada_state:
@@ -4468,10 +4486,8 @@ def herramienta_descripcion_imagenes():
             st.session_state.descripcion_state = None
             st.session_state.tema_imagen_state = None
             st.session_state.descripcion_estudiante_state = ""
-            st.session_state.showing_correction = False
-            if "correction_result" in st.session_state:
-                del st.session_state.correction_result
-            st.rerun()
+            st.session_state.mostrar_correccion_imagen = False
+            st.experimental_rerun()
 
 
 def herramienta_texto_manuscrito():
@@ -4970,52 +4986,57 @@ def main():
     ui_header()
 
     # Inicializar el seguimiento de pestañas activas si no existe
-    if "active_main_tab" not in st.session_state:
-        st.session_state.active_main_tab = 0
-    if "active_tools_tab" not in st.session_state:
-        st.session_state.active_tools_tab = 0
+    if "active_tab_index" not in st.session_state:
+        st.session_state.active_tab_index = 0
+    if "active_tools_tab_index" not in st.session_state:
+        st.session_state.active_tools_tab_index = 0
 
-    # Función para cambiar la pestaña principal
-    def on_main_tab_change():
-        st.session_state.active_main_tab = st.session_state.main_tabs
+    # Pestañas principales
+    tab_names = [
+        "📝 Corrección de texto",
+        "📊 Ver progreso",
+        "📚 Historial",
+        "🎓 Preparación para exámenes",
+        "🔧 Herramientas complementarias"
+    ]
 
-    # Función para cambiar la subpestaña de herramientas
-    def on_tools_tab_change():
-        st.session_state.active_tools_tab = st.session_state.tools_tabs
+    # Función para cambiar la pestaña activa
+    def on_tab_change():
+        st.session_state.active_tab_index = st.session_state.tab_selector
 
-    # Pestañas principales con manejo de estado
-    tabs = ["📝 Corrección de texto", "📊 Ver progreso", "📚 Historial",
-            "🎓 Preparación para exámenes", "🔧 Herramientas complementarias"]
-
-    st.session_state.main_tabs = st.radio(
+    # Selector de pestañas como radio buttons
+    selected_tab = st.radio(
         "Navegación principal",
-        options=range(len(tabs)),
-        format_func=lambda x: tabs[x],
-        key="main_tabs",
+        options=range(len(tab_names)),
+        format_func=lambda x: tab_names[x],
+        key="tab_selector",
         horizontal=True,
         label_visibility="collapsed",
-        index=st.session_state.active_main_tab,
-        on_change=on_main_tab_change
+        index=st.session_state.active_tab_index,
+        on_change=on_tab_change
     )
 
+    # Actualizar índice de pestaña activa
+    st.session_state.active_tab_index = selected_tab
+
     # --- Pestaña 1: Corrección de Texto ---
-    if st.session_state.main_tabs == 0:
+    if selected_tab == 0:
         tab_corregir()
 
     # --- Pestaña 2: Ver Progreso ---
-    elif st.session_state.main_tabs == 1:
+    elif selected_tab == 1:
         tab_progreso()
 
     # --- Pestaña 3: Historial ---
-    elif st.session_state.main_tabs == 2:
+    elif selected_tab == 2:
         tab_historial()
 
     # --- Pestaña 4: Preparación para Exámenes ---
-    elif st.session_state.main_tabs == 3:
+    elif selected_tab == 3:
         tab_examenes()
 
     # --- Pestaña 5: Herramientas Complementarias ---
-    elif st.session_state.main_tabs == 4:
+    elif selected_tab == 4:
         # Implementación de la pestaña de herramientas complementarias
         st.header("🔧 Herramientas complementarias")
 
@@ -5030,39 +5051,47 @@ def main():
             if not user_data:
                 return
 
-        # Pestañas para diferentes herramientas con manejo de estado
-        subtabs_labels = [
+        # Pestañas para diferentes herramientas
+        tools_tab_names = [
             "Análisis de complejidad",
             "Biblioteca de recursos",
             "Descripción de imágenes",
             "Texto manuscrito"
         ]
 
-        st.session_state.tools_tabs = st.radio(
+        # Función para cambiar la subpestaña activa
+        def on_tools_tab_change():
+            st.session_state.active_tools_tab_index = st.session_state.tools_tab_selector
+
+        # Selector de herramientas
+        selected_tools_tab = st.radio(
             "Herramientas",
-            options=range(len(subtabs_labels)),
-            format_func=lambda x: subtabs_labels[x],
-            key="tools_tabs",
+            options=range(len(tools_tab_names)),
+            format_func=lambda x: tools_tab_names[x],
+            key="tools_tab_selector",
             horizontal=True,
             label_visibility="collapsed",
-            index=st.session_state.active_tools_tab,
+            index=st.session_state.active_tools_tab_index,
             on_change=on_tools_tab_change
         )
 
+        # Actualizar índice de subpestaña activa
+        st.session_state.active_tools_tab_index = selected_tools_tab
+
         # --- Subpestaña 1: Análisis de complejidad ---
-        if st.session_state.tools_tabs == 0:
+        if selected_tools_tab == 0:
             herramienta_analisis_complejidad()
 
         # --- Subpestaña 2: Biblioteca de recursos ---
-        elif st.session_state.tools_tabs == 1:
+        elif selected_tools_tab == 1:
             herramienta_biblioteca_recursos()
 
         # --- Subpestaña 3: Descripción de imágenes ---
-        elif st.session_state.tools_tabs == 2:
+        elif selected_tools_tab == 2:
             herramienta_descripcion_imagenes()
 
         # --- Subpestaña 4: Texto manuscrito ---
-        elif st.session_state.tools_tabs == 3:
+        elif selected_tools_tab == 3:
             herramienta_texto_manuscrito()
 
     # Formulario de feedback al final
@@ -5113,6 +5142,25 @@ def init_app():
     if not dependencies_ok:
         st.sidebar.warning(
             "⚠️ Algunas funcionalidades están limitadas debido a configuraciones incompletas.")
+
+    # Inicializar índices de pestañas si no existen
+    if "active_tab_index" not in st.session_state:
+        st.session_state.active_tab_index = 0
+    if "active_tools_tab_index" not in st.session_state:
+        st.session_state.active_tools_tab_index = 0
+
+    # Comprobar si hay un objetivo de navegación específico
+    if "tab_navigate_to" in st.session_state and st.session_state.tab_navigate_to:
+        try:
+            if "main_tab" in st.session_state.tab_navigate_to:
+                st.session_state.active_tab_index = st.session_state.tab_navigate_to["main_tab"]
+            if "tools_tab" in st.session_state.tab_navigate_to:
+                st.session_state.active_tools_tab_index = st.session_state.tab_navigate_to[
+                    "tools_tab"]
+            # Limpiar después de usar
+            st.session_state.tab_navigate_to = None
+        except Exception as e:
+            logger.error(f"Error al establecer pestañas activas: {str(e)}")
 
     # Manejar parámetros de URL
     handle_url_params_fix()
