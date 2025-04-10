@@ -63,6 +63,7 @@ def init_session_state():
         "ultima_imagen_url": "",
         "ultima_descripcion": "",
         "ultimo_texto_transcrito": "",
+        "ultimo_texto": "",  # Añadido para guardar el último texto corregido
         "tarea_modelo_generada": None,
         "respuesta_modelo_examen": "",
         "inicio_simulacro": None,
@@ -76,7 +77,10 @@ def init_session_state():
         "examen_result": None,
         "api_error_count": 0,
         "api_last_error_time": None,
-        "circuit_breaker_open": False
+        "circuit_breaker_open": False,
+        "active_tab": 0,  # Pestaña activa por defecto
+        "nombre_seleccionado": "",  # Nombre seleccionado para ver progreso
+        "app_initialized": False  # Flag para verificar si la app ya se inicializó
     }
 
     for key, default_value in default_values.items():
@@ -2623,7 +2627,7 @@ def ui_header():
 
 def ui_user_info_form(form_key="form_user_info"):
     """
-    Formulario para obtener información básica del usuario.
+    Formulario mejorado para obtener información básica del usuario.
 
     Args:
         form_key: Clave única para el formulario
@@ -2631,6 +2635,7 @@ def ui_user_info_form(form_key="form_user_info"):
     Returns:
         dict: Datos del usuario (nombre, nivel)
     """
+    user_data = None
     with st.form(key=form_key):
         col1, col2 = st.columns(2)
 
@@ -2675,9 +2680,9 @@ def ui_user_info_form(form_key="form_user_info"):
             set_session_var("nivel_estudiante",
                             nivel_map.get(nivel, "intermedio"))
 
-            return {"nombre": nombre, "nivel": nivel}
+            user_data = {"nombre": nombre, "nivel": nivel}
 
-        return None
+    return user_data
 
 
 def ui_idioma_correcciones_tipo():
