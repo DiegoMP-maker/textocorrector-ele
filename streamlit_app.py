@@ -23,7 +23,6 @@ import logging
 from urllib.parse import urlparse
 import uuid
 
-
 # Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +43,7 @@ st.set_page_config(
 st.cache_data.clear()
 
 # Versión de la aplicación
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"  # Actualizado para la versión reescrita
 
 # Inicializar variables de session_state si no existen
 
@@ -63,7 +62,6 @@ def init_session_state():
         "ultima_imagen_url": "",
         "ultima_descripcion": "",
         "ultimo_texto_transcrito": "",
-        "ultimo_texto": "",  # Añadido para guardar el último texto corregido
         "tarea_modelo_generada": None,
         "respuesta_modelo_examen": "",
         "inicio_simulacro": None,
@@ -78,9 +76,8 @@ def init_session_state():
         "api_error_count": 0,
         "api_last_error_time": None,
         "circuit_breaker_open": False,
-        "active_tab": 0,  # Pestaña activa por defecto
-        "nombre_seleccionado": "",  # Nombre seleccionado para ver progreso
-        "app_initialized": False  # Flag para verificar si la app ya se inicializó
+        "ultimo_texto": "",
+        "nombre_seleccionado": None
     }
 
     for key, default_value in default_values.items():
@@ -407,14 +404,27 @@ def extract_json_safely(content):
     Returns:
         dict: El contenido parseado como JSON o un diccionario con error
     """
+    # Si es None o vacío, retornar error inmediatamente
+    if not content:
+        return {"error": "Contenido vacío, no se puede extraer JSON"}
+
     # Intento directo
     try:
         return json.loads(content)
     except json.JSONDecodeError:
+        # Limpiar el contenido - eliminar caracteres que puedan causar problemas
+        # Esto puede ayudar con el problema "unknown extension ?1 at position 13"
+        content_clean = re.sub(r'[^\x20-\x7E]', '', content)
+
+        try:
+            return json.loads(content_clean)
+        except json.JSONDecodeError:
+            pass
+
         # Búsqueda con regex para JSON completo
-        # Regex recursiva para JSON anidado
+        # Regex mejorada para JSON anidado
         json_pattern = r'(\{(?:[^{}]|(?1))*\})'
-        match = re.search(json_pattern, content, re.DOTALL)
+        match = re.search(json_pattern, content_clean, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
@@ -423,16 +433,20 @@ def extract_json_safely(content):
 
         # Segunda estrategia: buscar cualquier JSON entre llaves
         simple_pattern = r'\{.*\}'
-        match = re.search(simple_pattern, content, re.DOTALL)
+        match = re.search(simple_pattern, content_clean, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0))
+                # Intentar limpiar el JSON encontrado
+                potential_json = match.group(0)
+                # Eliminar comillas mal formadas, escape chars, etc.
+                potential_json = re.sub(r'[\r\n\t]', ' ', potential_json)
+                return json.loads(potential_json)
             except json.JSONDecodeError:
                 pass
 
     # Si no se pudo extraer, devolver un objeto error
     logger.warning(f"No se pudo extraer JSON de: {content[:100]}...")
-    return {"error": "No se pudo extraer JSON válido", "raw_content": content}
+    return {"error": "No se pudo extraer JSON válido", "raw_content": content[:500]}
 
 
 def retry_with_backoff(func, max_retries=3, initial_delay=1):
@@ -490,11 +504,13 @@ def obtener_json_de_ia(system_msg, user_msg, model="gpt-4-turbo", max_retries=3)
         {"role": "user", "content": user_msg}
     ]
 
-    def send_request(): return client.chat.completions.create(
-        model=model,
-        temperature=0.5,
-        messages=messages
-    )
+    def send_request():
+        return client.chat.completions.create(
+            model=model,
+            temperature=0.5,
+            response_format={"type": "json_object"},  # Forzar formato JSON
+            messages=messages
+        )
 
     try:
         # Usar retry_with_backoff para gestionar reintentos
@@ -521,6 +537,7 @@ def obtener_json_de_ia(system_msg, user_msg, model="gpt-4-turbo", max_retries=3)
                 lambda: client.chat.completions.create(
                     model=model,
                     temperature=0.3,  # Temperatura más baja para formato más preciso
+                    response_format={"type": "json_object"},
                     messages=messages
                 ),
                 max_retries=1
@@ -753,7 +770,7 @@ def transcribir_imagen_texto(imagen_bytes, idioma="es"):
         circuit_breaker.record_failure("openai")
         return f"Error en la transcripción: {str(e)}"
 
-# --- 5. GUARDADO DE DATOS EN GOOGLE SHEETS ---
+# --- 5. GUARDADO DE DATOS EN GOOGLE SHEETS (Continuación) ---
 
 
 def guardar_correccion(nombre, nivel, idioma, texto, resultado_json):
@@ -911,13 +928,53 @@ def obtener_historial_estudiante(nombre):
         # Convertir a DataFrame
         if datos_estudiante:
             df = pd.DataFrame(datos_estudiante)
+
+            # Convertir columnas numéricas explícitamente para evitar errores con PyArrow
+            columnas_numericas = [
+                'Errores Gramática', 'Errores Léxico', 'Errores Puntuación',
+                'Errores Estructura', 'Total Errores', 'Puntuación Coherencia',
+                'Puntuación Cohesión', 'Puntuación Registro', 'Puntuación Adecuación Cultural'
+            ]
+
+            for col in columnas_numericas:
+                if col in df.columns:
+                    # Convertir a float de manera segura
+                    df[col] = pd.to_numeric(
+                        df[col], errors='coerce').fillna(0).astype(float)
+
             return df
 
         return None
     except Exception as e:
         logger.error(f"Error en obtener_historial_estudiante: {str(e)}")
         return None
-    # --- 1. FUNCIONES DE PROCESAMIENTO DE TEXTOS ---
+
+# --- Función auxiliar para manejo consistente de excepciones ---
+
+
+def handle_exception(func_name, exception, show_user=True):
+    """
+    Función de utilidad para manejar excepciones de manera consistente.
+
+    Args:
+        func_name: Nombre de la función donde ocurrió el error
+        exception: La excepción capturada
+        show_user: Si se debe mostrar un mensaje al usuario
+
+    Returns:
+        None
+    """
+    error_msg = f"Error en {func_name}: {str(exception)}"
+    logger.error(error_msg)
+    logger.error(traceback.format_exc())
+
+    if show_user:
+        st.error(f"⚠️ {error_msg}")
+        with st.expander("Detalles técnicos", expanded=False):
+            st.code(traceback.format_exc())
+
+    return None
+# --- 1. FUNCIONES DE PROCESAMIENTO DE TEXTOS ---
 
 
 def generar_consigna_escritura(nivel_actual, tipo_consigna):
@@ -1295,6 +1352,8 @@ def analizar_complejidad_texto(texto):
             return client.chat.completions.create(
                 model="gpt-4-turbo",
                 temperature=0.3,  # Temperatura baja para resultados más precisos
+                # Forzar respuesta en JSON
+                response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": "Eres un experto lingüista y analista textual especializado en complejidad lingüística."},
                     {"role": "user", "content": prompt_analisis}
@@ -1322,7 +1381,7 @@ def analizar_complejidad_texto(texto):
         circuit_breaker.record_failure("openai")
         return {"error": f"Error al analizar complejidad: {str(e)}"}
 
-# --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO ---
+# --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO (Continuación) ---
 
 
 def corregir_texto(texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional=""):
@@ -1507,6 +1566,9 @@ Contexto cultural: {contexto_cultural}
                     logger.warning(
                         f"No se pudo guardar la corrección: {resultado_guardado['message']}")
 
+            # Guardar el texto para posible uso futuro
+            set_session_var("ultimo_texto", texto)
+
             # Devolver resultado
             return data_json
 
@@ -1520,6 +1582,204 @@ Contexto cultural: {contexto_cultural}
         handle_exception("corregir_texto", e)
         return {"error": f"Error al corregir texto: {str(e)}"}
 
+
+def corregir_examen(texto, tipo_examen, nivel_examen, tiempo_usado=None):
+    """
+    Corrige un texto de examen específico.
+
+    Args:
+        texto: Texto a corregir
+        tipo_examen: Tipo de examen
+        nivel_examen: Nivel del examen
+        tiempo_usado: Tiempo usado (opcional)
+
+    Returns:
+        dict: Resultado de la corrección
+    """
+    if not texto or not texto.strip():
+        return {"error": "El texto está vacío. Por favor, escribe una respuesta."}
+
+    # Guardar para futura referencia
+    set_session_var("ultimo_texto", texto)
+
+    # Obtener datos necesarios
+    nombre = get_session_var("usuario_actual", "Usuario")
+
+    # Mapear nivel del examen al formato de nivel de la aplicación
+    nivel_map = {
+        "A1": "Nivel principiante (A1-A2)",
+        "A2": "Nivel principiante (A1-A2)",
+        "B1": "Nivel intermedio (B1-B2)",
+        "B2": "Nivel intermedio (B1-B2)",
+        "C1": "Nivel avanzado (C1-C2)",
+        "C2": "Nivel avanzado (C1-C2)"
+    }
+    nivel = nivel_map.get(nivel_examen, "Nivel intermedio (B1-B2)")
+
+    # Construir información adicional
+    info_adicional = f"Examen {tipo_examen} nivel {nivel_examen}"
+    if tiempo_usado:
+        info_adicional += f" (Tiempo usado: {tiempo_usado})"
+
+    # Llamar a la función de corrección
+    resultado = corregir_texto(
+        texto, nombre, nivel, "Español", "Académico",
+        "Contexto académico", info_adicional
+    )
+
+    # Guardar resultado
+    set_session_var("correction_result", resultado)
+    set_session_var("last_correction_time", datetime.now().isoformat())
+    set_session_var("examen_result", resultado)
+
+    return resultado
+
+
+def corregir_descripcion_imagen(descripcion, tema_imagen, nivel):
+    """
+    Corrige una descripción de imagen.
+
+    Args:
+        descripcion: Texto de la descripción
+        tema_imagen: Tema de la imagen
+        nivel: Nivel del estudiante
+
+    Returns:
+        dict: Resultado de la corrección
+    """
+    if not descripcion or not descripcion.strip():
+        return {"error": "La descripción está vacía. Por favor, escribe una descripción."}
+
+    # Guardar para futura referencia
+    set_session_var("ultimo_texto", descripcion)
+
+    # Obtener datos necesarios
+    nombre = get_session_var("usuario_actual", "Usuario")
+
+    # Información adicional
+    info_adicional = f"Descripción de imagen sobre '{tema_imagen}'"
+
+    # Llamar a la función de corrección
+    resultado = corregir_texto(
+        descripcion, nombre, nivel, "Español", "Descriptivo",
+        "General/Internacional", info_adicional
+    )
+
+    # Guardar resultado
+    set_session_var("correction_result", resultado)
+    set_session_var("last_correction_time", datetime.now().isoformat())
+
+    return resultado
+
+
+def generar_tarea_examen(tipo_examen, nivel_examen):
+    """
+    Genera una tarea de expresión escrita para un examen específico.
+
+    Args:
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
+
+    Returns:
+        str: Tarea generada para el examen
+    """
+    client = get_openai_client()
+    if client is None:
+        return "No se pudo generar la tarea. Servicio no disponible."
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Servicio temporalmente no disponible. Inténtelo más tarde."
+
+    try:
+        # Prompt para generación de tarea
+        prompt_tarea = f"""
+        Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
+        La tarea debe incluir:
+        1. Instrucciones claras y precisas
+        2. Contexto o situación comunicativa
+        3. Número de palabras requerido
+        4. Aspectos que se evaluarán
+
+        El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
+        La tarea debe ser apropiada para el nivel {nivel_examen}, siguiendo los estándares oficiales.
+        """
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
+                    {"role": "user", "content": prompt_tarea}
+                ]
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content
+
+    except Exception as e:
+        error_msg = f"Error al generar tarea de examen: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return f"No se pudo generar la tarea. Error: {str(e)}"
+
+
+def generar_ejemplos_evaluados(tipo_examen, nivel_examen):
+    """
+    Genera ejemplos de textos evaluados para un examen específico.
+
+    Args:
+        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
+        nivel_examen: Nivel del examen (A1, A2, etc.)
+
+    Returns:
+        str: Ejemplos de textos evaluados
+    """
+    client = get_openai_client()
+    if client is None:
+        return "No se pudieron generar ejemplos. Servicio no disponible."
+
+    if not circuit_breaker.can_execute("openai"):
+        return "Servicio temporalmente no disponible. Inténtelo más tarde."
+
+    try:
+        # Prompt para generación de ejemplos
+        prompt_ejemplos = f"""
+        Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen},
+        junto con una evaluación detallada usando los criterios oficiales.
+        Muestra:
+        1. La tarea solicitada
+        2. El texto del estudiante (con algunos errores típicos de ese nivel)
+        3. Evaluación punto por punto según los criterios oficiales
+        4. Puntuación desglosada y comentarios
+        """
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "Eres un evaluador experto de exámenes oficiales de español."},
+                    {"role": "user", "content": prompt_ejemplos}
+                ]
+            )
+
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
+        return response.choices[0].message.content
+
+    except Exception as e:
+        error_msg = f"Error al generar ejemplos evaluados: {str(e)}"
+        logger.error(error_msg)
+        circuit_breaker.record_failure("openai")
+        return f"No se pudieron generar ejemplos. Error: {str(e)}"
     # --- 1. GENERACIÓN DE INFORMES EN DIFERENTES FORMATOS ---
 
 
@@ -1544,6 +1804,7 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         # Añadir información de depuración
         logger.info(f"Iniciando generación de informe DOCX para {nombre}")
 
+        # Crear el documento desde cero
         doc = Document()
 
         # Estilo del documento
@@ -1578,17 +1839,20 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
                     for error in errores:
                         if isinstance(error, dict):
                             p = doc.add_paragraph()
-                            p.add_run('Fragmento erróneo: ').bold = True
-                            p.add_run(error.get('fragmento_erroneo', '')
-                                      ).font.color.rgb = RGBColor(255, 0, 0)
+                            run = p.add_run('Fragmento erróneo: ')
+                            run.bold = True
+                            run = p.add_run(error.get('fragmento_erroneo', ''))
+                            run.font.color.rgb = RGBColor(255, 0, 0)
 
                             p = doc.add_paragraph()
-                            p.add_run('Corrección: ').bold = True
-                            p.add_run(error.get('correccion', '')
-                                      ).font.color.rgb = RGBColor(0, 128, 0)
+                            run = p.add_run('Corrección: ')
+                            run.bold = True
+                            run = p.add_run(error.get('correccion', ''))
+                            run.font.color.rgb = RGBColor(0, 128, 0)
 
                             p = doc.add_paragraph()
-                            p.add_run('Explicación: ').bold = True
+                            run = p.add_run('Explicación: ')
+                            run.bold = True
                             p.add_run(error.get('explicacion', ''))
 
                             doc.add_paragraph()  # Espacio
@@ -1758,8 +2022,8 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
                 h1 {{ color: #2c3e50; }}
                 h2 {{ color: #3498db; margin-top: 30px; }}
                 h3 {{ color: #2980b9; }}
-                .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; }}
-                .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; }}
+                .original {{ background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; white-space: pre-wrap; }}
+                .corregido {{ background-color: #e7f4e4; padding: 15px; border-left: 4px solid #28a745; white-space: pre-wrap; }}
                 .error-item {{ margin-bottom: 20px; padding: 10px; background-color: #f1f1f1; }}
                 .fragmento {{ color: #dc3545; }}
                 .correccion {{ color: #28a745; }}
@@ -1785,12 +2049,12 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
                 <section>
                     <h2>Texto original</h2>
                     <div class="original">
-                        <p>{texto_original.replace(chr(10), '<br>')}</p>
+                        {texto_original}
                     </div>
 
                     <h2>Texto corregido</h2>
                     <div class="corregido">
-                        <p>{texto_corregido.replace(chr(10), '<br>')}</p>
+                        {texto_corregido}
                     </div>
                 </section>
 
@@ -1903,10 +2167,11 @@ def generar_csv_analisis(nombre, nivel, fecha, datos_analisis):
         csv_buffer.write(f"Puntuación Adecuación Cultural,{adecuacion}\n")
 
         # Convertir a bytes
-        csv_bytes = csv_buffer.getvalue().encode()
+        csv_bytes = csv_buffer.getvalue().encode('utf-8')
 
         # Crear buffer de bytes
         bytes_buffer = BytesIO(csv_bytes)
+        bytes_buffer.seek(0)  # Importante: posicionar al inicio del buffer
 
         return bytes_buffer
 
@@ -1917,7 +2182,7 @@ def generar_csv_analisis(nombre, nivel, fecha, datos_analisis):
         csv_buffer.write("Error,Mensaje\n")
         csv_buffer.write(f"Error al generar CSV,{str(e)}\n")
 
-        return BytesIO(csv_buffer.getvalue().encode())
+        return BytesIO(csv_buffer.getvalue().encode('utf-8'))
 
 # --- 2. VISUALIZACIÓN DE DATOS Y ESTADÍSTICAS ---
 
@@ -1944,6 +2209,14 @@ def crear_grafico_radar(valores, categorias):
                 f"Longitud incorrecta: valores={len(valores)}, categorias={len(categorias)}")
             return None
 
+        # Convertir valores a tipo numérico
+        valores_num = []
+        for val in valores:
+            try:
+                valores_num.append(float(val))
+            except (ValueError, TypeError):
+                valores_num.append(0.0)
+
         # Crear figura
         fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
 
@@ -1955,7 +2228,7 @@ def crear_grafico_radar(valores, categorias):
         angulos += angulos[:1]  # Cerrar el círculo
 
         # Añadir los valores, repitiendo el primero
-        valores_radar = valores + [valores[0]]
+        valores_radar = valores_num + [valores_num[0]]
 
         # Dibujar los ejes
         plt.xticks(angulos[:-1], categorias)
@@ -2021,22 +2294,33 @@ def mostrar_progreso(df):
             logger.error(f"Error al convertir fechas: {str(e)}")
             return resultado
 
-        # Crear un gráfico con Altair para total de errores
-        chart_errores = alt.Chart(df).mark_line(point=True).encode(
-            x=alt.X(f'{fecha_col}:T', title='Fecha'),
-            y=alt.Y('Total Errores:Q', title='Total Errores'),
-            tooltip=[f'{fecha_col}:T', 'Total Errores:Q', 'Nivel:N']
-        ).properties(
-            title='Evolución de errores totales a lo largo del tiempo'
-        ).interactive()
+        # Verificar que Total Errores es numérico
+        if 'Total Errores' in df.columns:
+            # Convertir a numérico de manera segura
+            df['Total Errores'] = pd.to_numeric(
+                df['Total Errores'], errors='coerce').fillna(0)
 
-        resultado["errores_totales"] = chart_errores
+            # Crear un gráfico con Altair para total de errores
+            # Convertir a formato largo para Altair
+            source = pd.DataFrame({
+                'Fecha': df[fecha_col],
+                'Total Errores': df['Total Errores'],
+                'Nivel': df.get('Nivel', 'No especificado')
+            })
+
+            chart_errores = alt.Chart(source).mark_line(point=True).encode(
+                x=alt.X('Fecha:T', title='Fecha'),
+                y=alt.Y('Total Errores:Q', title='Total Errores'),
+                tooltip=['Fecha:T', 'Total Errores:Q', 'Nivel:N']
+            ).properties(
+                title='Evolución de errores totales a lo largo del tiempo'
+            ).interactive()
+
+            resultado["errores_totales"] = chart_errores
 
         # Gráfico de tipos de errores
         columnas_errores = [
-            'Errores Gramática',
-            'Errores Léxico',
-            'Errores Puntuación',
+            'Errores Gramática', 'Errores Léxico', 'Errores Puntuación',
             'Errores Estructura'
         ]
 
@@ -2045,20 +2329,27 @@ def mostrar_progreso(df):
             col for col in columnas_errores if col in df.columns]
 
         if columnas_errores_existentes:
-            # Usar solo las columnas que existen
-            tipos_error_df = pd.melt(
-                df,
-                id_vars=[fecha_col],
-                value_vars=columnas_errores_existentes,
-                var_name='Tipo de Error',
-                value_name='Cantidad'
-            )
+            # Convertir columnas a numérico
+            for col in columnas_errores_existentes:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+            # Crear DataFrame en formato largo para Altair
+            tipos_error_data = []
+            for idx, row in df.iterrows():
+                for col in columnas_errores_existentes:
+                    tipos_error_data.append({
+                        'Fecha': row[fecha_col],
+                        'Tipo de Error': col,
+                        'Cantidad': row[col]
+                    })
+
+            tipos_error_df = pd.DataFrame(tipos_error_data)
 
             chart_tipos = alt.Chart(tipos_error_df).mark_line(point=True).encode(
-                x=alt.X(f'{fecha_col}:T', title='Fecha'),
+                x=alt.X('Fecha:T', title='Fecha'),
                 y=alt.Y('Cantidad:Q', title='Cantidad'),
                 color=alt.Color('Tipo de Error:N', title='Tipo de Error'),
-                tooltip=[f'{fecha_col}:T', 'Tipo de Error:N', 'Cantidad:Q']
+                tooltip=['Fecha:T', 'Tipo de Error:N', 'Cantidad:Q']
             ).properties(
                 title='Evolución por tipo de error'
             ).interactive()
@@ -2086,7 +2377,98 @@ def mostrar_progreso(df):
     except Exception as e:
         logger.error(f"Error al mostrar progreso: {str(e)}")
         return resultado
-    # --- 2. GENERACIÓN DE EJERCICIOS PERSONALIZADOS ---
+    # --- 1. BASE DE DATOS DE RECURSOS EDUCATIVOS ---
+
+
+# Base de datos simplificada de recursos por niveles y categorías
+RECURSOS_DB = {
+    "A1-A2": {
+        "Gramática": [
+            {"título": "Presente de indicativo", "tipo": "Ficha",
+                "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
+            {"título": "Los artículos en español", "tipo": "Vídeo",
+                "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
+            {"título": "Ser y estar", "tipo": "Ejercicios",
+                "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
+            {"título": "Pretérito indefinido", "tipo": "Explicación",
+                "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
+        ],
+        "Léxico": [
+            {"título": "Vocabulario básico", "tipo": "Ficha",
+                "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
+            {"título": "Alimentos y comidas", "tipo": "Tarjetas",
+                "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
+            {"título": "La ciudad", "tipo": "Podcast",
+                "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
+        ],
+        "Cohesión": [
+            {"título": "Conectores básicos", "tipo": "Guía",
+                "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
+            {"título": "Organizar ideas", "tipo": "Ejercicios",
+                "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
+        ],
+        "Registro": [
+            {"título": "Saludos formales e informales", "tipo": "Vídeo",
+                "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
+            {"título": "Peticiones corteses", "tipo": "Diálogos",
+                "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
+        ]
+    },
+    "B1-B2": {
+        "Gramática": [
+            {"título": "Subjuntivo presente", "tipo": "Guía",
+                "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
+            {"título": "Estilo indirecto", "tipo": "Ejercicios",
+                "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
+        ],
+        "Léxico": [
+            {"título": "Expresiones idiomáticas", "tipo": "Podcast",
+                "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
+            {"título": "Vocabulario académico", "tipo": "Glosario",
+                "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
+        ],
+        "Cohesión": [
+            {"título": "Marcadores discursivos", "tipo": "Guía",
+                "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
+            {"título": "Conectores argumentativos", "tipo": "Ejercicios",
+                "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
+        ],
+        "Registro": [
+            {"título": "Lenguaje formal e informal", "tipo": "Curso",
+                "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
+            {"título": "Comunicación profesional", "tipo": "Ejemplos",
+                "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
+        ]
+    },
+    "C1-C2": {
+        "Gramática": [
+            {"título": "Construcciones pasivas", "tipo": "Análisis",
+                "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
+            {"título": "Subordinadas complejas", "tipo": "Guía",
+                "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
+        ],
+        "Léxico": [
+            {"título": "Lenguaje académico", "tipo": "Corpus",
+                "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
+            {"título": "Variantes dialectales", "tipo": "Curso",
+                "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
+        ],
+        "Cohesión": [
+            {"título": "Estructura textual avanzada", "tipo": "Manual",
+                "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
+            {"título": "Análisis del discurso", "tipo": "Investigación",
+                "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
+        ],
+        "Registro": [
+            {"título": "Pragmática intercultural", "tipo": "Seminario",
+                "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
+            {"título": "Lenguaje literario", "tipo": "Análisis",
+                "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
+        ]
+    }
+}
+
+# --- 2. GENERACIÓN DE EJERCICIOS PERSONALIZADOS ---
 
 
 def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma):
@@ -2185,6 +2567,7 @@ def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, id
             return client.chat.completions.create(
                 model="gpt-4-turbo",
                 temperature=0.7,
+                response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": "Eres un experto profesor de ELE especializado en crear ejercicios personalizados."},
                           {"role": "user", "content": prompt_ejercicios}]
             )
@@ -2403,209 +2786,7 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
         handle_exception("generar_plan_estudio_personalizado", e)
         circuit_breaker.record_failure("openai")
         return {"error": f"Error al generar plan de estudio: {str(e)}", "plan": None}
-
-# --- 4. GENERACIÓN DE TAREAS Y EJEMPLOS DE EXAMEN ---
-
-
-def generar_tarea_examen(tipo_examen, nivel_examen):
-    """
-    Genera una tarea de expresión escrita para un examen específico.
-
-    Args:
-        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
-        nivel_examen: Nivel del examen (A1, A2, etc.)
-
-    Returns:
-        str: Tarea generada para el examen
-    """
-    client = get_openai_client()
-    if client is None:
-        return "No se pudo generar la tarea. Servicio no disponible."
-
-    if not circuit_breaker.can_execute("openai"):
-        return "Servicio temporalmente no disponible. Inténtelo más tarde."
-
-    try:
-        # Prompt para generación de tarea
-        prompt_tarea = f"""
-        Crea una tarea de expresión escrita para el examen {tipo_examen} de nivel {nivel_examen}.
-        La tarea debe incluir:
-        1. Instrucciones claras y precisas
-        2. Contexto o situación comunicativa
-        3. Número de palabras requerido
-        4. Aspectos que se evaluarán
-
-        El formato debe ser idéntico al que aparece en los exámenes oficiales {tipo_examen}.
-        La tarea debe ser apropiada para el nivel {nivel_examen}, siguiendo los estándares oficiales.
-        """
-
-        def send_request():
-            return client.chat.completions.create(
-                model="gpt-4-turbo",
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "Eres un experto en exámenes oficiales de español como lengua extranjera."},
-                    {"role": "user", "content": prompt_tarea}
-                ]
-            )
-
-        # Usar sistema de reintentos
-        response = retry_with_backoff(send_request, max_retries=2)
-
-        # Registrar éxito
-        circuit_breaker.record_success("openai")
-        return response.choices[0].message.content
-
-    except Exception as e:
-        error_msg = f"Error al generar tarea de examen: {str(e)}"
-        logger.error(error_msg)
-        circuit_breaker.record_failure("openai")
-        return f"No se pudo generar la tarea. Error: {str(e)}"
-
-
-def generar_ejemplos_evaluados(tipo_examen, nivel_examen):
-    """
-    Genera ejemplos de textos evaluados para un examen específico.
-
-    Args:
-        tipo_examen: Tipo de examen (DELE, SIELE, etc.)
-        nivel_examen: Nivel del examen (A1, A2, etc.)
-
-    Returns:
-        str: Ejemplos de textos evaluados
-    """
-    client = get_openai_client()
-    if client is None:
-        return "No se pudieron generar ejemplos. Servicio no disponible."
-
-    if not circuit_breaker.can_execute("openai"):
-        return "Servicio temporalmente no disponible. Inténtelo más tarde."
-
-    try:
-        # Prompt para generación de ejemplos
-        prompt_ejemplos = f"""
-        Genera un ejemplo de texto de un estudiante para el examen {tipo_examen} nivel {nivel_examen},
-        junto con una evaluación detallada usando los criterios oficiales.
-        Muestra:
-        1. La tarea solicitada
-        2. El texto del estudiante (con algunos errores típicos de ese nivel)
-        3. Evaluación punto por punto según los criterios oficiales
-        4. Puntuación desglosada y comentarios
-        """
-
-        def send_request():
-            return client.chat.completions.create(
-                model="gpt-4-turbo",
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "Eres un evaluador experto de exámenes oficiales de español."},
-                    {"role": "user", "content": prompt_ejemplos}
-                ]
-            )
-
-        # Usar sistema de reintentos
-        response = retry_with_backoff(send_request, max_retries=2)
-
-        # Registrar éxito
-        circuit_breaker.record_success("openai")
-        return response.choices[0].message.content
-
-    except Exception as e:
-        error_msg = f"Error al generar ejemplos evaluados: {str(e)}"
-        logger.error(error_msg)
-        circuit_breaker.record_failure("openai")
-        # --- 1. BASE DE DATOS DE RECURSOS EDUCATIVOS ---
-        return f"No se pudieron generar ejemplos. Error: {str(e)}"
-
-
-# Base de datos simplificada de recursos por niveles y categorías
-RECURSOS_DB = {
-    "A1-A2": {
-        "Gramática": [
-            {"título": "Presente de indicativo", "tipo": "Ficha",
-                "url": "https://www.profedeele.es/gramatica/presente-indicativo/", "nivel": "A1"},
-            {"título": "Los artículos en español", "tipo": "Vídeo",
-                "url": "https://www.youtube.com/watch?v=example1", "nivel": "A1"},
-            {"título": "Ser y estar", "tipo": "Ejercicios",
-                "url": "https://aprenderespanol.org/ejercicios/ser-estar", "nivel": "A2"},
-            {"título": "Pretérito indefinido", "tipo": "Explicación",
-                "url": "https://www.cervantes.es/gramatica/indefinido", "nivel": "A2"}
-        ],
-        "Léxico": [
-            {"título": "Vocabulario básico", "tipo": "Ficha",
-                "url": "https://www.spanishdict.com/vocabulario-basico", "nivel": "A1"},
-            {"título": "Alimentos y comidas", "tipo": "Tarjetas",
-                "url": "https://quizlet.com/es/alimentos", "nivel": "A1"},
-            {"título": "La ciudad", "tipo": "Podcast",
-                "url": "https://spanishpod101.com/la-ciudad", "nivel": "A2"}
-        ],
-        "Cohesión": [
-            {"título": "Conectores básicos", "tipo": "Guía",
-                "url": "https://www.lingolia.com/es/conectores-basicos", "nivel": "A2"},
-            {"título": "Organizar ideas", "tipo": "Ejercicios",
-                "url": "https://www.todo-claro.com/organizacion", "nivel": "A2"}
-        ],
-        "Registro": [
-            {"título": "Saludos formales e informales", "tipo": "Vídeo",
-                "url": "https://www.youtube.com/watch?v=example2", "nivel": "A1"},
-            {"título": "Peticiones corteses", "tipo": "Diálogos",
-                "url": "https://www.lingoda.com/es/cortesia", "nivel": "A2"}
-        ]
-    },
-    "B1-B2": {
-        "Gramática": [
-            {"título": "Subjuntivo presente", "tipo": "Guía",
-                "url": "https://www.profedeele.es/subjuntivo-presente/", "nivel": "B1"},
-            {"título": "Estilo indirecto", "tipo": "Ejercicios",
-                "url": "https://www.cervantes.es/estilo-indirecto", "nivel": "B2"}
-        ],
-        "Léxico": [
-            {"título": "Expresiones idiomáticas", "tipo": "Podcast",
-                "url": "https://spanishpod101.com/expresiones", "nivel": "B1"},
-            {"título": "Vocabulario académico", "tipo": "Glosario",
-                "url": "https://cvc.cervantes.es/vocabulario-academico", "nivel": "B2"}
-        ],
-        "Cohesión": [
-            {"título": "Marcadores discursivos", "tipo": "Guía",
-                "url": "https://www.cervantes.es/marcadores", "nivel": "B1"},
-            {"título": "Conectores argumentativos", "tipo": "Ejercicios",
-                "url": "https://www.todo-claro.com/conectores", "nivel": "B2"}
-        ],
-        "Registro": [
-            {"título": "Lenguaje formal e informal", "tipo": "Curso",
-                "url": "https://www.coursera.org/spanish-registers", "nivel": "B1"},
-            {"título": "Comunicación profesional", "tipo": "Ejemplos",
-                "url": "https://www.cervantes.es/comunicacion-profesional", "nivel": "B2"}
-        ]
-    },
-    "C1-C2": {
-        "Gramática": [
-            {"título": "Construcciones pasivas", "tipo": "Análisis",
-                "url": "https://www.profedeele.es/pasivas-avanzadas/", "nivel": "C1"},
-            {"título": "Subordinadas complejas", "tipo": "Guía",
-                "url": "https://www.cervantes.es/subordinadas", "nivel": "C2"}
-        ],
-        "Léxico": [
-            {"título": "Lenguaje académico", "tipo": "Corpus",
-                "url": "https://www.rae.es/corpus-academico", "nivel": "C1"},
-            {"título": "Variantes dialectales", "tipo": "Curso",
-                "url": "https://www.coursera.org/variantes-espanol", "nivel": "C2"}
-        ],
-        "Cohesión": [
-            {"título": "Estructura textual avanzada", "tipo": "Manual",
-                "url": "https://www.uned.es/estructura-textual", "nivel": "C1"},
-            {"título": "Análisis del discurso", "tipo": "Investigación",
-                "url": "https://cvc.cervantes.es/analisis-discurso", "nivel": "C2"}
-        ],
-        "Registro": [
-            {"título": "Pragmática intercultural", "tipo": "Seminario",
-                "url": "https://www.cervantes.es/pragmatica", "nivel": "C1"},
-            {"título": "Lenguaje literario", "tipo": "Análisis",
-                "url": "https://www.rae.es/lenguaje-literario", "nivel": "C2"}
-        ]
-    }
-}
-# --- 1. COMPONENTES DE UI REUTILIZABLES ---
+    # --- 1. COMPONENTES DE UI REUTILIZABLES ---
 
 
 def ui_header():
@@ -2627,7 +2808,7 @@ def ui_header():
 
 def ui_user_info_form(form_key="form_user_info"):
     """
-    Formulario mejorado para obtener información básica del usuario.
+    Formulario para obtener información básica del usuario.
 
     Args:
         form_key: Clave única para el formulario
@@ -2635,7 +2816,6 @@ def ui_user_info_form(form_key="form_user_info"):
     Returns:
         dict: Datos del usuario (nombre, nivel)
     """
-    user_data = None
     with st.form(key=form_key):
         col1, col2 = st.columns(2)
 
@@ -2680,9 +2860,9 @@ def ui_user_info_form(form_key="form_user_info"):
             set_session_var("nivel_estudiante",
                             nivel_map.get(nivel, "intermedio"))
 
-            user_data = {"nombre": nombre, "nivel": nivel}
+            return {"nombre": nombre, "nivel": nivel}
 
-    return user_data
+        return None
 
 
 def ui_idioma_correcciones_tipo():
@@ -2788,7 +2968,7 @@ def ui_empty_placeholder():
 
 def ui_countdown_timer(total_seconds, start_time=None):
     """
-    Muestra un temporizador de cuenta regresiva mejorado con manejo de errores.
+    Muestra un temporizador de cuenta regresiva.
 
     Args:
         total_seconds: Tiempo total en segundos
@@ -2797,74 +2977,45 @@ def ui_countdown_timer(total_seconds, start_time=None):
     Returns:
         dict: Estado del temporizador
     """
-    try:
-        # Manejar el caso donde total_seconds es None o no válido
-        if total_seconds is None or not isinstance(total_seconds, (int, float)):
-            logger.warning(
-                f"Tiempo total no válido: {total_seconds}, usando valor por defecto")
-            total_seconds = 45 * 60  # 45 minutos por defecto
+    # Manejar el caso donde total_seconds es None
+    if total_seconds is None:
+        total_seconds = 0  # Usar 0 como valor por defecto
 
-        # Asegurar que total_seconds sea un número positivo
-        total_seconds = max(0, float(total_seconds))
+    if start_time is None:
+        start_time = time.time()
 
-        if start_time is None:
-            start_time = time.time()
+    # Calcular tiempo transcurrido
+    tiempo_transcurrido = time.time() - start_time
+    tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
 
-        # Asegurar que start_time sea un número válido
-        if not isinstance(start_time, (int, float)):
-            logger.warning(
-                f"Tiempo de inicio no válido: {start_time}, usando tiempo actual")
-            start_time = time.time()
+    # Formatear tiempo restante
+    minutos = int(tiempo_restante_segundos // 60)
+    segundos = int(tiempo_restante_segundos % 60)
+    tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
 
-        # Calcular tiempo transcurrido
-        tiempo_actual = time.time()
-        tiempo_transcurrido = tiempo_actual - start_time
-        tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
+    # Calcular porcentaje (evitar división por cero)
+    if total_seconds > 0:
+        porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+    else:
+        porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
 
-        # Formatear tiempo restante
-        minutos = int(tiempo_restante_segundos // 60)
-        segundos = int(tiempo_restante_segundos % 60)
-        tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
+    porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
 
-        # Calcular porcentaje (evitar división por cero)
-        if total_seconds > 0:
-            porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
-        else:
-            porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
+    # Determinar color según tiempo restante
+    if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
+        color = "normal"  # Verde/Normal
+    elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
+        color = "warning"  # Amarillo/Advertencia
+    else:  # Menos del 25%
+        color = "error"  # Rojo/Error
 
-        porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
-
-        # Determinar color según tiempo restante
-        if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
-            color = "normal"  # Verde/Normal
-        elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
-            color = "warning"  # Amarillo/Advertencia
-        else:  # Menos del 25%
-            color = "error"  # Rojo/Error
-
-        # Retornar el estado completo del temporizador
-        return {
-            "tiempo_restante": tiempo_restante_segundos,
-            "tiempo_formateado": tiempo_formateado,
-            "porcentaje": porcentaje,
-            "color": color,
-            "terminado": tiempo_restante_segundos <= 0,
-            "start_time": start_time,  # Incluir el tiempo de inicio para referencia
-            "total_seconds": total_seconds,  # Incluir el tiempo total para referencia
-            "tiempo_actual": tiempo_actual  # Incluir el tiempo actual para depuración
-        }
-
-    except Exception as e:
-        # En caso de error, devolver un estado por defecto para evitar que la aplicación falle
-        logger.error(f"Error en temporizador: {str(e)}")
-        return {
-            "tiempo_restante": 0,
-            "tiempo_formateado": "00:00",
-            "porcentaje": 1,
-            "color": "error",
-            "terminado": True,
-            "error": str(e)  # Incluir el mensaje de error para depuración
-        }
+    return {
+        "tiempo_restante": tiempo_restante_segundos,
+        "tiempo_formateado": tiempo_formateado,
+        "porcentaje": porcentaje,
+        "color": color,
+        "terminado": tiempo_restante_segundos <= 0
+    }
 
 
 def ui_show_correction_results(result, show_export=True):
@@ -3097,6 +3248,8 @@ def ui_show_recommendations(errores_obj, analisis_contextual, nivel, idioma):
                     with solucion_tab:
                         st.markdown(f"#### Solución del ejercicio:")
                         st.markdown(ejercicio.get('solucion', ''))
+
+# La función debe estar fuera del bloque "with", con indentación correcta
 
 
 def ui_export_options(data):
@@ -3358,88 +3511,9 @@ def ui_feedback_form():
                 }
 
             return None
-
-
-def handle_exception(func_name, exception, show_user=True):
-    """
-    Función de utilidad para manejar excepciones de manera consistente.
-
-    Args:
-        func_name: Nombre de la función donde ocurrió el error
-        exception: La excepción capturada
-        show_user: Si se debe mostrar un mensaje al usuario
-
-    Returns:
-        None
-    """
-    error_msg = f"Error en {func_name}: {str(exception)}"
-    logger.error(error_msg)
-    logger.error(traceback.format_exc())
-
-    if show_user:
-        st.error(f"⚠️ {error_msg}")
-        with st.expander("Detalles técnicos", expanded=False):
-            st.code(traceback.format_exc())
-
-    return None
-
-
-def ui_tooltip(text, tooltip):
-    """
-    Muestra un texto con tooltip al pasar el ratón.
-
-    Args:
-        text: Texto a mostrar
-        tooltip: Texto del tooltip
-    """
-    st.markdown(f"""
-    <span title="{tooltip}" style="border-bottom: 1px dotted #000; cursor: help;">
-        {text}
-    </span>
-    """, unsafe_allow_html=True)
-
-
-def ui_feedback_form():
-    """
-    Muestra un formulario de feedback para el usuario.
-
-    Returns:
-        dict: Datos del feedback o None si no se envía
-    """
-    with st.expander("📝 Danos tu opinión", expanded=False):
-        with st.form(key="feedback_form"):
-            st.markdown("### Nos gustaría conocer tu opinión")
-
-            rating = st.slider(
-                "¿Cómo valorarías la utilidad de esta herramienta?",
-                min_value=1,
-                max_value=5,
-                value=4,
-                help="1 = Poco útil, 5 = Muy útil"
-            )
-
-            feedback_text = st.text_area(
-                "Comentarios o sugerencias:",
-                height=100,
-                help="¿Qué podríamos mejorar?"
-            )
-
-            submit = st.form_submit_button("Enviar feedback")
-
-            if submit:
-                # En una implementación real, aquí se enviaría el feedback a una base de datos
-                ui_success_message("¡Gracias por tu feedback!")
-                return {
-                    "rating": rating,
-                    "feedback": feedback_text,
-                    "timestamp": datetime.now().isoformat()
-                }
-
-            return None
         # --- 1. PESTAÑA DE CORRECCIÓN DE TEXTO ---
 
 
-# Actualización del llamado a la función en tab_corregir
 def tab_corregir():
     """Implementación de la pestaña de corrección de texto."""
     # Limpiar variables de simulacro si venimos de otra pestaña
@@ -3449,6 +3523,7 @@ def tab_corregir():
         set_session_var("duracion_simulacro", None)
     if "tarea_simulacro" in st.session_state:
         set_session_var("tarea_simulacro", None)
+
     st.header("📝 Corrección de texto")
 
     with st.expander("ℹ️ Información sobre el análisis contextual", expanded=False):
@@ -3469,7 +3544,7 @@ def tab_corregir():
     if not user_data:
         if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
             st.info("👆 Por favor, introduce tu nombre y nivel para comenzar.")
-        return
+            return
 
     # GENERADOR DE CONSIGNAS
     with st.expander("¿No sabes qué escribir? Yo te ayudo...", expanded=False):
@@ -3541,49 +3616,51 @@ def tab_corregir():
         # Guardar sin conflicto (dentro del formulario, pero fuera de la definición del widget)
         set_session_var("info_adicional_corregir", info_adicional)
 
-        # Botón de envío (corregida la indentación)
+        # Botón de envío
         enviar = st.form_submit_button("Corregir", use_container_width=True)
 
-    # PROCESAMIENTO DEL FORMULARIO
-    if enviar:
-        if not texto.strip():
-            st.warning("Por favor, escribe un texto para corregir.")
-        else:
-            # Guardar el texto para posible uso futuro
-            set_session_var("ultimo_texto", texto)
-
-            with st.spinner("Analizando texto y generando corrección contextual..."):
-                # Obtener los datos del usuario
-                nombre = get_session_var("usuario_actual", "")
-                nivel = user_data.get("nivel") if user_data else get_session_var(
-                    "nivel_estudiante", "intermedio")
-
-                # Obtener las opciones seleccionadas
-                idioma = options.get("idioma", "Español")
-                tipo_texto = options.get(
-                    "tipo_texto", "General/No especificado")
-                contexto_cultural = options.get(
-                    "contexto_cultural", "General/Internacional")
-
-                # Llamar a la función de corrección
-                resultado = corregir_texto(
-                    texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional
-                )
-
-                # Guardar el resultado para futuras referencias
-                set_session_var("correction_result", resultado)
-                set_session_var("last_correction_time",
-                                datetime.now().isoformat())
-
-            # Mostrar los resultados
-            if "error" not in resultado:
-                ui_show_correction_results(resultado)
+        # PROCESAMIENTO DEL FORMULARIO (dentro del form, será ejecutado solo cuando se envíe)
+        if enviar:
+            if not texto.strip():
+                st.warning("Por favor, escribe un texto para corregir.")
             else:
-                st.error(f"Error en la corrección: {resultado['error']}")
+                # Guardar el texto para posible uso futuro
+                set_session_var("ultimo_texto", texto)
 
-                # Mostrar sugerencia de reintentar
-                st.info(
-                    "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
+                with st.spinner("Analizando texto y generando corrección contextual..."):
+                    # Obtener los datos del usuario
+                    nombre = get_session_var("usuario_actual", "")
+                    nivel = user_data.get("nivel") if user_data else get_session_var(
+                        "nivel_estudiante", "intermedio")
+
+                    # Obtener las opciones seleccionadas
+                    idioma = options.get("idioma", "Español")
+                    tipo_texto = options.get(
+                        "tipo_texto", "General/No especificado")
+                    contexto_cultural = options.get(
+                        "contexto_cultural", "General/Internacional")
+
+                    # Llamar a la función de corrección
+                    resultado = corregir_texto(
+                        texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional
+                    )
+
+                    # Guardar el resultado para futuras referencias
+                    set_session_var("correction_result", resultado)
+                    set_session_var("last_correction_time",
+                                    datetime.now().isoformat())
+
+    # MOSTRAR RESULTADOS (fuera del form, para evitar rerun issues)
+    # Comprobar si hay resultados después de enviar el formulario
+    if enviar and texto.strip():
+        if "error" not in resultado:
+            ui_show_correction_results(resultado)
+        else:
+            st.error(f"Error en la corrección: {resultado['error']}")
+
+            # Mostrar sugerencia de reintentar
+            st.info(
+                "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
 
 # --- 2. FUNCIÓN DE VISUALIZACIÓN DE TEXTO TRANSCRITO ---
 
@@ -3599,7 +3676,7 @@ def visualizar_texto_manuscrito():
     texto_transcrito = st.session_state.ultimo_texto_transcrito
 
     # Mostrar texto transcrito
-    st.text_area(
+    texto_transcrito_editable = st.text_area(
         "Texto transcrito (puedes editarlo si hay errores):",
         value=texto_transcrito,
         height=200,
@@ -3611,15 +3688,13 @@ def visualizar_texto_manuscrito():
 
     # Botón para enviar a corrección
     if st.button("Enviar a corrección", key="corregir_texto_transcrito_btn"):
-        texto_final = st.session_state.texto_transcrito_editable
-
-        if not texto_final.strip():
+        if not texto_transcrito_editable.strip():
             st.warning(
                 "El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
             return
 
         # Guardar para futura referencia
-        set_session_var("ultimo_texto", texto_final)
+        set_session_var("ultimo_texto", texto_transcrito_editable)
 
         with st.spinner("Analizando texto transcrito..."):
             # Obtener datos necesarios
@@ -3628,7 +3703,7 @@ def visualizar_texto_manuscrito():
 
             # Llamar a la función de corrección
             resultado = corregir_texto(
-                texto_final, nombre, nivel, options["idioma"],
+                texto_transcrito_editable, nombre, nivel, options["idioma"],
                 options["tipo_texto"], options["contexto_cultural"],
                 "Texto transcrito de imagen manuscrita"
             )
@@ -3643,99 +3718,7 @@ def visualizar_texto_manuscrito():
         else:
             st.error(f"Error en la corrección: {resultado['error']}")
 
-# --- 3. FUNCIÓN DE CORRECCIÓN DE EXAMEN ---
-
-
-def corregir_examen(texto, tipo_examen, nivel_examen, tiempo_usado=None):
-    """
-    Corrige un texto de examen específico.
-
-    Args:
-        texto: Texto a corregir
-        tipo_examen: Tipo de examen
-        nivel_examen: Nivel del examen
-        tiempo_usado: Tiempo usado (opcional)
-
-    Returns:
-        dict: Resultado de la corrección
-    """
-    if not texto.strip():
-        return {"error": "El texto está vacío. Por favor, escribe una respuesta."}
-
-    # Guardar para futura referencia
-    set_session_var("ultimo_texto", texto)
-
-    # Obtener datos necesarios
-    nombre = get_session_var("usuario_actual", "Usuario")
-
-    # Mapear nivel del examen al formato de nivel de la aplicación
-    nivel_map = {
-        "A1": "Nivel principiante (A1-A2)",
-        "A2": "Nivel principiante (A1-A2)",
-        "B1": "Nivel intermedio (B1-B2)",
-        "B2": "Nivel intermedio (B1-B2)",
-        "C1": "Nivel avanzado (C1-C2)",
-        "C2": "Nivel avanzado (C1-C2)"
-    }
-    nivel = nivel_map.get(nivel_examen, "Nivel intermedio (B1-B2)")
-
-    # Construir información adicional
-    info_adicional = f"Examen {tipo_examen} nivel {nivel_examen}"
-    if tiempo_usado:
-        info_adicional += f" (Tiempo usado: {tiempo_usado})"
-
-    # Llamar a la función de corrección
-    resultado = corregir_texto(
-        texto, nombre, nivel, "Español", "Académico",
-        "Contexto académico", info_adicional
-    )
-
-    # Guardar resultado
-    set_session_var("correction_result", resultado)
-    set_session_var("last_correction_time", datetime.now().isoformat())
-    set_session_var("examen_result", resultado)
-
-    return resultado
-
-# --- 4. FUNCIÓN DE CORRECCIÓN DE DESCRIPCIÓN DE IMAGEN ---
-
-
-def corregir_descripcion_imagen(descripcion, tema_imagen, nivel):
-    """
-    Corrige una descripción de imagen.
-
-    Args:
-        descripcion: Texto de la descripción
-        tema_imagen: Tema de la imagen
-        nivel: Nivel del estudiante
-
-    Returns:
-        dict: Resultado de la corrección
-    """
-    if not descripcion.strip():
-        return {"error": "La descripción está vacía. Por favor, escribe una descripción."}
-
-    # Guardar para futura referencia
-    set_session_var("ultimo_texto", descripcion)
-
-    # Obtener datos necesarios
-    nombre = get_session_var("usuario_actual", "Usuario")
-
-    # Información adicional
-    info_adicional = f"Descripción de imagen sobre '{tema_imagen}'"
-
-    # Llamar a la función de corrección
-    resultado = corregir_texto(
-        descripcion, nombre, nivel, "Español", "Descriptivo",
-        "General/Internacional", info_adicional
-    )
-
-    # Guardar resultado
-    set_session_var("correction_result", resultado)
-    set_session_var("last_correction_time", datetime.now().isoformat())
-
-    return resultado
-# --- 1. PESTAÑA DE EXÁMENES ---
+# --- 3. PESTAÑA DE EXÁMENES ---
 
 
 def tab_examenes():
@@ -3813,7 +3796,6 @@ def modelo_examen_tab(tipo_examen, nivel_examen):
             st.markdown(tarea_modelo)
 
         # Área para que el estudiante escriba su respuesta
-        st.subheader("Tu respuesta:")
         respuesta_estudiante = st.text_area(
             "Escribe tu respuesta a la tarea aquí:",
             value=get_session_var("respuesta_modelo_examen", ""),
@@ -3848,17 +3830,20 @@ def modelo_examen_tab(tipo_examen, nivel_examen):
                     st.warning(
                         "Por favor, escribe una respuesta antes de enviar a corrección.")
 
-        with col2:
-            if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
-                # Reiniciar variables
-                set_session_var("tarea_modelo_generada", None)
-                set_session_var("respuesta_modelo_examen", "")
-                st.rerun()
+
+with col2:
+    if st.button("Generar nueva tarea", key="nueva_tarea_modelo"):
+        # Reiniciar variables
+        set_session_var("tarea_modelo_generada", None)
+        set_session_var("respuesta_modelo_examen", "")
+        st.rerun()
+
+# Definición de función fuera del bloque "with"
 
 
 def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
     """
-    Implementación mejorada de la pestaña de simulacro cronometrado.
+    Implementación de la pestaña de simulacro cronometrado.
 
     Args:
         tipo_examen: Tipo de examen seleccionado
@@ -3920,102 +3905,95 @@ def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
             # Obtener estado del temporizador
             timer_state = ui_countdown_timer(
                 duracion_simulacro, inicio_simulacro)
-
-            # Mostrar temporizador según el estado
-            if timer_state["color"] == "normal":
-                tiempo_restante_placeholder.info(
-                    f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
-            elif timer_state["color"] == "warning":
-                tiempo_restante_placeholder.warning(
-                    f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
-            else:
-                tiempo_restante_placeholder.error(
-                    f"⏱️ Tiempo agotado: {timer_state['tiempo_formateado']}")
-
-            # Mostrar la tarea
-            tarea_simulacro = get_session_var("tarea_simulacro")
-            with st.expander("Tarea del simulacro:", expanded=True):
-                st.markdown(tarea_simulacro)
-
-            # Área de texto para respuesta
-            simulacro_respuesta = st.text_area(
-                "Tu respuesta:",
-                value=get_session_var("simulacro_respuesta_texto", ""),
-                height=300,
-                key="simulacro_respuesta_area"
-            )
-
-            # Guardar respuesta en tiempo real
-            set_session_var("simulacro_respuesta_texto", simulacro_respuesta)
-
-            # Opciones para finalizar o reiniciar
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Finalizar y corregir", key="finalizar_simulacro"):
-                    if simulacro_respuesta.strip():
-                        # Calcular tiempo usado
-                        tiempo_final = time.time() - inicio_simulacro
-                        minutos_usados = int(tiempo_final // 60)
-                        segundos_usados = int(tiempo_final % 60)
-                        tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
-
-                        # Mostrar spinner durante la corrección
-                        with st.spinner("Analizando respuesta..."):
-                            # Corrección integrada (sin redirección)
-                            resultado = corregir_examen(
-                                simulacro_respuesta,
-                                tipo_examen,
-                                nivel_examen,
-                                tiempo_usado
-                            )
-
-                        # Limpiar variables de control
-                        set_session_var("inicio_simulacro", None)
-                        set_session_var("duracion_simulacro", None)
-                        set_session_var("tarea_simulacro", None)
-                        set_session_var("simulacro_respuesta_texto", "")
-
-                        # Mensaje de éxito
-                        st.success(f"Simulacro completado en {tiempo_usado}.")
-
-                        # Mostrar resultados directamente aquí
-                        if "error" not in resultado:
-                            ui_show_correction_results(resultado)
-                        else:
-                            st.error(
-                                f"Error en la corrección: {resultado['error']}")
-                    else:
-                        st.warning(
-                            "Por favor, escribe una respuesta antes de finalizar.")
-
-            with col2:
-                if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
-                    # Limpiar todas las variables del simulacro
-                    set_session_var("inicio_simulacro", None)
-                    set_session_var("duracion_simulacro", None)
-                    set_session_var("tarea_simulacro", None)
-                    set_session_var("simulacro_respuesta_texto", "")
-                    st.rerun()
-
-            # Verificar si se acabó el tiempo
-            if timer_state["terminado"]:
-                st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
-                # Guardar automáticamente (opcional)
-                st.info(
-                    "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
         except Exception as e:
             # Manejo genérico de errores
             handle_exception("simulacro_timer", e)
             st.error(f"Error en el temporizador del simulacro: {str(e)}")
+            timer_state = {"color": "error",
+                           "tiempo_formateado": "00:00", "terminado": True}
 
-            # Reiniciar el simulacro si hay un error crítico
-            set_session_var("inicio_simulacro", None)
-            set_session_var("duracion_simulacro", None)
-            set_session_var("tarea_simulacro", None)
+        # Mostrar temporizador según el estado
+        if timer_state["color"] == "normal":
+            tiempo_restante_placeholder.info(
+                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+        elif timer_state["color"] == "warning":
+            tiempo_restante_placeholder.warning(
+                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+        else:
+            tiempo_restante_placeholder.error(
+                f"⏱️ Tiempo agotado: {timer_state['tiempo_formateado']}")
 
-            # Botón para intentar de nuevo
-            if st.button("Intentar de nuevo", key="retry_simulacro"):
+        # Mostrar la tarea
+        tarea_simulacro = get_session_var("tarea_simulacro")
+        with st.expander("Tarea del simulacro:", expanded=True):
+            st.markdown(tarea_simulacro)
+
+        # Área de texto para respuesta
+        simulacro_respuesta = st.text_area(
+            "Tu respuesta:",
+            value=get_session_var("simulacro_respuesta_texto", ""),
+            height=300,
+            key="simulacro_respuesta_area"
+        )
+
+        # Guardar respuesta en tiempo real
+        set_session_var("simulacro_respuesta_texto", simulacro_respuesta)
+
+        # Opciones para finalizar o reiniciar
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Finalizar y corregir", key="finalizar_simulacro"):
+                if simulacro_respuesta.strip():
+                    # Calcular tiempo usado
+                    tiempo_final = time.time() - inicio_simulacro
+                    minutos_usados = int(tiempo_final // 60)
+                    segundos_usados = int(tiempo_final % 60)
+                    tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
+
+                    # Mostrar spinner durante la corrección
+                    with st.spinner("Analizando respuesta..."):
+                        # Corrección integrada (sin redirección)
+                        resultado = corregir_examen(
+                            simulacro_respuesta,
+                            tipo_examen,
+                            nivel_examen,
+                            tiempo_usado
+                        )
+
+                    # Limpiar variables de control
+                    set_session_var("inicio_simulacro", None)
+                    set_session_var("duracion_simulacro", None)
+                    set_session_var("tarea_simulacro", None)
+                    set_session_var("simulacro_respuesta_texto", "")
+
+                    # Mensaje de éxito
+                    st.success(f"Simulacro completado en {tiempo_usado}.")
+
+                    # Mostrar resultados directamente aquí
+                    if "error" not in resultado:
+                        ui_show_correction_results(resultado)
+                    else:
+                        st.error(
+                            f"Error en la corrección: {resultado['error']}")
+                else:
+                    st.warning(
+                        "Por favor, escribe una respuesta antes de finalizar.")
+
+        with col2:
+            if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
+                # Limpiar todas las variables del simulacro
+                set_session_var("inicio_simulacro", None)
+                set_session_var("duracion_simulacro", None)
+                set_session_var("tarea_simulacro", None)
+                set_session_var("simulacro_respuesta_texto", "")
                 st.rerun()
+
+        # Verificar si se acabó el tiempo
+        if timer_state["terminado"]:
+            st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
+            # Guardar automáticamente (opcional)
+            st.info(
+                "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
 
 
 def criterios_evaluacion_tab(tipo_examen, nivel_examen):
@@ -4041,7 +4019,8 @@ def criterios_evaluacion_tab(tipo_examen, nivel_examen):
         with st.spinner("Generando ejemplos..."):
             ejemplos = generar_ejemplos_evaluados(tipo_examen, nivel_examen)
             st.markdown(ejemplos)
-            # --- 1. PESTAÑA DE HERRAMIENTAS COMPLEMENTARIAS ---
+
+# --- 4. PESTAÑA DE HERRAMIENTAS COMPLEMENTARIAS ---
 
 
 def tab_herramientas():
@@ -4053,6 +4032,7 @@ def tab_herramientas():
         set_session_var("duracion_simulacro", None)
     if "tarea_simulacro" in st.session_state:
         set_session_var("tarea_simulacro", None)
+
     st.header("🔧 Herramientas complementarias")
 
     # Verificar si hay usuario
@@ -4088,8 +4068,6 @@ def tab_herramientas():
     # --- Subpestaña 4: Texto manuscrito ---
     with subtabs[3]:
         herramienta_texto_manuscrito()
-
-# --- 2. HERRAMIENTAS INDIVIDUALES ---
 
 
 def herramienta_analisis_complejidad():
@@ -4276,6 +4254,7 @@ def herramienta_biblioteca_recursos():
                         response = client.chat.completions.create(
                             model="gpt-4-turbo",
                             temperature=0.5,
+                            response_format={"type": "json_object"},
                             messages=[
                                 {"role": "system", "content": "Eres un especialista en recursos didácticos para aprendizaje de español como lengua extranjera."},
                                 {"role": "user", "content": prompt_recursos}
@@ -4328,7 +4307,6 @@ def herramienta_biblioteca_recursos():
         else:
             st.info(
                 f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
-            # --- 3. HERRAMIENTAS INDIVIDUALES (CONTINUACIÓN) ---
 
 
 def herramienta_descripcion_imagenes():
@@ -4376,7 +4354,7 @@ def herramienta_descripcion_imagenes():
             if imagen_url:
                 # Mostrar la imagen
                 st.image(
-                    imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_container_width=True)
+                    imagen_url, caption=f"Imagen generada sobre: {tema_imagen}", use_column_width=True)
 
                 # Guardar en session_state para usos futuros
                 set_session_var("ultima_imagen_url", imagen_url)
@@ -4387,7 +4365,6 @@ def herramienta_descripcion_imagenes():
                     st.markdown(descripcion)
 
                 # Área para que el estudiante escriba su descripción
-                st.subheader("Tu descripción:")
                 descripcion_estudiante = st.text_area(
                     "Describe la imagen con tus propias palabras:",
                     height=200,
@@ -4485,7 +4462,7 @@ def herramienta_texto_manuscrito():
                     st.error(
                         texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
 
-# --- 4. PESTAÑA DE PROGRESO ---
+# --- 5. PESTAÑA DE PROGRESO ---
 
 
 def tab_progreso():
@@ -4497,6 +4474,7 @@ def tab_progreso():
         set_session_var("duracion_simulacro", None)
     if "tarea_simulacro" in st.session_state:
         set_session_var("tarea_simulacro", None)
+
     st.header("📊 Seguimiento del progreso")
 
     # Verificar si hay usuario
@@ -4522,7 +4500,7 @@ def tab_progreso():
 
 
 def estadisticas_progreso_tab():
-    """Implementación de la pestaña de estadísticas de progreso con manejo de errores mejorado."""
+    """Implementación de la pestaña de estadísticas de progreso."""
     nombre_estudiante = st.text_input(
         "Nombre y apellido del estudiante para ver progreso:",
         value=get_session_var("usuario_actual", ""),
@@ -4573,68 +4551,49 @@ def estadisticas_progreso_tab():
                         primera = df.iloc[0]
                         ultima = df.iloc[-1]
 
-                        # Comparar total de errores con manejo de valores vacíos
-                        if "Total Errores" in primera and "Total Errores" in ultima:
-                            # Convertir a entero con manejo de valores vacíos
-                            primera_errores = primera['Total Errores']
-                            ultima_errores = ultima['Total Errores']
+                        # Comparar total de errores - asegurar que son numéricos
+                        primera_errores = float(
+                            primera.get('Total Errores', 0))
+                        ultima_errores = float(ultima.get('Total Errores', 0))
+                        dif_errores = ultima_errores - primera_errores
 
-                            # Verificar si los valores no están vacíos y convertirlos a enteros de forma segura
-                            try:
-                                primera_errores = 0 if primera_errores == '' else int(
-                                    primera_errores)
-                                ultima_errores = 0 if ultima_errores == '' else int(
-                                    ultima_errores)
-                                dif_errores = ultima_errores - primera_errores
+                        if dif_errores < 0:
+                            st.success(
+                                f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                        elif dif_errores > 0:
+                            st.warning(
+                                f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                        else:
+                            st.info(
+                                "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
 
-                                if dif_errores < 0:
+                        # Identificar área con mayor progreso y área que necesita más trabajo
+                        categorias = [
+                            'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
+                        categorias_existentes = [
+                            cat for cat in categorias if cat in df.columns]
+
+                        if categorias_existentes:
+                            difs = {}
+                            for cat in categorias_existentes:
+                                if cat in primera and cat in ultima:
+                                    # Asegurar conversión a numérico
+                                    difs[cat] = float(ultima.get(
+                                        cat, 0)) - float(primera.get(cat, 0))
+
+                            if difs:
+                                mejor_area = min(
+                                    difs.items(), key=lambda x: x[1])[0]
+                                peor_area = max(
+                                    difs.items(), key=lambda x: x[1])[0]
+
+                                if difs[mejor_area] < 0:
                                     st.success(
-                                        f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                                elif dif_errores > 0:
+                                        f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+
+                                if difs[peor_area] > 0:
                                     st.warning(
-                                        f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                                else:
-                                    st.info(
-                                        "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
-                            except (ValueError, TypeError):
-                                st.info(
-                                    "No se pueden comparar los errores debido a datos incompletos o incorrectos.")
-
-                            # Identificar área con mayor progreso y área que necesita más trabajo
-                            categorias = [
-                                'Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']
-                            categorias_existentes = [
-                                cat for cat in categorias if cat in df.columns]
-
-                            if categorias_existentes:
-                                try:
-                                    difs = {}
-                                    for cat in categorias_existentes:
-                                        if cat in primera and cat in ultima:
-                                            # Convertir de forma segura con manejo de valores vacíos
-                                            val_primera = 0 if primera[cat] == '' else int(
-                                                primera[cat])
-                                            val_ultima = 0 if ultima[cat] == '' else int(
-                                                ultima[cat])
-                                            difs[cat] = val_ultima - \
-                                                val_primera
-
-                                    if difs:
-                                        mejor_area = min(
-                                            difs.items(), key=lambda x: x[1])[0]
-                                        peor_area = max(
-                                            difs.items(), key=lambda x: x[1])[0]
-
-                                        if difs[mejor_area] < 0:
-                                            st.success(
-                                                f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
-
-                                        if difs[peor_area] > 0:
-                                            st.warning(
-                                                f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
-                                except (ValueError, TypeError) as e:
-                                    st.info(
-                                        f"No se puede realizar el análisis detallado debido a datos incompletos.")
+                                        f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
                 else:
                     st.info(
                         f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
@@ -4753,7 +4712,8 @@ def plan_estudio_tab():
                     st.error(resultado["error"])
             else:
                 st.info("No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
-                # --- 1. PESTAÑA DE HISTORIAL ---
+
+# --- 6. PESTAÑA DE HISTORIAL ---
 
 
 def tab_historial():
@@ -4765,6 +4725,7 @@ def tab_historial():
         set_session_var("duracion_simulacro", None)
     if "tarea_simulacro" in st.session_state:
         set_session_var("tarea_simulacro", None)
+
     st.header("📚 Historial de correcciones")
 
     # Verificar si hay usuario
@@ -4922,178 +4883,7 @@ def tab_historial():
         st.error(f"Error al cargar el historial: {str(e)}")
         with st.expander("Detalles del error"):
             st.code(traceback.format_exc())
-
-# --- 2. FUNCIONES DE BÚSQUEDA Y FILTRADO DE HISTORIAL ---
-
-
-def buscar_correccion_por_texto(texto_busqueda, max_resultados=5):
-    """
-    Busca correcciones que contengan un texto específico.
-
-    Args:
-        texto_busqueda: Texto a buscar
-        max_resultados: Número máximo de resultados a devolver
-
-    Returns:
-        list: Lista de correcciones que coinciden con la búsqueda
-    """
-    if sheets_connection is None or sheets_connection["corrections"] is None:
-        return []
-
-    if not texto_busqueda:
-        return []
-
-    try:
-        # Obtener todas las correcciones
-        correcciones = sheets_connection["corrections"].get_all_records()
-
-        # Convertir a dataframe
-        df_correcciones = pd.DataFrame(correcciones)
-
-        # Buscar en el texto original y en las correcciones
-        texto_col = 'texto' if 'texto' in df_correcciones.columns else 'Texto'
-        resultado_busqueda = []
-
-        if texto_col in df_correcciones.columns:
-            # Buscar en el texto original
-            for idx, row in df_correcciones.iterrows():
-                texto_original = str(row.get(texto_col, "")).lower()
-                if texto_busqueda.lower() in texto_original:
-                    resultado_busqueda.append(row.to_dict())
-                    if len(resultado_busqueda) >= max_resultados:
-                        break
-
-        return resultado_busqueda
-    except Exception as e:
-        logger.error(f"Error en búsqueda de correcciones: {str(e)}")
-        return []
-
-
-def filtrar_correcciones_por_fecha(fecha_inicio, fecha_fin):
-    """
-    Filtra correcciones por un rango de fechas.
-
-    Args:
-        fecha_inicio: Fecha de inicio (datetime)
-        fecha_fin: Fecha de fin (datetime)
-
-    Returns:
-        pd.DataFrame: DataFrame con las correcciones filtradas
-    """
-    if sheets_connection is None or sheets_connection["corrections"] is None:
-        return None
-
-    try:
-        # Obtener todas las correcciones
-        correcciones = sheets_connection["corrections"].get_all_records()
-
-        # Convertir a dataframe
-        df_correcciones = pd.DataFrame(correcciones)
-
-        # Determinar la columna de fecha
-        fecha_col = None
-        for col in df_correcciones.columns:
-            if 'fecha' in col.lower().strip():
-                fecha_col = col
-                break
-
-        if fecha_col is None:
-            logger.error("No se encontró columna de fecha en las correcciones")
-            return None
-
-        # Convertir fechas a datetime
-        df_correcciones[fecha_col] = pd.to_datetime(
-            df_correcciones[fecha_col], errors='coerce')
-
-        # Filtrar por rango de fechas
-        mask = (df_correcciones[fecha_col] >= fecha_inicio) & (
-            df_correcciones[fecha_col] <= fecha_fin)
-        df_filtrado = df_correcciones.loc[mask]
-
-        return df_filtrado
-    except Exception as e:
-        logger.error(f"Error al filtrar correcciones por fecha: {str(e)}")
-        return None
-
-
-def generar_estadisticas_globales():
-    """
-    Genera estadísticas globales de todas las correcciones.
-
-    Returns:
-        dict: Estadísticas globales
-    """
-    if sheets_connection is None or sheets_connection["tracking"] is None:
-        return None
-
-    try:
-        # Obtener todos los datos de seguimiento
-        datos_seguimiento = sheets_connection["tracking"].get_all_records()
-
-        # Convertir a dataframe
-        df = pd.DataFrame(datos_seguimiento)
-
-        # Inicializar estadísticas
-        estadisticas = {
-            "total_correcciones": len(df),
-            "total_estudiantes": 0,
-            "promedio_errores": 0,
-            "tipos_error": {},
-            "niveles": {},
-            "mejoras": {}
-        }
-
-        # Calcular estadísticas si hay datos
-        if not df.empty:
-            # Total de estudiantes únicos
-            if 'Nombre' in df.columns:
-                estadisticas["total_estudiantes"] = df['Nombre'].nunique()
-
-            # Promedio de errores totales
-            if 'Total Errores' in df.columns:
-                estadisticas["promedio_errores"] = df['Total Errores'].mean()
-
-            # Distribución de tipos de error
-            for tipo in ['Errores Gramática', 'Errores Léxico', 'Errores Puntuación', 'Errores Estructura']:
-                if tipo in df.columns:
-                    estadisticas["tipos_error"][tipo] = df[tipo].sum()
-
-            # Distribución por niveles
-            if 'Nivel' in df.columns:
-                for nivel, grupo in df.groupby('Nivel'):
-                    estadisticas["niveles"][nivel] = len(grupo)
-
-            # Cálculo de mejoras (para estudiantes con más de una corrección)
-            if 'Nombre' in df.columns and 'Total Errores' in df.columns and 'Fecha' in df.columns:
-                df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-
-                # Estudiantes con múltiples correcciones
-                estudiantes_multiples = df['Nombre'].value_counts()
-                estudiantes_multiples = estudiantes_multiples[estudiantes_multiples > 1].index.tolist(
-                )
-
-                mejoras_count = 0
-                for estudiante in estudiantes_multiples:
-                    df_est = df[df['Nombre'] ==
-                                estudiante].sort_values('Fecha')
-                    if len(df_est) >= 2:
-                        primera = df_est.iloc[0]['Total Errores']
-                        ultima = df_est.iloc[-1]['Total Errores']
-                        if ultima < primera:
-                            mejoras_count += 1
-
-                if estudiantes_multiples:
-                    estadisticas["mejoras"] = {
-                        "total_estudiantes_multiples": len(estudiantes_multiples),
-                        "estudiantes_con_mejora": mejoras_count,
-                        "porcentaje_mejora": (mejoras_count / len(estudiantes_multiples)) * 100 if estudiantes_multiples else 0
-                    }
-
-        return estadisticas
-    except Exception as e:
-        logger.error(f"Error al generar estadísticas globales: {str(e)}")
-        return None
-    # --- 1. CONFIGURACIÓN DE LA APLICACIÓN PRINCIPAL ---
+            # --- 1. CONFIGURACIÓN DE LA APLICACIÓN PRINCIPAL ---
 
 
 def main():
@@ -5203,9 +4993,8 @@ def init_app():
             else:
                 st.success(f"✅ {service.title()}: Disponible")
 
+
 # --- 4. PUNTO DE ENTRADA PRINCIPAL ---
-
-
 # Llamar a la inicialización
 init_app()
 
