@@ -2788,7 +2788,7 @@ def ui_empty_placeholder():
 
 def ui_countdown_timer(total_seconds, start_time=None):
     """
-    Muestra un temporizador de cuenta regresiva.
+    Muestra un temporizador de cuenta regresiva mejorado con manejo de errores.
 
     Args:
         total_seconds: Tiempo total en segundos
@@ -2797,45 +2797,74 @@ def ui_countdown_timer(total_seconds, start_time=None):
     Returns:
         dict: Estado del temporizador
     """
-    # Manejar el caso donde total_seconds es None
-    if total_seconds is None:
-        total_seconds = 0  # Usar 0 como valor por defecto
+    try:
+        # Manejar el caso donde total_seconds es None o no válido
+        if total_seconds is None or not isinstance(total_seconds, (int, float)):
+            logger.warning(
+                f"Tiempo total no válido: {total_seconds}, usando valor por defecto")
+            total_seconds = 45 * 60  # 45 minutos por defecto
 
-    if start_time is None:
-        start_time = time.time()
+        # Asegurar que total_seconds sea un número positivo
+        total_seconds = max(0, float(total_seconds))
 
-    # Calcular tiempo transcurrido
-    tiempo_transcurrido = time.time() - start_time
-    tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
+        if start_time is None:
+            start_time = time.time()
 
-    # Formatear tiempo restante
-    minutos = int(tiempo_restante_segundos // 60)
-    segundos = int(tiempo_restante_segundos % 60)
-    tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
+        # Asegurar que start_time sea un número válido
+        if not isinstance(start_time, (int, float)):
+            logger.warning(
+                f"Tiempo de inicio no válido: {start_time}, usando tiempo actual")
+            start_time = time.time()
 
-    # Calcular porcentaje (evitar división por cero)
-    if total_seconds > 0:
-        porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
-    else:
-        porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
+        # Calcular tiempo transcurrido
+        tiempo_actual = time.time()
+        tiempo_transcurrido = tiempo_actual - start_time
+        tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
 
-    porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
+        # Formatear tiempo restante
+        minutos = int(tiempo_restante_segundos // 60)
+        segundos = int(tiempo_restante_segundos % 60)
+        tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
 
-    # Determinar color según tiempo restante
-    if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
-        color = "normal"  # Verde/Normal
-    elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
-        color = "warning"  # Amarillo/Advertencia
-    else:  # Menos del 25%
-        color = "error"  # Rojo/Error
+        # Calcular porcentaje (evitar división por cero)
+        if total_seconds > 0:
+            porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+        else:
+            porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
 
-    return {
-        "tiempo_restante": tiempo_restante_segundos,
-        "tiempo_formateado": tiempo_formateado,
-        "porcentaje": porcentaje,
-        "color": color,
-        "terminado": tiempo_restante_segundos <= 0
-    }
+        porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
+
+        # Determinar color según tiempo restante
+        if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
+            color = "normal"  # Verde/Normal
+        elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
+            color = "warning"  # Amarillo/Advertencia
+        else:  # Menos del 25%
+            color = "error"  # Rojo/Error
+
+        # Retornar el estado completo del temporizador
+        return {
+            "tiempo_restante": tiempo_restante_segundos,
+            "tiempo_formateado": tiempo_formateado,
+            "porcentaje": porcentaje,
+            "color": color,
+            "terminado": tiempo_restante_segundos <= 0,
+            "start_time": start_time,  # Incluir el tiempo de inicio para referencia
+            "total_seconds": total_seconds,  # Incluir el tiempo total para referencia
+            "tiempo_actual": tiempo_actual  # Incluir el tiempo actual para depuración
+        }
+
+    except Exception as e:
+        # En caso de error, devolver un estado por defecto para evitar que la aplicación falle
+        logger.error(f"Error en temporizador: {str(e)}")
+        return {
+            "tiempo_restante": 0,
+            "tiempo_formateado": "00:00",
+            "porcentaje": 1,
+            "color": "error",
+            "terminado": True,
+            "error": str(e)  # Incluir el mensaje de error para depuración
+        }
 
 
 def ui_show_correction_results(result, show_export=True):
@@ -3482,78 +3511,79 @@ def tab_corregir():
                     set_session_var("usar_consigna_como_texto", True)
                     st.rerun()  # Recargar para actualizar el formulario
 
+    # FORMULARIO DE CORRECCIÓN
+    with st.form(key="formulario_corregir"):
+        # Opciones de corrección
+        options = ui_idioma_correcciones_tipo()
 
-# FORMULARIO DE CORRECCIÓN
-with st.form(key="formulario_corregir"):
-    # Opciones de corrección
-    options = ui_idioma_correcciones_tipo()
+        # Texto inicial con contenido de la consigna si está disponible
+        texto_inicial = ""
+        if get_session_var("usar_consigna_como_texto", False) and "consigna_actual" in st.session_state:
+            texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
+            # Reset para no añadirlo cada vez
+            set_session_var("usar_consigna_como_texto", False)
 
-    # Texto inicial con contenido de la consigna si está disponible
-    texto_inicial = ""
-    if get_session_var("usar_consigna_como_texto", False) and "consigna_actual" in st.session_state:
-        texto_inicial = f"[Instrucción: {st.session_state.consigna_actual}]\n\n"
-        # Reset para no añadirlo cada vez
-        set_session_var("usar_consigna_como_texto", False)
+        # Área de texto para la corrección
+        texto = st.text_area(
+            "Escribe tu texto aquí:",
+            value=texto_inicial,
+            height=250,
+            key="texto_correccion_corregir"
+        )
 
-    # Área de texto para la corrección
-    texto = st.text_area(
-        "Escribe tu texto aquí:",
-        value=texto_inicial,
-        height=250,
-        key="texto_correccion_corregir"
-    )
+        info_adicional = st.text_area(
+            "Información adicional o contexto (opcional):",
+            value=get_session_var("info_adicional_corregir", ""),
+            height=100,
+            key="info_adicional_widget_key"  # Clave diferente para el widget
+        )
 
-    info_adicional = st.text_area(
-        "Información adicional o contexto (opcional):",
-        value=get_session_var("info_adicional_corregir", ""),
-        height=100,
-        key="info_adicional_widget_key"  # Clave diferente para el widget
-    )
+        # Guardar sin conflicto (dentro del formulario, pero fuera de la definición del widget)
+        set_session_var("info_adicional_corregir", info_adicional)
 
-    # Guardar sin conflicto (dentro del formulario, pero fuera de la definición del widget)
-    set_session_var("info_adicional_corregir", info_adicional)
+        # Botón de envío (corregida la indentación)
+        enviar = st.form_submit_button("Corregir", use_container_width=True)
 
-    # Botón de envío (corregida la indentación)
-    enviar = st.form_submit_button("Corregir", use_container_width=True)
-
-# PROCESAMIENTO DEL FORMULARIO
-if enviar:
-    if not texto.strip():
-        st.warning("Por favor, escribe un texto para corregir.")
-    else:
-        # Guardar el texto para posible uso futuro
-        set_session_var("ultimo_texto", texto)
-
-        with st.spinner("Analizando texto y generando corrección contextual..."):
-            # Obtener los datos del usuario
-            nombre = get_session_var("usuario_actual", "")
-            nivel = user_data.get("nivel") if user_data else get_session_var(
-                "nivel_estudiante", "intermedio")
-
-            # Obtener las opciones seleccionadas
-            idioma = options.get("idioma", "Español")
-            tipo_texto = options.get("tipo_texto", "General/No especificado")
-            contexto_cultural = options.get(
-                "contexto_cultural", "General/Internacional")
-
-            # Llamar a la función de corrección
-            resultado = corregir_texto(
-                texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional
-            )
-
-            # Guardar el resultado para futuras referencias
-            set_session_var("correction_result", resultado)
-            set_session_var("last_correction_time", datetime.now().isoformat())
-
-        # Mostrar los resultados
-        if "error" not in resultado:
-            ui_show_correction_results(resultado)
+    # PROCESAMIENTO DEL FORMULARIO
+    if enviar:
+        if not texto.strip():
+            st.warning("Por favor, escribe un texto para corregir.")
         else:
-            st.error(f"Error en la corrección: {resultado['error']}")
+            # Guardar el texto para posible uso futuro
+            set_session_var("ultimo_texto", texto)
 
-            # Mostrar sugerencia de reintentar
-            st.info(
-                "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
+            with st.spinner("Analizando texto y generando corrección contextual..."):
+                # Obtener los datos del usuario
+                nombre = get_session_var("usuario_actual", "")
+                nivel = user_data.get("nivel") if user_data else get_session_var(
+                    "nivel_estudiante", "intermedio")
+
+                # Obtener las opciones seleccionadas
+                idioma = options.get("idioma", "Español")
+                tipo_texto = options.get(
+                    "tipo_texto", "General/No especificado")
+                contexto_cultural = options.get(
+                    "contexto_cultural", "General/Internacional")
+
+                # Llamar a la función de corrección
+                resultado = corregir_texto(
+                    texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional
+                )
+
+                # Guardar el resultado para futuras referencias
+                set_session_var("correction_result", resultado)
+                set_session_var("last_correction_time",
+                                datetime.now().isoformat())
+
+            # Mostrar los resultados
+            if "error" not in resultado:
+                ui_show_correction_results(resultado)
+            else:
+                st.error(f"Error en la corrección: {resultado['error']}")
+
+                # Mostrar sugerencia de reintentar
+                st.info(
+                    "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
 
 # --- 2. FUNCIÓN DE VISUALIZACIÓN DE TEXTO TRANSCRITO ---
 
@@ -3828,7 +3858,7 @@ def modelo_examen_tab(tipo_examen, nivel_examen):
 
 def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
     """
-    Implementación de la pestaña de simulacro cronometrado.
+    Implementación mejorada de la pestaña de simulacro cronometrado.
 
     Args:
         tipo_examen: Tipo de examen seleccionado
@@ -3875,9 +3905,7 @@ def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
                 handle_exception("iniciar_simulacro", e)
                 st.error(f"Error al iniciar el simulacro: {str(e)}")
     else:
-
         try:
-
             # Simulacro en progreso
             inicio_simulacro = get_session_var("inicio_simulacro")
             duracion_simulacro = get_session_var("duracion_simulacro")
@@ -3892,93 +3920,102 @@ def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
             # Obtener estado del temporizador
             timer_state = ui_countdown_timer(
                 duracion_simulacro, inicio_simulacro)
+
+            # Mostrar temporizador según el estado
+            if timer_state["color"] == "normal":
+                tiempo_restante_placeholder.info(
+                    f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+            elif timer_state["color"] == "warning":
+                tiempo_restante_placeholder.warning(
+                    f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
+            else:
+                tiempo_restante_placeholder.error(
+                    f"⏱️ Tiempo agotado: {timer_state['tiempo_formateado']}")
+
+            # Mostrar la tarea
+            tarea_simulacro = get_session_var("tarea_simulacro")
+            with st.expander("Tarea del simulacro:", expanded=True):
+                st.markdown(tarea_simulacro)
+
+            # Área de texto para respuesta
+            simulacro_respuesta = st.text_area(
+                "Tu respuesta:",
+                value=get_session_var("simulacro_respuesta_texto", ""),
+                height=300,
+                key="simulacro_respuesta_area"
+            )
+
+            # Guardar respuesta en tiempo real
+            set_session_var("simulacro_respuesta_texto", simulacro_respuesta)
+
+            # Opciones para finalizar o reiniciar
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Finalizar y corregir", key="finalizar_simulacro"):
+                    if simulacro_respuesta.strip():
+                        # Calcular tiempo usado
+                        tiempo_final = time.time() - inicio_simulacro
+                        minutos_usados = int(tiempo_final // 60)
+                        segundos_usados = int(tiempo_final % 60)
+                        tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
+
+                        # Mostrar spinner durante la corrección
+                        with st.spinner("Analizando respuesta..."):
+                            # Corrección integrada (sin redirección)
+                            resultado = corregir_examen(
+                                simulacro_respuesta,
+                                tipo_examen,
+                                nivel_examen,
+                                tiempo_usado
+                            )
+
+                        # Limpiar variables de control
+                        set_session_var("inicio_simulacro", None)
+                        set_session_var("duracion_simulacro", None)
+                        set_session_var("tarea_simulacro", None)
+                        set_session_var("simulacro_respuesta_texto", "")
+
+                        # Mensaje de éxito
+                        st.success(f"Simulacro completado en {tiempo_usado}.")
+
+                        # Mostrar resultados directamente aquí
+                        if "error" not in resultado:
+                            ui_show_correction_results(resultado)
+                        else:
+                            st.error(
+                                f"Error en la corrección: {resultado['error']}")
+                    else:
+                        st.warning(
+                            "Por favor, escribe una respuesta antes de finalizar.")
+
+            with col2:
+                if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
+                    # Limpiar todas las variables del simulacro
+                    set_session_var("inicio_simulacro", None)
+                    set_session_var("duracion_simulacro", None)
+                    set_session_var("tarea_simulacro", None)
+                    set_session_var("simulacro_respuesta_texto", "")
+                    st.rerun()
+
+            # Verificar si se acabó el tiempo
+            if timer_state["terminado"]:
+                st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
+                # Guardar automáticamente (opcional)
+                st.info(
+                    "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
         except Exception as e:
             # Manejo genérico de errores
             handle_exception("simulacro_timer", e)
             st.error(f"Error en el temporizador del simulacro: {str(e)}")
 
-        # Mostrar temporizador según el estado
-        if timer_state["color"] == "normal":
-            tiempo_restante_placeholder.info(
-                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
-        elif timer_state["color"] == "warning":
-            tiempo_restante_placeholder.warning(
-                f"⏱️ Tiempo restante: {timer_state['tiempo_formateado']}")
-        else:
-            tiempo_restante_placeholder.error(
-                f"⏱️ Tiempo agotado: {timer_state['tiempo_formateado']}")
+            # Reiniciar el simulacro si hay un error crítico
+            set_session_var("inicio_simulacro", None)
+            set_session_var("duracion_simulacro", None)
+            set_session_var("tarea_simulacro", None)
 
-        # Mostrar la tarea
-        tarea_simulacro = get_session_var("tarea_simulacro")
-        with st.expander("Tarea del simulacro:", expanded=True):
-            st.markdown(tarea_simulacro)
-
-        # Área de texto para respuesta
-        simulacro_respuesta = st.text_area(
-            "Tu respuesta:",
-            value=get_session_var("simulacro_respuesta_texto", ""),
-            height=300,
-            key="simulacro_respuesta_area"
-        )
-
-        # Guardar respuesta en tiempo real
-        set_session_var("simulacro_respuesta_texto", simulacro_respuesta)
-
-        # Opciones para finalizar o reiniciar
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Finalizar y corregir", key="finalizar_simulacro"):
-                if simulacro_respuesta.strip():
-                    # Calcular tiempo usado
-                    tiempo_final = time.time() - inicio_simulacro
-                    minutos_usados = int(tiempo_final // 60)
-                    segundos_usados = int(tiempo_final % 60)
-                    tiempo_usado = f"{minutos_usados:02d}:{segundos_usados:02d}"
-
-                    # Mostrar spinner durante la corrección
-                    with st.spinner("Analizando respuesta..."):
-                        # Corrección integrada (sin redirección)
-                        resultado = corregir_examen(
-                            simulacro_respuesta,
-                            tipo_examen,
-                            nivel_examen,
-                            tiempo_usado
-                        )
-
-                    # Limpiar variables de control
-                    set_session_var("inicio_simulacro", None)
-                    set_session_var("duracion_simulacro", None)
-                    set_session_var("tarea_simulacro", None)
-                    set_session_var("simulacro_respuesta_texto", "")
-
-                    # Mensaje de éxito
-                    st.success(f"Simulacro completado en {tiempo_usado}.")
-
-                    # Mostrar resultados directamente aquí
-                    if "error" not in resultado:
-                        ui_show_correction_results(resultado)
-                    else:
-                        st.error(
-                            f"Error en la corrección: {resultado['error']}")
-                else:
-                    st.warning(
-                        "Por favor, escribe una respuesta antes de finalizar.")
-
-        with col2:
-            if st.button("Reiniciar simulacro", key="reiniciar_simulacro"):
-                # Limpiar todas las variables del simulacro
-                set_session_var("inicio_simulacro", None)
-                set_session_var("duracion_simulacro", None)
-                set_session_var("tarea_simulacro", None)
-                set_session_var("simulacro_respuesta_texto", "")
+            # Botón para intentar de nuevo
+            if st.button("Intentar de nuevo", key="retry_simulacro"):
                 st.rerun()
-
-        # Verificar si se acabó el tiempo
-        if timer_state["terminado"]:
-            st.error("⏰ ¡Tiempo agotado! Finaliza tu respuesta y envíala.")
-            # Guardar automáticamente (opcional)
-            st.info(
-                "Tu respuesta ha sido guardada automáticamente. Puedes finalizarla ahora.")
 
 
 def criterios_evaluacion_tab(tipo_examen, nivel_examen):
@@ -4485,7 +4522,7 @@ def tab_progreso():
 
 
 def estadisticas_progreso_tab():
-    """Implementación de la pestaña de estadísticas de progreso."""
+    """Implementación de la pestaña de estadísticas de progreso con manejo de errores mejorado."""
     nombre_estudiante = st.text_input(
         "Nombre y apellido del estudiante para ver progreso:",
         value=get_session_var("usuario_actual", ""),
@@ -4536,20 +4573,32 @@ def estadisticas_progreso_tab():
                         primera = df.iloc[0]
                         ultima = df.iloc[-1]
 
-                        # Comparar total de errores
+                        # Comparar total de errores con manejo de valores vacíos
                         if "Total Errores" in primera and "Total Errores" in ultima:
-                            dif_errores = int(
-                                ultima['Total Errores']) - int(primera['Total Errores'])
+                            # Convertir a entero con manejo de valores vacíos
+                            primera_errores = primera['Total Errores']
+                            ultima_errores = ultima['Total Errores']
 
-                            if dif_errores < 0:
-                                st.success(
-                                    f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
-                            elif dif_errores > 0:
-                                st.warning(
-                                    f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
-                            else:
+                            # Verificar si los valores no están vacíos y convertirlos a enteros de forma segura
+                            try:
+                                primera_errores = 0 if primera_errores == '' else int(
+                                    primera_errores)
+                                ultima_errores = 0 if ultima_errores == '' else int(
+                                    ultima_errores)
+                                dif_errores = ultima_errores - primera_errores
+
+                                if dif_errores < 0:
+                                    st.success(
+                                        f"¡Felicidades! Has reducido tus errores en {abs(dif_errores)} desde tu primera entrega.")
+                                elif dif_errores > 0:
+                                    st.warning(
+                                        f"Has aumentado tus errores en {dif_errores} desde tu primera entrega. Revisa las recomendaciones.")
+                                else:
+                                    st.info(
+                                        "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                            except (ValueError, TypeError):
                                 st.info(
-                                    "El número total de errores se mantiene igual. Sigamos trabajando en las áreas de mejora.")
+                                    "No se pueden comparar los errores debido a datos incompletos o incorrectos.")
 
                             # Identificar área con mayor progreso y área que necesita más trabajo
                             categorias = [
@@ -4558,25 +4607,34 @@ def estadisticas_progreso_tab():
                                 cat for cat in categorias if cat in df.columns]
 
                             if categorias_existentes:
-                                difs = {}
-                                for cat in categorias_existentes:
-                                    if cat in primera and cat in ultima:
-                                        difs[cat] = int(
-                                            ultima[cat]) - int(primera[cat])
+                                try:
+                                    difs = {}
+                                    for cat in categorias_existentes:
+                                        if cat in primera and cat in ultima:
+                                            # Convertir de forma segura con manejo de valores vacíos
+                                            val_primera = 0 if primera[cat] == '' else int(
+                                                primera[cat])
+                                            val_ultima = 0 if ultima[cat] == '' else int(
+                                                ultima[cat])
+                                            difs[cat] = val_ultima - \
+                                                val_primera
 
-                                if difs:
-                                    mejor_area = min(
-                                        difs.items(), key=lambda x: x[1])[0]
-                                    peor_area = max(
-                                        difs.items(), key=lambda x: x[1])[0]
+                                    if difs:
+                                        mejor_area = min(
+                                            difs.items(), key=lambda x: x[1])[0]
+                                        peor_area = max(
+                                            difs.items(), key=lambda x: x[1])[0]
 
-                                    if difs[mejor_area] < 0:
-                                        st.success(
-                                            f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
+                                        if difs[mejor_area] < 0:
+                                            st.success(
+                                                f"Mayor progreso en: {mejor_area.replace('Errores ', '')}")
 
-                                    if difs[peor_area] > 0:
-                                        st.warning(
-                                            f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                                        if difs[peor_area] > 0:
+                                            st.warning(
+                                                f"Área que necesita más trabajo: {peor_area.replace('Errores ', '')}")
+                                except (ValueError, TypeError) as e:
+                                    st.info(
+                                        f"No se puede realizar el análisis detallado debido a datos incompletos.")
                 else:
                     st.info(
                         f"No se encontraron datos para '{nombre_estudiante}' en el historial.")
