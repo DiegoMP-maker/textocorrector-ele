@@ -4316,6 +4316,10 @@ def herramienta_descripcion_imagenes():
     de descripción para practicar vocabulario y estructuras descriptivas.
     """)
 
+    # Asegurar que estamos en la pestaña correcta
+    st.session_state.active_main_tab = 4  # Índice de "Herramientas complementarias"
+    st.session_state.active_tools_tab = 2  # Índice de "Descripción de imágenes"
+
     # Inicializar variables de estado si no existen
     if "imagen_generada_state" not in st.session_state:
         st.session_state.imagen_generada_state = False
@@ -4349,39 +4353,49 @@ def herramienta_descripcion_imagenes():
         value=st.session_state.tema_imagen_state if st.session_state.tema_imagen_state else ""
     )
 
-    # Función para manejar la generación de imagen
-    def generar_imagen_callback():
-        if tema_imagen:
-            with st.spinner("Generando imagen con DALL-E..."):
-                # Obtener nivel en formato simplificado
-                nivel_map = {
-                    "Nivel principiante (A1-A2)": "principiante",
-                    "Nivel intermedio (B1-B2)": "intermedio",
-                    "Nivel avanzado (C1-C2)": "avanzado"
-                }
-                nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
+    # Función para generar la imagen manteniendo el estado
+    def generar_imagen_action():
+        if not tema_imagen:
+            st.warning("Por favor, introduce un tema para la imagen.")
+            return
 
-                # Generar imagen y descripción
-                imagen_url, descripcion = generar_imagen_dalle(
-                    tema_imagen, nivel_dalle)
+        with st.spinner("Generando imagen con DALL-E..."):
+            # Obtener nivel en formato simplificado
+            nivel_map = {
+                "Nivel principiante (A1-A2)": "principiante",
+                "Nivel intermedio (B1-B2)": "intermedio",
+                "Nivel avanzado (C1-C2)": "avanzado"
+            }
+            nivel_dalle = nivel_map.get(nivel_imagen, "intermedio")
 
-                if imagen_url:
-                    # Guardar en session_state
-                    st.session_state.imagen_generada_state = True
-                    st.session_state.imagen_url_state = imagen_url
-                    st.session_state.descripcion_state = descripcion
-                    st.session_state.tema_imagen_state = tema_imagen
+            # Generar imagen y descripción
+            imagen_url, descripcion = generar_imagen_dalle(
+                tema_imagen, nivel_dalle)
 
-                    # También guardar en las variables originales
-                    set_session_var("ultima_imagen_url", imagen_url)
-                    set_session_var("ultima_descripcion", descripcion)
-                else:
-                    st.error(
-                        "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
+            if imagen_url:
+                # Guardar en session_state
+                st.session_state.imagen_generada_state = True
+                st.session_state.imagen_url_state = imagen_url
+                st.session_state.descripcion_state = descripcion
+                st.session_state.tema_imagen_state = tema_imagen
+
+                # También guardar en las variables originales
+                set_session_var("ultima_imagen_url", imagen_url)
+                set_session_var("ultima_descripcion", descripcion)
+
+                # Asegurar que permanecemos en la pestaña correcta
+                st.session_state.active_main_tab = 4  # Herramientas complementarias
+                st.session_state.active_tools_tab = 2  # Descripción de imágenes
+
+                # Mostrar éxito
+                st.success("Imagen generada correctamente")
+            else:
+                st.error(
+                    "No se pudo generar la imagen. Por favor, inténtalo de nuevo.")
 
     # Botón para generar imagen
-    if st.button("Generar imagen y actividad", key="generar_imagen_dalle", on_click=generar_imagen_callback) and not st.session_state.imagen_generada_state:
-        pass  # La lógica se ejecuta en el callback
+    if st.button("Generar imagen y actividad", key="generar_imagen_dalle"):
+        generar_imagen_action()
 
     # Mostrar la imagen si existe
     if st.session_state.imagen_generada_state and st.session_state.imagen_url_state:
@@ -4407,22 +4421,18 @@ def herramienta_descripcion_imagenes():
         # Actualizar el valor en la sesión cuando cambie
         st.session_state.descripcion_estudiante_state = descripcion_estudiante
 
-        # Función para manejar la corrección
-        def corregir_descripcion_callback():
-            if descripcion_estudiante.strip():
-                # No es necesario un spinner aquí ya que la página se recargará
-                st.session_state.correcting_description = True
-            else:
+        # Función para corregir la descripción manteniendo el estado
+        def corregir_descripcion_action():
+            if not descripcion_estudiante.strip():
                 st.warning(
                     "Por favor, escribe una descripción antes de enviar a corrección.")
+                return
 
-        # Botón para enviar a corrección
-        if st.button("Corregir descripción", key="corregir_descripcion_imagen", on_click=corregir_descripcion_callback):
-            pass  # La lógica se ejecuta en el callback
-
-        # Realizar la corrección después de la recarga de la página si es necesario
-        if st.session_state.get("correcting_description", False):
             with st.spinner("Analizando descripción..."):
+                # Asegurar que permanecemos en la pestaña correcta
+                st.session_state.active_main_tab = 4  # Herramientas complementarias
+                st.session_state.active_tools_tab = 2  # Descripción de imágenes
+
                 # Corrección integrada
                 resultado = corregir_descripcion_imagen(
                     descripcion_estudiante,
@@ -4430,14 +4440,24 @@ def herramienta_descripcion_imagenes():
                     nivel_imagen
                 )
 
-            # Restablecer la bandera
-            st.session_state.correcting_description = False
+                # Mostrar resultados
+                if "error" not in resultado:
+                    st.session_state.correction_result = resultado
+                    st.session_state.showing_correction = True
+                else:
+                    st.error(f"Error en la corrección: {resultado['error']}")
 
-            # Mostrar resultados
-            if "error" not in resultado:
-                ui_show_correction_results(resultado)
-            else:
-                st.error(f"Error en la corrección: {resultado['error']}")
+        # Botón para enviar a corrección
+        if st.button("Corregir descripción", key="corregir_descripcion_imagen"):
+            corregir_descripcion_action()
+
+        # Mostrar resultados de corrección si es necesario
+        if st.session_state.get("showing_correction", False):
+            ui_show_correction_results(st.session_state.correction_result)
+            # Opción para volver a la imagen
+            if st.button("Volver a la imagen", key="volver_a_imagen"):
+                st.session_state.showing_correction = False
+                st.rerun()
 
     # Botón para reiniciar
     if st.session_state.imagen_generada_state:
@@ -4448,6 +4468,9 @@ def herramienta_descripcion_imagenes():
             st.session_state.descripcion_state = None
             st.session_state.tema_imagen_state = None
             st.session_state.descripcion_estudiante_state = ""
+            st.session_state.showing_correction = False
+            if "correction_result" in st.session_state:
+                del st.session_state.correction_result
             st.rerun()
 
 
@@ -4946,34 +4969,101 @@ def main():
     # Título y descripción
     ui_header()
 
-    # Pestañas principales
-    tab_corregir_texto, tab_ver_progreso, tab_ver_historial, tab_preparar_examenes, tab_usar_herramientas = st.tabs([
-        "📝 Corrección de texto",
-        "📊 Ver progreso",
-        "📚 Historial",
-        "🎓 Preparación para exámenes",
-        "🔧 Herramientas complementarias"
-    ])
+    # Inicializar el seguimiento de pestañas activas si no existe
+    if "active_main_tab" not in st.session_state:
+        st.session_state.active_main_tab = 0
+    if "active_tools_tab" not in st.session_state:
+        st.session_state.active_tools_tab = 0
+
+    # Función para cambiar la pestaña principal
+    def on_main_tab_change():
+        st.session_state.active_main_tab = st.session_state.main_tabs
+
+    # Función para cambiar la subpestaña de herramientas
+    def on_tools_tab_change():
+        st.session_state.active_tools_tab = st.session_state.tools_tabs
+
+    # Pestañas principales con manejo de estado
+    tabs = ["📝 Corrección de texto", "📊 Ver progreso", "📚 Historial",
+            "🎓 Preparación para exámenes", "🔧 Herramientas complementarias"]
+
+    st.session_state.main_tabs = st.radio(
+        "Navegación principal",
+        options=range(len(tabs)),
+        format_func=lambda x: tabs[x],
+        key="main_tabs",
+        horizontal=True,
+        label_visibility="collapsed",
+        index=st.session_state.active_main_tab,
+        on_change=on_main_tab_change
+    )
 
     # --- Pestaña 1: Corrección de Texto ---
-    with tab_corregir_texto:
+    if st.session_state.main_tabs == 0:
         tab_corregir()
 
     # --- Pestaña 2: Ver Progreso ---
-    with tab_ver_progreso:
+    elif st.session_state.main_tabs == 1:
         tab_progreso()
 
     # --- Pestaña 3: Historial ---
-    with tab_ver_historial:
+    elif st.session_state.main_tabs == 2:
         tab_historial()
 
     # --- Pestaña 4: Preparación para Exámenes ---
-    with tab_preparar_examenes:
+    elif st.session_state.main_tabs == 3:
         tab_examenes()
 
     # --- Pestaña 5: Herramientas Complementarias ---
-    with tab_usar_herramientas:
-        tab_herramientas()
+    elif st.session_state.main_tabs == 4:
+        # Implementación de la pestaña de herramientas complementarias
+        st.header("🔧 Herramientas complementarias")
+
+        # Verificar si hay usuario
+        if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+            st.info(
+                "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+            # Mostrar formulario básico de usuario con key única para este contexto
+            user_data = ui_user_info_form(
+                form_key="form_user_info_herramientas")
+            if not user_data:
+                return
+
+        # Pestañas para diferentes herramientas con manejo de estado
+        subtabs_labels = [
+            "Análisis de complejidad",
+            "Biblioteca de recursos",
+            "Descripción de imágenes",
+            "Texto manuscrito"
+        ]
+
+        st.session_state.tools_tabs = st.radio(
+            "Herramientas",
+            options=range(len(subtabs_labels)),
+            format_func=lambda x: subtabs_labels[x],
+            key="tools_tabs",
+            horizontal=True,
+            label_visibility="collapsed",
+            index=st.session_state.active_tools_tab,
+            on_change=on_tools_tab_change
+        )
+
+        # --- Subpestaña 1: Análisis de complejidad ---
+        if st.session_state.tools_tabs == 0:
+            herramienta_analisis_complejidad()
+
+        # --- Subpestaña 2: Biblioteca de recursos ---
+        elif st.session_state.tools_tabs == 1:
+            herramienta_biblioteca_recursos()
+
+        # --- Subpestaña 3: Descripción de imágenes ---
+        elif st.session_state.tools_tabs == 2:
+            herramienta_descripcion_imagenes()
+
+        # --- Subpestaña 4: Texto manuscrito ---
+        elif st.session_state.tools_tabs == 3:
+            herramienta_texto_manuscrito()
 
     # Formulario de feedback al final
     ui_feedback_form()
