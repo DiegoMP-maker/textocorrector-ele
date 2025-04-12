@@ -1955,7 +1955,7 @@ def ui_header():
 
 def ui_user_info_form(form_key="form_user_info"):
     """
-    Formulario para obtener información básica del usuario.
+    Formulario para obtener información básica del usuario, con mejor validación.
 
     Args:
         form_key: Clave única para el formulario
@@ -1970,7 +1970,7 @@ def ui_user_info_form(form_key="form_user_info"):
             nombre = st.text_input(
                 "Nombre y apellido:",
                 value=get_session_var("usuario_actual", ""),
-                help="Por favor, introduce tanto tu nombre como tu apellido separados por un espacio."
+                help="Por favor, introduce tu nombre (y apellido opcional)."
             )
 
         with col2:
@@ -1989,10 +1989,9 @@ def ui_user_info_form(form_key="form_user_info"):
         submit = st.form_submit_button("Guardar", use_container_width=True)
 
         if submit:
-            # Validar nombre
-            if not nombre or " " not in nombre:
-                st.warning(
-                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+            # SOLUCIÓN: Validación de nombre mejorada
+            if not nombre.strip():
+                st.warning("Por favor, introduce al menos tu nombre.")
                 return None
 
             # Guardar en session_state
@@ -3290,7 +3289,7 @@ def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
 def ui_export_options(data):
     """
     Muestra opciones para exportar los resultados de la corrección.
-    Versión optimizada con mejor manejo de errores y comprobaciones simplificadas.
+    Versión optimizada que evita usar botones dentro de formularios.
 
     Args:
         data: Resultados de la corrección
@@ -3320,7 +3319,7 @@ def ui_export_options(data):
     with export_tab1:
         st.write("Exporta este informe como documento Word (DOCX)")
 
-        # SOLUCIÓN: Simplificar la lógica de generación y descarga
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar documento Word", key="gen_docx"):
             with st.spinner("Generando documento Word..."):
                 docx_buffer = generar_informe_docx(
@@ -3345,7 +3344,7 @@ def ui_export_options(data):
     with export_tab2:
         st.write("Exporta este informe como página web (HTML)")
 
-        # SOLUCIÓN: Simplificar la lógica de generación y descarga de HTML
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar documento HTML", key="gen_html"):
             with st.spinner("Generando HTML..."):
                 html_content = generar_informe_html(
@@ -3382,7 +3381,7 @@ def ui_export_options(data):
     with export_tab3:
         st.write("Exporta los datos del análisis en formato CSV")
 
-        # SOLUCIÓN: Simplificar la lógica de generación y descarga de CSV
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar CSV", key="gen_csv"):
             with st.spinner("Generando CSV..."):
                 csv_buffer = generar_csv_analisis(
@@ -3454,10 +3453,26 @@ def visualizar_texto_manuscrito():
         submit_correccion = st.form_submit_button(
             "Corregir texto", use_container_width=True)
 
-    # Botón para cancelar y volver
-    if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
-        set_session_var("mostrar_correccion_transcripcion", False)
-        st.rerun()
+    # Botones fuera del formulario
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Botón para cancelar y volver
+        if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
+            set_session_var("mostrar_correccion_transcripcion", False)
+            st.rerun()
+
+    with col2:
+        # Botón para enviar a la pestaña principal de corrección
+        if st.button("Enviar a pestaña principal", key="enviar_a_principal"):
+            # Guardar el texto para usarlo en la pestaña principal
+            set_session_var("texto_correccion_corregir",
+                            texto_transcrito_editable)
+            set_session_var("mostrar_correccion_transcripcion", False)
+            # Navegar a la pestaña de corrección
+            st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
+            # Recargar la página
+            st.rerun()
 
     # Procesar la corrección cuando se envía el formulario
     if submit_correccion:
@@ -3545,7 +3560,8 @@ def herramienta_texto_manuscrito():
         # Mostrar la imagen subida
         try:
             imagen = Image.open(imagen_manuscrito)
-            st.image(imagen, caption="Imagen subida", use_column_width=True)
+            # CORREGIDO: Reemplazo de use_column_width por use_container_width
+            st.image(imagen, caption="Imagen subida", use_container_width=True)
         except Exception as e:
             st.error(f"Error al procesar la imagen: {str(e)}")
             return
@@ -3581,16 +3597,29 @@ def herramienta_texto_manuscrito():
                             set_session_var(
                                 "ultimo_texto_transcrito", texto_transcrito)
 
-                        # SOLUCIÓN: Crear un botón que active directamente la vista de corrección
-                        if st.button("Corregir texto transcrito", key="btn_corregir_texto_transcrito"):
-                            # Activar la bandera que mostrará la vista de corrección
-                            set_session_var(
-                                "mostrar_correccion_transcripcion", True)
-                            # Asegurar que estamos en la pestaña correcta para la próxima vez
-                            st.session_state.active_tab_index = 4  # Índice de Herramientas complementarias
-                            st.session_state.active_tools_tab_index = 3  # Índice de Texto manuscrito
-                            # Recargar la página
-                            st.rerun()
+                        # SOLUCIÓN: Añadir opciones para usar el texto transcrito
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            # Opción 1: Corregir directamente
+                            if st.button("Corregir texto transcrito", key="btn_corregir_texto_transcrito"):
+                                # Activar la bandera que mostrará la vista de corrección
+                                set_session_var(
+                                    "mostrar_correccion_transcripcion", True)
+                                # Asegurar que estamos en la pestaña correcta para la próxima vez
+                                st.session_state.active_tab_index = 4  # Índice de Herramientas complementarias
+                                st.session_state.active_tools_tab_index = 3  # Índice de Texto manuscrito
+                                # Recargar la página
+                                st.rerun()
+                        with col2:
+                            # SOLUCIÓN NUEVA: Copiar a la pestaña principal de corrección
+                            if st.button("Enviar a pestaña de corrección", key="btn_enviar_a_correccion"):
+                                # Guardar el texto transcrito para usarlo en la pestaña principal
+                                set_session_var(
+                                    "texto_correccion_corregir", texto_transcrito)
+                                # Navegar a la pestaña de corrección
+                                st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
+                                # Recargar la página
+                                st.rerun()
                     else:
                         st.error(
                             texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
@@ -4225,7 +4254,7 @@ def tab_corregir():
 
 
 def tab_progreso():
-    """Implementación de la pestaña de progreso."""
+    """Implementación de la pestaña de progreso con manejo seguro de columnas."""
     st.header("📊 Tu progreso")
 
     # Obtener datos del usuario
@@ -4252,9 +4281,17 @@ def tab_progreso():
         # Calcular resumen (última entrada)
         ultima_entrada = historial.iloc[-1]
         num_correcciones = len(historial)
-        fecha_primera = historial.iloc[0]["Fecha"] if len(
-            historial) > 0 and "Fecha" in historial.columns else "No disponible"
-        fecha_ultima = ultima_entrada["Fecha"] if "Fecha" in historial.columns else "No disponible"
+
+        # SOLUCIÓN: Verificar existencia de columnas antes de acceder
+        fecha_col = None
+        for col in historial.columns:
+            if 'fecha' in col.lower():
+                fecha_col = col
+                break
+
+        fecha_primera = historial.iloc[0][fecha_col] if fecha_col and len(
+            historial) > 0 else "No disponible"
+        fecha_ultima = ultima_entrada[fecha_col] if fecha_col else "No disponible"
 
         # Mostrar stats básicos
         col1, col2, col3, col4 = st.columns(4)
@@ -4306,6 +4343,48 @@ def tab_progreso():
 
         else:
             st.warning("No hay suficientes datos para generar gráficos.")
+
+        # Mostrar últimos consejos
+        # SOLUCIÓN: Verificar existencia de columna antes de acceder
+        if "Consejo Final" in historial.columns and fecha_col:
+            st.subheader("Últimos consejos recibidos")
+            try:
+                consejos_recientes = historial.sort_values(
+                    by=fecha_col, ascending=False)["Consejo Final"].head(3)
+                if not consejos_recientes.empty:
+                    for i, consejo in enumerate(consejos_recientes):
+                        # Verificar que no esté vacío
+                        if consejo and str(consejo).strip():
+                            st.info(f"**Consejo {i+1}**: {consejo}")
+            except Exception as e:
+                logger.error(f"Error al mostrar consejos: {str(e)}")
+                st.warning("No se pudieron mostrar los consejos recientes.")
+        else:
+            st.info("No hay consejos disponibles en el historial.")
+
+        # Generar plan de estudio personalizado
+        st.subheader("Plan de estudio personalizado")
+        if st.button("Generar plan de estudio", key="generar_plan"):
+            with st.spinner("Analizando tu historial y generando plan de estudio..."):
+                plan_result = generar_plan_estudio_personalizado(
+                    nombre_estudiante, nivel_actual, historial)
+
+                if "error" in plan_result and plan_result["error"]:
+                    st.error(
+                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
+                else:
+                    plan = plan_result.get("plan", {})
+                    if plan and "semanas" in plan:
+                        st.success(
+                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
+
+                        # Mostrar plan por semanas
+                        for semana in plan["semanas"]:
+                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
+                                st.markdown(semana["contenido"])
+                    else:
+                        st.warning(
+                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
 
         # Mostrar últimos consejos
         if "Consejo Final" in historial.columns:
