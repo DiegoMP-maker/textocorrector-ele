@@ -1,3 +1,16 @@
+"""
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 1: Importaciones y Configuración Base
+==================================================================================
+
+Este artefacto contiene:
+1. Todas las importaciones de bibliotecas necesarias
+2. Configuración base de la aplicación Streamlit
+3. Configuración de logging
+4. Definición de la versión de la aplicación
+"""
+
 import traceback
 import streamlit as st
 import json
@@ -44,6 +57,17 @@ st.cache_data.clear()
 
 # Versión de la aplicación
 APP_VERSION = "2.1.0"  # Actualizado para la versión reescrita
+"""
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 2: Inicialización de Variables y Estados
+==================================================================================
+
+Este artefacto contiene:
+1. Funciones para inicializar variables de session_state
+2. Funciones seguras para acceder y modificar valores del session_state
+3. Inicialización del sidebar
+"""
 
 # Inicializar variables de session_state si no existen
 
@@ -77,7 +101,18 @@ def init_session_state():
         "api_last_error_time": None,
         "circuit_breaker_open": False,
         "ultimo_texto": "",
-        "nombre_seleccionado": None
+        "nombre_seleccionado": None,
+        "imagen_generada_state": False,
+        "imagen_url_state": None,
+        "descripcion_state": None,
+        "tema_imagen_state": None,
+        "descripcion_estudiante_state": "",
+        "mostrar_correccion_imagen": False,
+        "mostrar_correccion_transcripcion": False,
+        "active_tab_index": 0,
+        "active_tools_tab_index": 0,
+        "tab_navigate_to": None,
+        "app_initialized": False
     }
 
     for key, default_value in default_values.items():
@@ -117,6 +152,20 @@ st.sidebar.info(
     ID de sesión: {1}
     """.format(APP_VERSION, st.session_state.session_id[:8])
 )
+"""
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 3: Funciones de Seguridad y Conexión a APIs
+==================================================================================
+
+Este artefacto contiene:
+1. Funciones para manejo seguro de claves API
+2. Implementación del patrón Circuit Breaker para APIs
+3. Conexión segura a Google Sheets
+4. Configuración segura de clientes API (OpenAI)
+5. Funciones de diagnóstico para el estado de conexiones
+"""
+
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 
 
@@ -390,6 +439,47 @@ def show_connection_status():
 
 # Mostrar estado de conexión en sidebar
 show_connection_status()
+
+# --- FUNCIÓN AUXILIAR PARA MANEJO DE EXCEPCIONES ---
+
+
+def handle_exception(func_name, exception, show_user=True):
+    """
+    Función de utilidad para manejar excepciones de manera consistente.
+
+    Args:
+        func_name: Nombre de la función donde ocurrió el error
+        exception: La excepción capturada
+        show_user: Si se debe mostrar un mensaje al usuario
+
+    Returns:
+        None
+    """
+    error_msg = f"Error en {func_name}: {str(exception)}"
+    logger.error(error_msg)
+    logger.error(traceback.format_exc())
+
+    if show_user:
+        st.error(f"⚠️ {error_msg}")
+        with st.expander("Detalles técnicos", expanded=False):
+            st.code(traceback.format_exc())
+
+    return None
+
+
+"""
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 4: Funciones Core de Procesamiento
+==================================================================================
+
+Este artefacto contiene:
+1. Funciones para procesamiento de respuestas API (OpenAI, ElevenLabs)
+2. Funciones para procesamiento de JSON
+3. Integración core con APIs externas 
+4. Funciones de procesamiento para corrección y análisis de texto
+"""
+
 # --- 1. FUNCIONES DE API DE OPENAI ---
 
 
@@ -775,8 +865,7 @@ def transcribir_imagen_texto(imagen_bytes, idioma="es"):
 
         return f"Error en la transcripción: {str(e)}"
 
-
-# --- 5. GUARDADO DE DATOS EN GOOGLE SHEETS (Continuación) ---
+# --- 5. GUARDADO DE DATOS EN GOOGLE SHEETS ---
 
 
 def guardar_correccion(nombre, nivel, idioma, texto, resultado_json):
@@ -954,32 +1043,20 @@ def obtener_historial_estudiante(nombre):
     except Exception as e:
         logger.error(f"Error en obtener_historial_estudiante: {str(e)}")
         return None
-
-# --- Función auxiliar para manejo consistente de excepciones ---
-
-
-def handle_exception(func_name, exception, show_user=True):
     """
-    Función de utilidad para manejar excepciones de manera consistente.
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 5: Funciones Utilitarias (no dependientes de UI)
+==================================================================================
 
-    Args:
-        func_name: Nombre de la función donde ocurrió el error
-        exception: La excepción capturada
-        show_user: Si se debe mostrar un mensaje al usuario
+Este artefacto contiene:
+1. Funciones de procesamiento de textos
+2. Análisis de complejidad textual
+3. Funciones de corrección de texto
+4. Generación de consignas y tareas
+5. Funciones para exámenes
+"""
 
-    Returns:
-        None
-    """
-    error_msg = f"Error en {func_name}: {str(exception)}"
-    logger.error(error_msg)
-    logger.error(traceback.format_exc())
-
-    if show_user:
-        st.error(f"⚠️ {error_msg}")
-        with st.expander("Detalles técnicos", expanded=False):
-            st.code(traceback.format_exc())
-
-    return None
 # --- 1. FUNCIONES DE PROCESAMIENTO DE TEXTOS ---
 
 
@@ -1387,7 +1464,7 @@ def analizar_complejidad_texto(texto):
         circuit_breaker.record_failure("openai")
         return {"error": f"Error al analizar complejidad: {str(e)}"}
 
-# --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO (Continuación) ---
+# --- 3. FUNCIONES DE CORRECCIÓN DE TEXTO ---
 
 
 def corregir_texto(texto, nombre, nivel, idioma, tipo_texto, contexto_cultural, info_adicional=""):
@@ -1786,7 +1863,421 @@ def generar_ejemplos_evaluados(tipo_examen, nivel_examen):
         logger.error(error_msg)
         circuit_breaker.record_failure("openai")
         return f"No se pudieron generar ejemplos. Error: {str(e)}"
-    # --- 1. GENERACIÓN DE INFORMES EN DIFERENTES FORMATOS ---
+    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 6: Componentes Reutilizables de UI Básicos
+==================================================================================
+
+Este artefacto contiene:
+1. Componentes básicos de UI reutilizables
+2. Utilidades de interfaz
+3. Mensajes estandarizados
+4. Indicadores de progreso
+5. Diálogos de confirmación
+"""
+
+# --- 1. COMPONENTES DE UI REUTILIZABLES ---
+
+
+def ui_header():
+    """Muestra el encabezado principal de la aplicación."""
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("📝 Textocorrector ELE")
+        st.markdown(
+            "Corrección de textos en español con análisis contextual avanzado.")
+
+    with col2:
+        # Mostrar indicador de versión
+        st.markdown(f"""
+        <div style="background-color:#f0f2f6;padding:8px;border-radius:5px;margin-top:20px;text-align:center">
+            <small>v{APP_VERSION}</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def ui_user_info_form(form_key="form_user_info"):
+    """
+    Formulario para obtener información básica del usuario.
+
+    Args:
+        form_key: Clave única para el formulario
+
+    Returns:
+        dict: Datos del usuario (nombre, nivel)
+    """
+    with st.form(key=form_key):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            nombre = st.text_input(
+                "Nombre y apellido:",
+                value=get_session_var("usuario_actual", ""),
+                help="Por favor, introduce tanto tu nombre como tu apellido separados por un espacio."
+            )
+
+        with col2:
+            nivel = st.selectbox(
+                "¿Cuál es tu nivel?",
+                [
+                    "Nivel principiante (A1-A2)",
+                    "Nivel intermedio (B1-B2)",
+                    "Nivel avanzado (C1-C2)"
+                ],
+                index=["principiante", "intermedio", "avanzado"].index(
+                    get_session_var("nivel_estudiante", "intermedio")
+                )
+            )
+
+        submit = st.form_submit_button("Guardar", use_container_width=True)
+
+        if submit:
+            # Validar nombre
+            if not nombre or " " not in nombre:
+                st.warning(
+                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
+                return None
+
+            # Guardar en session_state
+            set_session_var("usuario_actual", nombre)
+
+            # Guardar nivel en formato simplificado
+            nivel_map = {
+                "Nivel principiante (A1-A2)": "principiante",
+                "Nivel intermedio (B1-B2)": "intermedio",
+                "Nivel avanzado (C1-C2)": "avanzado"
+            }
+            set_session_var("nivel_estudiante",
+                            nivel_map.get(nivel, "intermedio"))
+
+            return {"nombre": nombre, "nivel": nivel}
+
+        return None
+
+
+def ui_idioma_correcciones_tipo():
+    """
+    Componente para seleccionar idioma de correcciones y tipo de texto.
+
+    Returns:
+        dict: Opciones seleccionadas
+    """
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        idioma = st.selectbox(
+            "Idioma de corrección",
+            ["Español", "Inglés", "Francés"],
+            help="Idioma en el que recibirás las explicaciones y análisis."
+        )
+
+    with col2:
+        tipo_texto = st.selectbox(
+            "Tipo de texto",
+            [
+                "General/No especificado",
+                "Académico",
+                "Profesional/Laboral",
+                "Informal/Cotidiano",
+                "Creativo/Literario"
+            ],
+            help="Tipo de texto que estás escribiendo."
+        )
+
+    with col3:
+        contexto_cultural = st.selectbox(
+            "Contexto cultural",
+            [
+                "General/Internacional",
+                "España",
+                "Latinoamérica",
+                "Contexto académico",
+                "Contexto empresarial"
+            ],
+            help="Contexto cultural relevante para tu texto."
+        )
+
+    return {
+        "idioma": idioma,
+        "tipo_texto": tipo_texto,
+        "contexto_cultural": contexto_cultural
+    }
+
+
+def ui_examen_options():
+    """
+    Componente para seleccionar opciones de examen.
+
+    Returns:
+        dict: Opciones de examen seleccionadas
+    """
+    col1, col2 = st.columns(2)
+
+    with col1:
+        tipo_examen = st.selectbox(
+            "Examen oficial:",
+            ["DELE", "SIELE", "CELU", "DUCLE"],
+            help="Selecciona el tipo de examen para el que quieres prepararte."
+        )
+
+    with col2:
+        nivel_examen = st.selectbox(
+            "Nivel:",
+            ["A1", "A2", "B1", "B2", "C1", "C2"],
+            help="Nivel del examen."
+        )
+
+    return {
+        "tipo_examen": tipo_examen,
+        "nivel_examen": nivel_examen
+    }
+
+
+def ui_loading_spinner(text="Procesando..."):
+    """
+    Spinner de carga con texto personalizable.
+
+    Args:
+        text: Texto a mostrar durante la carga
+
+    Returns:
+        st.spinner: Objeto spinner de Streamlit
+    """
+    return st.spinner(text)
+
+
+def ui_empty_placeholder():
+    """
+    Crea un placeholder vacío para contenido dinámico.
+
+    Returns:
+        st.empty: Objeto empty de Streamlit
+    """
+    return st.empty()
+
+
+def ui_countdown_timer(total_seconds, start_time=None):
+    """
+    Muestra un temporizador de cuenta regresiva.
+
+    Args:
+        total_seconds: Tiempo total en segundos
+        start_time: Tiempo de inicio (None = ahora)
+
+    Returns:
+        dict: Estado del temporizador
+    """
+    # Manejar el caso donde total_seconds es None
+    if total_seconds is None:
+        total_seconds = 0  # Usar 0 como valor por defecto
+
+    if start_time is None:
+        start_time = time.time()
+
+    # Calcular tiempo transcurrido
+    tiempo_transcurrido = time.time() - start_time
+    tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
+
+    # Formatear tiempo restante
+    minutos = int(tiempo_restante_segundos // 60)
+    segundos = int(tiempo_restante_segundos % 60)
+    tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
+
+    # Calcular porcentaje (evitar división por cero)
+    if total_seconds > 0:
+        porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
+    else:
+        porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
+
+    porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
+
+    # Determinar color según tiempo restante
+    if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
+        color = "normal"  # Verde/Normal
+    elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
+        color = "warning"  # Amarillo/Advertencia
+    else:  # Menos del 25%
+        color = "error"  # Rojo/Error
+
+    return {
+        "tiempo_restante": tiempo_restante_segundos,
+        "tiempo_formateado": tiempo_formateado,
+        "porcentaje": porcentaje,
+        "color": color,
+        "terminado": tiempo_restante_segundos <= 0
+    }
+
+# --- 2. UTILIDADES DE INTERFAZ ---
+
+
+def ui_error_message(error_msg, show_details=True):
+    """
+    Muestra un mensaje de error formateado.
+
+    Args:
+        error_msg: Mensaje de error
+        show_details: Mostrar detalles adicionales
+    """
+    st.error(f"⚠️ {error_msg}")
+
+    if show_details:
+        with st.expander("Ver detalles del error"):
+            st.code(traceback.format_exc())
+            st.info(
+                "Si el problema persiste, contacta con el administrador del sistema.")
+
+
+def ui_success_message(msg):
+    """
+    Muestra un mensaje de éxito formateado.
+
+    Args:
+        msg: Mensaje de éxito
+    """
+    st.success(f"✅ {msg}")
+
+
+def ui_info_message(msg):
+    """
+    Muestra un mensaje informativo formateado.
+
+    Args:
+        msg: Mensaje informativo
+    """
+    st.info(f"ℹ️ {msg}")
+
+
+def ui_warning_message(msg):
+    """
+    Muestra un mensaje de advertencia formateado.
+
+    Args:
+        msg: Mensaje de advertencia
+    """
+    st.warning(f"⚠️ {msg}")
+
+
+def ui_show_progress(title, value, max_value=100, style="progress"):
+    """
+    Muestra una barra de progreso con diferentes estilos.
+
+    Args:
+        title: Título del progreso
+        value: Valor actual
+        max_value: Valor máximo
+        style: Estilo (progress/metric/percent)
+    """
+    if style == "progress":
+        st.markdown(f"#### {title}")
+        st.progress(value / max_value)
+    elif style == "metric":
+        st.metric(title, f"{value}/{max_value}")
+    elif style == "percent":
+        percent = (value / max_value) * 100
+        st.metric(title, f"{percent:.0f}%")
+    else:
+        st.markdown(f"**{title}:** {value}/{max_value}")
+
+
+def ui_confirm_dialog(title, message, ok_button="Confirmar", cancel_button="Cancelar"):
+    """
+    Muestra un diálogo de confirmación.
+
+    Args:
+        title: Título del diálogo
+        message: Mensaje del diálogo
+        ok_button: Texto del botón de confirmación
+        cancel_button: Texto del botón de cancelación
+
+    Returns:
+        bool: True si se confirma, False si se cancela
+    """
+    st.markdown(f"### {title}")
+    st.markdown(message)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        cancel = st.button(cancel_button, key=f"cancel_{hash(title)}")
+    with col2:
+        confirm = st.button(ok_button, key=f"confirm_{hash(title)}")
+
+    if confirm:
+        return True
+
+    if cancel:
+        return False
+
+    return None  # No se ha tomado decisión
+
+
+def ui_tooltip(text, tooltip):
+    """
+    Muestra un texto con tooltip al pasar el ratón.
+
+    Args:
+        text: Texto a mostrar
+        tooltip: Texto del tooltip
+    """
+    st.markdown(f"""
+    <span title="{tooltip}" style="border-bottom: 1px dotted #000; cursor: help;">
+        {text}
+    </span>
+    """, unsafe_allow_html=True)
+
+
+def ui_feedback_form():
+    """
+    Muestra un formulario de feedback para el usuario.
+
+    Returns:
+        dict: Datos del feedback o None si no se envía
+    """
+    with st.expander("📝 Danos tu opinión", expanded=False):
+        with st.form(key="feedback_form"):
+            st.markdown("### Nos gustaría conocer tu opinión")
+
+            rating = st.slider(
+                "¿Cómo valorarías la utilidad de esta herramienta?",
+                min_value=1,
+                max_value=5,
+                value=4,
+                help="1 = Poco útil, 5 = Muy útil"
+            )
+
+            feedback_text = st.text_area(
+                "Comentarios o sugerencias:",
+                height=100,
+                help="¿Qué podríamos mejorar?"
+            )
+
+            submit = st.form_submit_button("Enviar feedback")
+
+            if submit:
+                # En una implementación real, aquí se enviaría el feedback a una base de datos
+                ui_success_message("¡Gracias por tu feedback!")
+                return {
+                    "rating": rating,
+                    "feedback": feedback_text,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+            return None
+        """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 7: Funciones de Procesamiento que Dependen de UI
+==================================================================================
+
+Este artefacto contiene:
+1. Generación de informes en diferentes formatos
+2. Visualización de datos y estadísticas
+3. Base de datos de recursos educativos
+4. Generación de ejercicios personalizados
+5. Generación de planes de estudio
+"""
+
+# --- 1. GENERACIÓN DE INFORMES EN DIFERENTES FORMATOS ---
 
 
 def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, errores_obj, analisis_contextual, consejo_final):
@@ -2021,6 +2512,14 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
                 f"Error secundario al generar informe de error: {str(inner_e)}")
             # Si falla completamente, devolver None
             return None
+        """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 7: Funciones de Procesamiento que Dependen de UI (continuación 1)
+==================================================================================
+
+Continuación de las funciones de procesamiento que dependen de la UI
+"""
 
 
 def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, analisis_contextual, consejo_final):
@@ -2396,6 +2895,14 @@ def generar_csv_analisis(nombre, nivel, fecha, datos_analisis):
         csv_buffer.write(f"Error al generar CSV,{str(e)}\n")
 
         return BytesIO(csv_buffer.getvalue().encode('utf-8-sig'))
+    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 7: Funciones de Procesamiento que Dependen de UI (continuación 2)
+==================================================================================
+
+Continuación de las funciones de procesamiento que dependen de la UI
+"""
 
 # --- 2. VISUALIZACIÓN DE DATOS Y ESTADÍSTICAS ---
 
@@ -2590,7 +3097,16 @@ def mostrar_progreso(df):
     except Exception as e:
         logger.error(f"Error al mostrar progreso: {str(e)}")
         return resultado
-    # --- 1. BASE DE DATOS DE RECURSOS EDUCATIVOS ---
+    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 7: Funciones de Procesamiento que Dependen de UI (continuación 3)
+==================================================================================
+
+Continuación de las funciones de procesamiento que dependen de la UI
+"""
+
+# --- 3. BASE DE DATOS DE RECURSOS EDUCATIVOS ---
 
 
 # Base de datos simplificada de recursos por niveles y categorías
@@ -2681,7 +3197,7 @@ RECURSOS_DB = {
     }
 }
 
-# --- 2. GENERACIÓN DE EJERCICIOS PERSONALIZADOS ---
+# --- 4. GENERACIÓN DE EJERCICIOS PERSONALIZADOS ---
 
 
 def generar_ejercicios_personalizado(errores_obj, analisis_contextual, nivel, idioma):
@@ -2877,7 +3393,17 @@ def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
 
     return recursos_recomendados
 
-# --- 3. GENERACIÓN DE PLAN DE ESTUDIO PERSONALIZADO ---
+
+"""
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 7: Funciones de Procesamiento que Dependen de UI (continuación 4)
+==================================================================================
+
+Continuación de las funciones de procesamiento que dependen de la UI
+"""
+
+# --- 5. GENERACIÓN DE PLAN DE ESTUDIO PERSONALIZADO ---
 
 
 def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
@@ -2999,236 +3525,21 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
         handle_exception("generar_plan_estudio_personalizado", e)
         circuit_breaker.record_failure("openai")
         return {"error": f"Error al generar plan de estudio: {str(e)}", "plan": None}
-    # --- 1. COMPONENTES DE UI REUTILIZABLES ---
 
-
-def ui_header():
-    """Muestra el encabezado principal de la aplicación."""
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        st.title("📝 Textocorrector ELE")
-        st.markdown(
-            "Corrección de textos en español con análisis contextual avanzado.")
-
-    with col2:
-        # Mostrar indicador de versión
-        st.markdown(f"""
-        <div style="background-color:#f0f2f6;padding:8px;border-radius:5px;margin-top:20px;text-align:center">
-            <small>v{APP_VERSION}</small>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-def ui_user_info_form(form_key="form_user_info"):
     """
-    Formulario para obtener información básica del usuario.
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas
+==================================================================================
 
-    Args:
-        form_key: Clave única para el formulario
+Este artefacto contiene:
+1. Componentes UI avanzados que dependen de funciones previas
+2. Visualizadores y exportadores de resultados
+3. Implementación de pestañas principales
+4. Implementación de subpestañas
+"""
 
-    Returns:
-        dict: Datos del usuario (nombre, nivel)
-    """
-    with st.form(key=form_key):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            nombre = st.text_input(
-                "Nombre y apellido:",
-                value=get_session_var("usuario_actual", ""),
-                help="Por favor, introduce tanto tu nombre como tu apellido separados por un espacio."
-            )
-
-        with col2:
-            nivel = st.selectbox(
-                "¿Cuál es tu nivel?",
-                [
-                    "Nivel principiante (A1-A2)",
-                    "Nivel intermedio (B1-B2)",
-                    "Nivel avanzado (C1-C2)"
-                ],
-                index=["principiante", "intermedio", "avanzado"].index(
-                    get_session_var("nivel_estudiante", "intermedio")
-                )
-            )
-
-        submit = st.form_submit_button("Guardar", use_container_width=True)
-
-        if submit:
-            # Validar nombre
-            if not nombre or " " not in nombre:
-                st.warning(
-                    "Por favor, introduce tanto el nombre como el apellido separados por un espacio.")
-                return None
-
-            # Guardar en session_state
-            set_session_var("usuario_actual", nombre)
-
-            # Guardar nivel en formato simplificado
-            nivel_map = {
-                "Nivel principiante (A1-A2)": "principiante",
-                "Nivel intermedio (B1-B2)": "intermedio",
-                "Nivel avanzado (C1-C2)": "avanzado"
-            }
-            set_session_var("nivel_estudiante",
-                            nivel_map.get(nivel, "intermedio"))
-
-            return {"nombre": nombre, "nivel": nivel}
-
-        return None
-
-
-def ui_idioma_correcciones_tipo():
-    """
-    Componente para seleccionar idioma de correcciones y tipo de texto.
-
-    Returns:
-        dict: Opciones seleccionadas
-    """
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        idioma = st.selectbox(
-            "Idioma de corrección",
-            ["Español", "Inglés", "Francés"],
-            help="Idioma en el que recibirás las explicaciones y análisis."
-        )
-
-    with col2:
-        tipo_texto = st.selectbox(
-            "Tipo de texto",
-            [
-                "General/No especificado",
-                "Académico",
-                "Profesional/Laboral",
-                "Informal/Cotidiano",
-                "Creativo/Literario"
-            ],
-            help="Tipo de texto que estás escribiendo."
-        )
-
-    with col3:
-        contexto_cultural = st.selectbox(
-            "Contexto cultural",
-            [
-                "General/Internacional",
-                "España",
-                "Latinoamérica",
-                "Contexto académico",
-                "Contexto empresarial"
-            ],
-            help="Contexto cultural relevante para tu texto."
-        )
-
-    return {
-        "idioma": idioma,
-        "tipo_texto": tipo_texto,
-        "contexto_cultural": contexto_cultural
-    }
-
-
-def ui_examen_options():
-    """
-    Componente para seleccionar opciones de examen.
-
-    Returns:
-        dict: Opciones de examen seleccionadas
-    """
-    col1, col2 = st.columns(2)
-
-    with col1:
-        tipo_examen = st.selectbox(
-            "Examen oficial:",
-            ["DELE", "SIELE", "CELU", "DUCLE"],
-            help="Selecciona el tipo de examen para el que quieres prepararte."
-        )
-
-    with col2:
-        nivel_examen = st.selectbox(
-            "Nivel:",
-            ["A1", "A2", "B1", "B2", "C1", "C2"],
-            help="Nivel del examen."
-        )
-
-    return {
-        "tipo_examen": tipo_examen,
-        "nivel_examen": nivel_examen
-    }
-
-
-def ui_loading_spinner(text="Procesando..."):
-    """
-    Spinner de carga con texto personalizable.
-
-    Args:
-        text: Texto a mostrar durante la carga
-
-    Returns:
-        st.spinner: Objeto spinner de Streamlit
-    """
-    return st.spinner(text)
-
-
-def ui_empty_placeholder():
-    """
-    Crea un placeholder vacío para contenido dinámico.
-
-    Returns:
-        st.empty: Objeto empty de Streamlit
-    """
-    return st.empty()
-
-
-def ui_countdown_timer(total_seconds, start_time=None):
-    """
-    Muestra un temporizador de cuenta regresiva.
-
-    Args:
-        total_seconds: Tiempo total en segundos
-        start_time: Tiempo de inicio (None = ahora)
-
-    Returns:
-        dict: Estado del temporizador
-    """
-    # Manejar el caso donde total_seconds es None
-    if total_seconds is None:
-        total_seconds = 0  # Usar 0 como valor por defecto
-
-    if start_time is None:
-        start_time = time.time()
-
-    # Calcular tiempo transcurrido
-    tiempo_transcurrido = time.time() - start_time
-    tiempo_restante_segundos = max(0, total_seconds - tiempo_transcurrido)
-
-    # Formatear tiempo restante
-    minutos = int(tiempo_restante_segundos // 60)
-    segundos = int(tiempo_restante_segundos % 60)
-    tiempo_formateado = f"{minutos:02d}:{segundos:02d}"
-
-    # Calcular porcentaje (evitar división por cero)
-    if total_seconds > 0:
-        porcentaje = 1 - (tiempo_restante_segundos / total_seconds)
-    else:
-        porcentaje = 1  # Si no hay tiempo total, consideramos que está completo
-
-    porcentaje = max(0, min(1, porcentaje))  # Asegurar entre 0 y 1
-
-    # Determinar color según tiempo restante
-    if tiempo_restante_segundos > total_seconds * 0.5:  # Más del 50% restante
-        color = "normal"  # Verde/Normal
-    elif tiempo_restante_segundos > total_seconds * 0.25:  # Entre 25% y 50%
-        color = "warning"  # Amarillo/Advertencia
-    else:  # Menos del 25%
-        color = "error"  # Rojo/Error
-
-    return {
-        "tiempo_restante": tiempo_restante_segundos,
-        "tiempo_formateado": tiempo_formateado,
-        "porcentaje": porcentaje,
-        "color": color,
-        "terminado": tiempo_restante_segundos <= 0
-    }
+# --- 1. COMPONENTES UI AVANZADOS ---
 
 
 def ui_show_correction_results(result, show_export=True):
@@ -3395,6 +3706,14 @@ def ui_show_correction_results(result, show_export=True):
     # --- OPCIONES DE EXPORTACIÓN ---
     if show_export:
         ui_export_options(result)
+        """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 1)
+==================================================================================
+
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
 
 def ui_show_recommendations(errores_obj, analisis_contextual, nivel, idioma):
@@ -3461,8 +3780,6 @@ def ui_show_recommendations(errores_obj, analisis_contextual, nivel, idioma):
                     with solucion_tab:
                         st.markdown(f"#### Solución del ejercicio:")
                         st.markdown(ejercicio.get('solucion', ''))
-
-# La función debe estar fuera del bloque "with", con indentación correcta
 
 
 def ui_export_options(data):
@@ -3609,163 +3926,16 @@ def ui_export_options(data):
                     st.error(f"Error al generar el CSV: {str(e)}")
                     logger.error(f"Error en generación de CSV: {str(e)}")
                     logger.error(traceback.format_exc())
+                    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 2)
+==================================================================================
 
-# --- 2. UTILIDADES DE INTERFAZ ---
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
-
-def ui_error_message(error_msg, show_details=True):
-    """
-    Muestra un mensaje de error formateado.
-
-    Args:
-        error_msg: Mensaje de error
-        show_details: Mostrar detalles adicionales
-    """
-    st.error(f"⚠️ {error_msg}")
-
-    if show_details:
-        with st.expander("Ver detalles del error"):
-            st.code(traceback.format_exc())
-            st.info(
-                "Si el problema persiste, contacta con el administrador del sistema.")
-
-
-def ui_success_message(msg):
-    """
-    Muestra un mensaje de éxito formateado.
-
-    Args:
-        msg: Mensaje de éxito
-    """
-    st.success(f"✅ {msg}")
-
-
-def ui_info_message(msg):
-    """
-    Muestra un mensaje informativo formateado.
-
-    Args:
-        msg: Mensaje informativo
-    """
-    st.info(f"ℹ️ {msg}")
-
-
-def ui_warning_message(msg):
-    """
-    Muestra un mensaje de advertencia formateado.
-
-    Args:
-        msg: Mensaje de advertencia
-    """
-    st.warning(f"⚠️ {msg}")
-
-
-def ui_show_progress(title, value, max_value=100, style="progress"):
-    """
-    Muestra una barra de progreso con diferentes estilos.
-
-    Args:
-        title: Título del progreso
-        value: Valor actual
-        max_value: Valor máximo
-        style: Estilo (progress/metric/percent)
-    """
-    if style == "progress":
-        st.markdown(f"#### {title}")
-        st.progress(value / max_value)
-    elif style == "metric":
-        st.metric(title, f"{value}/{max_value}")
-    elif style == "percent":
-        percent = (value / max_value) * 100
-        st.metric(title, f"{percent:.0f}%")
-    else:
-        st.markdown(f"**{title}:** {value}/{max_value}")
-
-
-def ui_confirm_dialog(title, message, ok_button="Confirmar", cancel_button="Cancelar"):
-    """
-    Muestra un diálogo de confirmación.
-
-    Args:
-        title: Título del diálogo
-        message: Mensaje del diálogo
-        ok_button: Texto del botón de confirmación
-        cancel_button: Texto del botón de cancelación
-
-    Returns:
-        bool: True si se confirma, False si se cancela
-    """
-    st.markdown(f"### {title}")
-    st.markdown(message)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        cancel = st.button(cancel_button, key=f"cancel_{hash(title)}")
-    with col2:
-        confirm = st.button(ok_button, key=f"confirm_{hash(title)}")
-
-    if confirm:
-        return True
-
-    if cancel:
-        return False
-
-    return None  # No se ha tomado decisión
-
-
-def ui_tooltip(text, tooltip):
-    """
-    Muestra un texto con tooltip al pasar el ratón.
-
-    Args:
-        text: Texto a mostrar
-        tooltip: Texto del tooltip
-    """
-    st.markdown(f"""
-    <span title="{tooltip}" style="border-bottom: 1px dotted #000; cursor: help;">
-        {text}
-    </span>
-    """, unsafe_allow_html=True)
-
-
-def ui_feedback_form():
-    """
-    Muestra un formulario de feedback para el usuario.
-
-    Returns:
-        dict: Datos del feedback o None si no se envía
-    """
-    with st.expander("📝 Danos tu opinión", expanded=False):
-        with st.form(key="feedback_form"):
-            st.markdown("### Nos gustaría conocer tu opinión")
-
-            rating = st.slider(
-                "¿Cómo valorarías la utilidad de esta herramienta?",
-                min_value=1,
-                max_value=5,
-                value=4,
-                help="1 = Poco útil, 5 = Muy útil"
-            )
-
-            feedback_text = st.text_area(
-                "Comentarios o sugerencias:",
-                height=100,
-                help="¿Qué podríamos mejorar?"
-            )
-
-            submit = st.form_submit_button("Enviar feedback")
-
-            if submit:
-                # En una implementación real, aquí se enviaría el feedback a una base de datos
-                ui_success_message("¡Gracias por tu feedback!")
-                return {
-                    "rating": rating,
-                    "feedback": feedback_text,
-                    "timestamp": datetime.now().isoformat()
-                }
-
-            return None
-        # --- 1. PESTAÑA DE CORRECCIÓN DE TEXTO ---
+# --- 2. IMPLEMENTACIÓN DE PESTAÑAS PRINCIPALES ---
 
 
 def tab_corregir():
@@ -3915,8 +4085,16 @@ def tab_corregir():
             # Mostrar sugerencia de reintentar
             st.info(
                 "Prueba a hacer la corrección con un texto más corto o inténtalo más tarde.")
+            """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 3)
+==================================================================================
 
-# --- 2. FUNCIÓN DE VISUALIZACIÓN DE TEXTO TRANSCRITO ---
+Continuación de los componentes de UI avanzados y pestañas
+"""
+
+# --- 3. FUNCIÓN DE VISUALIZACIÓN DE TEXTO TRANSCRITO ---
 
 
 def visualizar_texto_manuscrito():
@@ -3996,48 +4174,8 @@ def visualizar_texto_manuscrito():
         set_session_var("mostrar_correccion_transcripcion", False)
         st.rerun()
 
-# --- 3. PESTAÑA DE EXÁMENES ---
 
-
-def tab_examenes():
-    """Implementación de la pestaña de exámenes."""
-    st.header("🎓 Preparación para exámenes oficiales")
-
-    # Verificar si hay usuario
-    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
-        st.info(
-            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
-
-        # Mostrar formulario básico de usuario con key única para este contexto
-        user_data = ui_user_info_form(form_key="form_user_info_examenes")
-        if not user_data:
-            return
-
-    # Selector de examen y nivel
-    exam_options = ui_examen_options()
-    tipo_examen = exam_options["tipo_examen"]
-    nivel_examen = exam_options["nivel_examen"]
-
-    # Pestañas para las diferentes funcionalidades
-    tabs_examen = st.tabs([
-        "Modelo de examen",
-        "Simulacro cronometrado",
-        "Criterios de evaluación"
-    ])
-
-    # --- Pestaña 1: Modelo de examen ---
-    with tabs_examen[0]:
-        modelo_examen_tab(tipo_examen, nivel_examen)
-
-    # --- Pestaña 2: Simulacro cronometrado ---
-    with tabs_examen[1]:
-        simulacro_cronometrado_tab(tipo_examen, nivel_examen)
-
-    # --- Pestaña 3: Criterios de evaluación ---
-    with tabs_examen[2]:
-        criterios_evaluacion_tab(tipo_examen, nivel_examen)
-
-
+# --- 4. IMPLEMENTACIÓN DE SUBPESTAÑAS DE EXÁMENES ---
 def modelo_examen_tab(tipo_examen, nivel_examen):
     """
     Implementación de la pestaña de modelo de examen.
@@ -4114,8 +4252,14 @@ def modelo_examen_tab(tipo_examen, nivel_examen):
                 set_session_var("tarea_modelo_generada", None)
                 set_session_var("respuesta_modelo_examen", "")
                 st.rerun()
+                """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 4)
+==================================================================================
 
-# Definición de función fuera del bloque "with"
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
 
 def simulacro_cronometrado_tab(tipo_examen, nivel_examen):
@@ -4296,55 +4440,16 @@ def criterios_evaluacion_tab(tipo_examen, nivel_examen):
         with st.spinner("Generando ejemplos..."):
             ejemplos = generar_ejemplos_evaluados(tipo_examen, nivel_examen)
             st.markdown(ejemplos)
+            """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 5)
+==================================================================================
 
-# --- 4. PESTAÑA DE HERRAMIENTAS COMPLEMENTARIAS ---
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
-
-def tab_herramientas():
-    """Implementación de la pestaña de herramientas complementarias."""
-    # Limpiar variables de simulacro si venimos de otra pestaña
-    if "inicio_simulacro" in st.session_state:
-        set_session_var("inicio_simulacro", None)
-    if "duracion_simulacro" in st.session_state:
-        set_session_var("duracion_simulacro", None)
-    if "tarea_simulacro" in st.session_state:
-        set_session_var("tarea_simulacro", None)
-
-    st.header("🔧 Herramientas complementarias")
-
-    # Verificar si hay usuario
-    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
-        st.info(
-            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
-
-        # Mostrar formulario básico de usuario con key única para este contexto
-        user_data = ui_user_info_form(form_key="form_user_info_herramientas")
-        if not user_data:
-            return
-
-    # Pestañas para diferentes herramientas
-    subtabs = st.tabs([
-        "Análisis de complejidad",
-        "Biblioteca de recursos",
-        "Descripción de imágenes",
-        "Texto manuscrito"
-    ])
-
-    # --- Subpestaña 1: Análisis de complejidad ---
-    with subtabs[0]:
-        herramienta_analisis_complejidad()
-
-    # --- Subpestaña 2: Biblioteca de recursos ---
-    with subtabs[1]:
-        herramienta_biblioteca_recursos()
-
-    # --- Subpestaña 3: Descripción de imágenes ---
-    with subtabs[2]:
-        herramienta_descripcion_imagenes()
-
-    # --- Subpestaña 4: Texto manuscrito ---
-    with subtabs[3]:
-        herramienta_texto_manuscrito()
+# --- 5. IMPLEMENTACIÓN DE SUBPESTAÑAS DE HERRAMIENTAS ---
 
 
 def herramienta_analisis_complejidad():
@@ -4584,6 +4689,14 @@ def herramienta_biblioteca_recursos():
         else:
             st.info(
                 f"No se encontraron recursos para {categoria} de nivel {nivel_recursos}. Intenta con otra combinación.")
+            """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 6)
+==================================================================================
+
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
 
 def herramienta_descripcion_imagenes():
@@ -4605,18 +4718,6 @@ def herramienta_descripcion_imagenes():
         "main_tab": 4,  # Índice de "Herramientas complementarias"
         "tools_tab": 2  # Índice de "Descripción de imágenes"
     }
-
-    # Inicializar variables de estado si no existen
-    if "imagen_generada_state" not in st.session_state:
-        st.session_state.imagen_generada_state = False
-    if "imagen_url_state" not in st.session_state:
-        st.session_state.imagen_url_state = None
-    if "descripcion_state" not in st.session_state:
-        st.session_state.descripcion_state = None
-    if "tema_imagen_state" not in st.session_state:
-        st.session_state.tema_imagen_state = None
-    if "descripcion_estudiante_state" not in st.session_state:
-        st.session_state.descripcion_estudiante_state = ""
 
     # Selección de nivel
     nivel_imagen = st.selectbox(
@@ -4853,42 +4954,16 @@ def herramienta_texto_manuscrito():
                     logger.error(
                         f"Error en herramienta_texto_manuscrito: {str(e)}")
                     logger.error(traceback.format_exc())
+                    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 7)
+==================================================================================
 
-# --- 5. PESTAÑA DE PROGRESO ---
+Continuación de los componentes de UI avanzados y pestañas
+"""
 
-
-def tab_progreso():
-    """Implementación de la pestaña de progreso."""
-    # Limpiar variables de simulacro si venimos de otra pestaña
-    if "inicio_simulacro" in st.session_state:
-        set_session_var("inicio_simulacro", None)
-    if "duracion_simulacro" in st.session_state:
-        set_session_var("duracion_simulacro", None)
-    if "tarea_simulacro" in st.session_state:
-        set_session_var("tarea_simulacro", None)
-
-    st.header("📊 Seguimiento del progreso")
-
-    # Verificar si hay usuario
-    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
-        st.info(
-            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
-
-        # Mostrar formulario básico de usuario con key única para este contexto
-        user_data = ui_user_info_form(form_key="form_user_info_progreso")
-        if not user_data:
-            return
-
-    # Subtabs para diferentes vistas de progreso
-    subtab_estadisticas, subtab_plan_estudio = st.tabs([
-        "Estadísticas", "Plan de estudio personalizado"
-    ])
-
-    with subtab_estadisticas:
-        estadisticas_progreso_tab()
-
-    with subtab_plan_estudio:
-        plan_estudio_tab()
+# --- 6. IMPLEMENTACIÓN DE PESTAÑAS DE PROGRESO Y ESTADÍSTICAS ---
 
 
 def estadisticas_progreso_tab():
@@ -5104,8 +5179,50 @@ def plan_estudio_tab():
                     st.error(resultado["error"])
             else:
                 st.info("No tenemos suficientes datos para generar un plan personalizado. Realiza al menos 3 correcciones de texto para activar esta función.")
+                """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 8: Componentes de UI Avanzados y Pestañas (continuación 8)
+==================================================================================
 
-# --- 6. PESTAÑA DE HISTORIAL ---
+Continuación de los componentes de UI avanzados y pestañas
+"""
+
+# --- 7. IMPLEMENTACIÓN DE PESTAÑAS PRINCIPALES ---
+
+
+def tab_progreso():
+    """Implementación de la pestaña de progreso."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
+
+    st.header("📊 Seguimiento del progreso")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario con key única para este contexto
+        user_data = ui_user_info_form(form_key="form_user_info_progreso")
+        if not user_data:
+            return
+
+    # Subtabs para diferentes vistas de progreso
+    subtab_estadisticas, subtab_plan_estudio = st.tabs([
+        "Estadísticas", "Plan de estudio personalizado"
+    ])
+
+    with subtab_estadisticas:
+        estadisticas_progreso_tab()
+
+    with subtab_plan_estudio:
+        plan_estudio_tab()
 
 
 def tab_historial():
@@ -5275,7 +5392,224 @@ def tab_historial():
         st.error(f"Error al cargar el historial: {str(e)}")
         with st.expander("Detalles del error"):
             st.code(traceback.format_exc())
-            # --- 1. CONFIGURACIÓN DE LA APLICACIÓN PRINCIPAL ---
+
+
+def tab_examenes():
+    """Implementación de la pestaña de exámenes."""
+    st.header("🎓 Preparación para exámenes oficiales")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario con key única para este contexto
+        user_data = ui_user_info_form(form_key="form_user_info_examenes")
+        if not user_data:
+            return
+
+    # Selector de examen y nivel
+    exam_options = ui_examen_options()
+    tipo_examen = exam_options["tipo_examen"]
+    nivel_examen = exam_options["nivel_examen"]
+
+    # Pestañas para las diferentes funcionalidades
+    tabs_examen = st.tabs([
+        "Modelo de examen",
+        "Simulacro cronometrado",
+        "Criterios de evaluación"
+    ])
+
+    # --- Pestaña 1: Modelo de examen ---
+    with tabs_examen[0]:
+        modelo_examen_tab(tipo_examen, nivel_examen)
+
+    # --- Pestaña 2: Simulacro cronometrado ---
+    with tabs_examen[1]:
+        simulacro_cronometrado_tab(tipo_examen, nivel_examen)
+
+    # --- Pestaña 3: Criterios de evaluación ---
+    with tabs_examen[2]:
+        criterios_evaluacion_tab(tipo_examen, nivel_examen)
+
+
+def tab_herramientas():
+    """Implementación de la pestaña de herramientas complementarias."""
+    # Limpiar variables de simulacro si venimos de otra pestaña
+    if "inicio_simulacro" in st.session_state:
+        set_session_var("inicio_simulacro", None)
+    if "duracion_simulacro" in st.session_state:
+        set_session_var("duracion_simulacro", None)
+    if "tarea_simulacro" in st.session_state:
+        set_session_var("tarea_simulacro", None)
+
+    st.header("🔧 Herramientas complementarias")
+
+    # Verificar si hay usuario
+    if "usuario_actual" not in st.session_state or not st.session_state.usuario_actual:
+        st.info(
+            "👆 Por favor, introduce tu nombre y nivel en la pestaña 'Corrección de texto' para comenzar.")
+
+        # Mostrar formulario básico de usuario con key única para este contexto
+        user_data = ui_user_info_form(form_key="form_user_info_herramientas")
+        if not user_data:
+            return
+
+    # Función para cambiar la subpestaña activa
+    def on_tools_tab_change():
+        st.session_state.active_tools_tab_index = st.session_state.tools_tab_selector
+
+    # Pestañas para diferentes herramientas
+    tools_tab_names = [
+        "Análisis de complejidad",
+        "Biblioteca de recursos",
+        "Descripción de imágenes",
+        "Texto manuscrito"
+    ]
+
+    # Selector de herramientas
+    selected_tools_tab = st.radio(
+        "Herramientas",
+        options=range(len(tools_tab_names)),
+        format_func=lambda x: tools_tab_names[x],
+        key="tools_tab_selector",
+        horizontal=True,
+        label_visibility="collapsed",
+        index=st.session_state.active_tools_tab_index,
+        on_change=on_tools_tab_change
+    )
+
+    # Actualizar índice de subpestaña activa
+    st.session_state.active_tools_tab_index = selected_tools_tab
+
+    # --- Subpestaña 1: Análisis de complejidad ---
+    if selected_tools_tab == 0:
+        herramienta_analisis_complejidad()
+
+    # --- Subpestaña 2: Biblioteca de recursos ---
+    elif selected_tools_tab == 1:
+        herramienta_biblioteca_recursos()
+
+    # --- Subpestaña 3: Descripción de imágenes ---
+    elif selected_tools_tab == 2:
+        herramienta_descripcion_imagenes()
+
+    # --- Subpestaña 4: Texto manuscrito ---
+    elif selected_tools_tab == 3:
+        herramienta_texto_manuscrito()
+        """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 9: Lógica de Navegación y Manejo de Estados
+==================================================================================
+
+Este artefacto contiene:
+1. Manejo de parámetros de URL y comandos de navegación
+2. Inicialización de la aplicación
+3. Funciones para manejar mantenimiento y estado global
+"""
+
+# --- 1. MANEJO DE COMANDOS DE URL Y PARÁMETROS ---
+
+
+def handle_url_params_fix():
+    """Maneja los parámetros de URL para navegación entre páginas."""
+    # Al usar st.query_params, se accede como un dict pero los valores no vienen en listas
+    # Actualización para mantener comportamiento compatible con el código existente
+
+    # Verificar si hay parámetros que necesitamos procesar
+    if "nombre_seleccionado" in st.query_params:
+        nombre = st.query_params["nombre_seleccionado"]
+        if nombre:
+            set_session_var("usuario_actual", nombre)
+        # Eliminar el parámetro después de usarlo
+        del st.query_params["nombre_seleccionado"]
+
+    if "tab" in st.query_params:
+        tab = st.query_params["tab"]
+        st.session_state.active_tab = tab
+        # Eliminar el parámetro después de usarlo
+        del st.query_params["tab"]
+
+# --- 2. INICIALIZACIÓN DE LA APLICACIÓN ---
+
+
+def init_app():
+    """Inicializa la aplicación con comprobaciones y configuraciones necesarias."""
+    # Verificar dependencias externas
+    dependencies_ok = True
+
+    # Verificar API keys
+    if api_keys["openai"] is None:
+        dependencies_ok = False
+        logger.warning("OpenAI API key no configurada")
+
+    if api_keys["elevenlabs"]["api_key"] is None or api_keys["elevenlabs"]["voice_id"] is None:
+        logger.warning("ElevenLabs no configurado completamente")
+
+    if sheets_connection is None:
+        logger.warning("Conexión a Google Sheets no disponible")
+
+    # Configurar el estado de la página
+    if not dependencies_ok:
+        st.sidebar.warning(
+            "⚠️ Algunas funcionalidades están limitadas debido a configuraciones incompletas.")
+
+    # Inicializar índices de pestañas si no existen
+    if "active_tab_index" not in st.session_state:
+        st.session_state.active_tab_index = 0
+    if "active_tools_tab_index" not in st.session_state:
+        st.session_state.active_tools_tab_index = 0
+
+    # Comprobar si hay un objetivo de navegación específico
+    if "tab_navigate_to" in st.session_state and st.session_state.tab_navigate_to:
+        try:
+            if "main_tab" in st.session_state.tab_navigate_to:
+                st.session_state.active_tab_index = st.session_state.tab_navigate_to["main_tab"]
+            if "tools_tab" in st.session_state.tab_navigate_to:
+                st.session_state.active_tools_tab_index = st.session_state.tab_navigate_to[
+                    "tools_tab"]
+            # Limpiar después de usar
+            st.session_state.tab_navigate_to = None
+        except Exception as e:
+            logger.error(f"Error al establecer pestañas activas: {str(e)}")
+
+    # Manejar parámetros de URL
+    handle_url_params_fix()
+
+    # Comprobar si es la primera ejecución
+    if "app_initialized" not in st.session_state:
+        set_session_var("app_initialized", True)
+        logger.info(
+            f"Aplicación inicializada con ID de sesión: {st.session_state.session_id}")
+
+    # Mostrar información de versión y estado en el pie de página
+    with st.sidebar.expander("ℹ️ Acerca de la aplicación"):
+        st.write(f"Versión: {APP_VERSION}")
+        st.write(f"ID de sesión: {st.session_state.session_id[:8]}")
+
+        # Mostrar estado de conexiones
+        st.subheader("Estado de servicios")
+        circuit_status = circuit_breaker.get_status()
+
+        for service, status in circuit_status.items():
+            if status["open"]:
+                st.error(f"❌ {service.title()}: No disponible")
+            else:
+                st.success(f"✅ {service.title()}: Disponible")
+                """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 10: Aplicación Principal (main)
+==================================================================================
+
+Este artefacto contiene:
+1. Función principal de la aplicación (main)
+2. Punto de entrada de la aplicación
+3. Manejo de errores de nivel superior
+"""
+
+# --- 1. CONFIGURACIÓN DE LA APLICACIÓN PRINCIPAL ---
 
 
 def main():
@@ -5394,95 +5728,6 @@ def main():
 
     # Formulario de feedback al final
     ui_feedback_form()
-
-# --- 2. MANEJO DE COMANDOS DE URL Y PARÁMETROS ---
-
-
-def handle_url_params_fix():
-    """Maneja los parámetros de URL para navegación entre páginas."""
-    # Al usar st.query_params, se accede como un dict pero los valores no vienen en listas
-    # Actualización para mantener comportamiento compatible con el código existente
-
-    # Verificar si hay parámetros que necesitamos procesar
-    if "nombre_seleccionado" in st.query_params:
-        nombre = st.query_params["nombre_seleccionado"]
-        if nombre:
-            set_session_var("usuario_actual", nombre)
-        # Eliminar el parámetro después de usarlo
-        del st.query_params["nombre_seleccionado"]
-
-    if "tab" in st.query_params:
-        tab = st.query_params["tab"]
-        st.session_state.active_tab = tab
-        # Eliminar el parámetro después de usarlo
-        del st.query_params["tab"]
-
-# --- 3. INICIALIZACIÓN DE LA APLICACIÓN ---
-
-
-def init_app():
-    """Inicializa la aplicación con comprobaciones y configuraciones necesarias."""
-    # Verificar dependencias externas
-    dependencies_ok = True
-
-    # Verificar API keys
-    if api_keys["openai"] is None:
-        dependencies_ok = False
-        logger.warning("OpenAI API key no configurada")
-
-    if api_keys["elevenlabs"]["api_key"] is None or api_keys["elevenlabs"]["voice_id"] is None:
-        logger.warning("ElevenLabs no configurado completamente")
-
-    if sheets_connection is None:
-        logger.warning("Conexión a Google Sheets no disponible")
-
-    # Configurar el estado de la página
-    if not dependencies_ok:
-        st.sidebar.warning(
-            "⚠️ Algunas funcionalidades están limitadas debido a configuraciones incompletas.")
-
-    # Inicializar índices de pestañas si no existen
-    if "active_tab_index" not in st.session_state:
-        st.session_state.active_tab_index = 0
-    if "active_tools_tab_index" not in st.session_state:
-        st.session_state.active_tools_tab_index = 0
-
-    # Comprobar si hay un objetivo de navegación específico
-    if "tab_navigate_to" in st.session_state and st.session_state.tab_navigate_to:
-        try:
-            if "main_tab" in st.session_state.tab_navigate_to:
-                st.session_state.active_tab_index = st.session_state.tab_navigate_to["main_tab"]
-            if "tools_tab" in st.session_state.tab_navigate_to:
-                st.session_state.active_tools_tab_index = st.session_state.tab_navigate_to[
-                    "tools_tab"]
-            # Limpiar después de usar
-            st.session_state.tab_navigate_to = None
-        except Exception as e:
-            logger.error(f"Error al establecer pestañas activas: {str(e)}")
-
-    # Manejar parámetros de URL
-    handle_url_params_fix()
-
-    # Comprobar si es la primera ejecución
-    if "app_initialized" not in st.session_state:
-        set_session_var("app_initialized", True)
-        logger.info(
-            f"Aplicación inicializada con ID de sesión: {st.session_state.session_id}")
-
-    # Mostrar información de versión y estado en el pie de página
-    with st.sidebar.expander("ℹ️ Acerca de la aplicación"):
-        st.write(f"Versión: {APP_VERSION}")
-        st.write(f"ID de sesión: {st.session_state.session_id[:8]}")
-
-        # Mostrar estado de conexiones
-        st.subheader("Estado de servicios")
-        circuit_status = circuit_breaker.get_status()
-
-        for service, status in circuit_status.items():
-            if status["open"]:
-                st.error(f"❌ {service.title()}: No disponible")
-            else:
-                st.success(f"✅ {service.title()}: Disponible")
 
 
 # --- 4. PUNTO DE ENTRADA PRINCIPAL ---
