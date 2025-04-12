@@ -3287,7 +3287,7 @@ def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
 def ui_export_options(data):
     """
     Muestra opciones para exportar los resultados de la corrección.
-    Versión optimizada que evita usar botones dentro de formularios.
+    Versión corregida que evita errores de botones en formularios.
 
     Args:
         data: Resultados de la corrección
@@ -3314,92 +3314,110 @@ def ui_export_options(data):
         ["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"]
     )
 
+    # SOLUCIÓN: Asegurarnos de que los botones estén en el nivel superior de cada pestaña
     with export_tab1:
         st.write("Exporta este informe como documento Word (DOCX)")
-
-        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
-        if st.button("Generar documento Word", key="gen_docx"):
+        
+        # Botón fuera de cualquier otro contenedor
+        gen_docx = st.button("Generar documento Word", key="gen_docx", use_container_width=True)
+        
+        if gen_docx:
             with st.spinner("Generando documento Word..."):
-                docx_buffer = generar_informe_docx(
-                    nombre, nivel, fecha, texto_original, texto_corregido,
-                    errores_obj, analisis_contextual, consejo_final
-                )
-
-                if docx_buffer:
-                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                    st.download_button(
-                        label="📥 Descargar documento Word",
-                        data=docx_buffer,
-                        file_name=nombre_archivo,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key="docx_download_corregir"
+                try:
+                    docx_buffer = generar_informe_docx(
+                        nombre, nivel, fecha, texto_original, texto_corregido,
+                        errores_obj, analisis_contextual, consejo_final
                     )
-                    st.success("✅ Documento generado correctamente")
-                else:
-                    st.error(
-                        "No se pudo generar el documento Word. Inténtalo de nuevo.")
+                    
+                    if docx_buffer:
+                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                        st.download_button(
+                            label="📥 Descargar documento Word",
+                            data=docx_buffer,
+                            file_name=nombre_archivo,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key="docx_download_corregir"
+                        )
+                        st.success("✅ Documento generado correctamente")
+                    else:
+                        st.error("No se pudo generar el documento Word. Inténtalo de nuevo.")
+                except Exception as e:
+                    st.error(f"Error al generar el documento Word: {str(e)}")
+                    logger.error(f"Error en generar_informe_docx: {str(e)}")
+                    logger.error(traceback.format_exc())
 
     with export_tab2:
         st.write("Exporta este informe como página web (HTML)")
-
-        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
-        if st.button("Generar documento HTML", key="gen_html"):
+        
+        # Botón fuera de cualquier otro contenedor
+        gen_html = st.button("Generar documento HTML", key="gen_html", use_container_width=True)
+        
+        if gen_html:
             with st.spinner("Generando HTML..."):
-                html_content = generar_informe_html(
-                    nombre, nivel, fecha, texto_original, texto_corregido,
-                    analisis_contextual, consejo_final
-                )
-
-                if html_content:
-                    # Convertir a bytes para descargar
-                    html_bytes = html_content.encode()
-
-                    # Botón de descarga
-                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                    st.download_button(
-                        label="📥 Descargar página HTML",
-                        data=html_bytes,
-                        file_name=nombre_archivo,
-                        mime="text/html",
-                        key="html_download_corregir"
+                try:
+                    html_content = generar_informe_html(
+                        nombre, nivel, fecha, texto_original, texto_corregido,
+                        analisis_contextual, consejo_final
                     )
-                    st.success("✅ HTML generado correctamente")
-
-                    # Opción para previsualizar
-                    with st.expander("Previsualizar HTML"):
-                        # Sanitizar de manera segura para la previsualización
-                        sanitized_html = html_content.replace('"', '&quot;')
-                        st.markdown(
-                            f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
-                            unsafe_allow_html=True
+                    
+                    if html_content:
+                        # Convertir a bytes para descargar
+                        html_bytes = html_content.encode()
+                        
+                        # Botón de descarga
+                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+                        st.download_button(
+                            label="📥 Descargar página HTML",
+                            data=html_bytes,
+                            file_name=nombre_archivo,
+                            mime="text/html",
+                            key="html_download_corregir"
                         )
-                else:
-                    st.error("No se pudo generar el HTML. Inténtalo de nuevo.")
+                        st.success("✅ HTML generado correctamente")
+                        
+                        # Opción para previsualizar
+                        with st.expander("Previsualizar HTML"):
+                            # Sanitizar de manera segura para la previsualización
+                            sanitized_html = html_content.replace('"', '&quot;')
+                            st.markdown(
+                                f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
+                                unsafe_allow_html=True
+                            )
+                    else:
+                        st.error("No se pudo generar el HTML. Inténtalo de nuevo.")
+                except Exception as e:
+                    st.error(f"Error al generar el documento HTML: {str(e)}")
+                    logger.error(f"Error en generar_informe_html: {str(e)}")
 
     with export_tab3:
         st.write("Exporta los datos del análisis en formato CSV")
-
-        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
-        if st.button("Generar CSV", key="gen_csv"):
+        
+        # Botón fuera de cualquier otro contenedor
+        gen_csv = st.button("Generar CSV", key="gen_csv", use_container_width=True)
+        
+        if gen_csv:
             with st.spinner("Generando CSV..."):
-                csv_buffer = generar_csv_analisis(
-                    nombre, nivel, fecha, data
-                )
-
-                if csv_buffer:
-                    # Botón de descarga
-                    nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                    st.download_button(
-                        label="📥 Descargar CSV",
-                        data=csv_buffer,
-                        file_name=nombre_archivo,
-                        mime="text/csv",
-                        key="csv_download_corregir"
+                try:
+                    csv_buffer = generar_csv_analisis(
+                        nombre, nivel, fecha, data
                     )
-                    st.success("✅ CSV generado correctamente")
-                else:
-                    st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
-
+                    
+                    if csv_buffer:
+                        # Botón de descarga
+                        nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+                        st.download_button(
+                            label="📥 Descargar CSV",
+                            data=csv_buffer,
+                            file_name=nombre_archivo,
+                            mime="text/csv",
+                            key="csv_download_corregir"
+                        )
+                        st.success("✅ CSV generado correctamente")
+                    else:
+                        st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
+                except Exception as e:
+                    st.error(f"Error al generar el CSV: {str(e)}")
+                    logger.error(f"Error en generar_csv_analisis: {str(e)}")
                     """
 TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
 ==================================================================================
@@ -3416,7 +3434,6 @@ Este artefacto contiene las funciones corregidas para la transcripción de texto
 def herramienta_texto_manuscrito():
     """
     Implementación optimizada de la herramienta de transcripción de textos manuscritos.
-    Soluciona problemas de flujo entre transcripción y corrección.
     """
     st.subheader("✍️ Transcripción de textos manuscritos")
     st.markdown("""
@@ -3454,7 +3471,7 @@ def herramienta_texto_manuscrito():
             st.error(f"Error al procesar la imagen: {str(e)}")
             return
 
-        # SOLUCIÓN: Usar un formulario para la transcripción para evitar problemas de estado
+        # Usar un formulario para la transcripción
         with st.form(key="form_transcribir_manuscrito"):
             st.write("Haz clic en el botón para transcribir el texto de la imagen.")
             submit_transcribir = st.form_submit_button("Transcribir texto", use_container_width=True)
@@ -3480,9 +3497,9 @@ def herramienta_texto_manuscrito():
                         # Guardar en session_state de forma segura
                         set_session_var("ultimo_texto_transcrito", texto_transcrito)
                         
-                        # SOLUCIÓN SIMPLIFICADA: Mostrar texto y opciones
+                        # SOLUCIÓN CORREGIDA: Mostrar texto y opciones
                         st.text_area(
-                            "Texto transcrito (copia y pégalo para corregirlo):",
+                            "Texto transcrito (selecciona todo el texto y usa CTRL+C para copiarlo):",
                             value=texto_transcrito,
                             height=200,
                             key="texto_transcrito_mostrado"
@@ -3492,7 +3509,7 @@ def herramienta_texto_manuscrito():
                         st.info("""
                         ### 📋 Instrucciones para corregir el texto transcrito:
                         
-                        1. **Copia** el texto transcrito usando el botón de copia o seleccionándolo manualmente
+                        1. **Selecciona** el texto transcrito en el cuadro de arriba y cópialo (CTRL+C o CMD+C)
                         2. **Ve a la pestaña "Corregir texto"** en el menú principal
                         3. **Pega** el texto en el área de texto
                         4. Ajusta las opciones de corrección según necesites
@@ -3500,42 +3517,13 @@ def herramienta_texto_manuscrito():
                         """)
                         
                         # Botón para ir directamente a la pestaña de corrección
-                        col1, col2 = st.columns([1, 2])
-                        with col1:
-                            if st.button("Copiar al portapapeles", key="copy_transcribed_text"):
-                                # Esta función de JavaScript se ejecuta en el navegador del usuario
-                                st.write(
-                                    f"""
-                                    <script>
-                                        // Esta función copia el texto al portapapeles
-                                        function copyToClipboard() {{
-                                            const text = `{texto_transcrito.replace("'", "\\'")}`;
-                                            navigator.clipboard.writeText(text).then(function() {{
-                                                alert('¡Texto copiado al portapapeles!');
-                                            }})
-                                            .catch(function(err) {{
-                                                alert('No se pudo copiar el texto: ' + err);
-                                            }});
-                                        }}
-                                        // Intentamos ejecutar la función
-                                        try {{
-                                            copyToClipboard();
-                                        }} catch (e) {{
-                                            console.error("Error al copiar:", e);
-                                        }}
-                                    </script>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
-                        
-                        with col2:
-                            if st.button("Ir a la pestaña de corrección", key="go_to_correction_tab"):
-                                # Guardar el texto transcrito para usarlo en la pestaña principal
-                                set_session_var("texto_correccion_corregir", texto_transcrito)
-                                # Navegar a la pestaña de corrección
-                                st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
-                                # Recargar la página
-                                st.rerun()
+                        if st.button("Ir a la pestaña de corrección", key="go_to_correction_tab"):
+                            # Guardar el texto transcrito para usarlo en la pestaña principal
+                            set_session_var("texto_correccion_corregir", texto_transcrito)
+                            # Navegar a la pestaña de corrección
+                            st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
+                            # Recargar la página
+                            st.rerun()
                                 
                     else:
                         st.error(texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
@@ -4402,15 +4390,14 @@ def tab_progreso():
 
 
 def tab_examen():
-    """Implementación de la pestaña de preparación para exámenes."""
+    """Implementación mejorada de la pestaña de preparación para exámenes."""
     st.header("🎓 Preparación para exámenes")
 
     # Obtener datos del usuario
     user_data = ui_user_info_form(form_key="form_user_info_examen")
 
     if not user_data and "usuario_actual" not in st.session_state:
-        st.info(
-            "Por favor, introduce tu información para iniciar la preparación para exámenes.")
+        st.info("Por favor, introduce tu información para iniciar la preparación para exámenes.")
         return
 
     # Nombre del estudiante actual
@@ -4446,34 +4433,30 @@ def tab_examen():
 
         if inicio_simulacro is None or duracion_simulacro is None or tarea_simulacro is None:
             # No hay simulacro activo, mostrar opciones para iniciar
-            with st.form(key="form_iniciar_simulacro"):
-                st.write(
-                    "Haz clic en el botón para generar una tarea de examen y comenzar el simulacro.")
-                tiempo_personalizado = st.slider(
-                    "Tiempo para el simulacro (minutos):", min_value=10, max_value=120, value=45)
-                submit_iniciar = st.form_submit_button(
-                    "Iniciar simulacro", use_container_width=True)
+            tiempo_personalizado = st.slider(
+                "Tiempo para el simulacro (minutos):", min_value=10, max_value=120, value=45
+            )
+            
+            # SOLUCIÓN: Usar botón normal en lugar de formulario
+            if st.button("Iniciar simulacro", key="inicio_simulacro_btn"):
+                # Generar una tarea de expresión escrita
+                with st.spinner("Generando tarea de examen..."):
+                    # Obtener la duración y la tarea para el nivel y tipo seleccionado
+                    duracion_examen = obtener_duracion_examen(
+                        options["tipo_examen"], options["nivel_examen"])
+                    if tiempo_personalizado:
+                        duracion_examen = tiempo_personalizado * 60  # Convertir minutos a segundos
 
-                if submit_iniciar:
-                    # Generar una tarea de expresión escrita
-                    with st.spinner("Generando tarea de examen..."):
-                        # Obtener la duración y la tarea para el nivel y tipo seleccionado
-                        duracion_examen = obtener_duracion_examen(
-                            options["tipo_examen"], options["nivel_examen"])
-                        if tiempo_personalizado:
-                            duracion_examen = tiempo_personalizado * 60  # Convertir minutos a segundos
+                    tarea_examen = generar_tarea_examen(
+                        options["tipo_examen"], options["nivel_examen"])
 
-                        tarea_examen = generar_tarea_examen(
-                            options["tipo_examen"], options["nivel_examen"])
+                    # Guardar datos del simulacro
+                    set_session_var("inicio_simulacro", time.time())
+                    set_session_var("duracion_simulacro", duracion_examen)
+                    set_session_var("tarea_simulacro", tarea_examen)
 
-                        # Guardar datos del simulacro
-                        set_session_var("inicio_simulacro", time.time())
-                        set_session_var("duracion_simulacro", duracion_examen)
-                        set_session_var("tarea_simulacro", tarea_examen)
-
-                        # Recargar para mostrar el simulacro
-                        st.rerun()
-
+                    # Recargar para mostrar el simulacro
+                    st.rerun()
         else:
             # Hay un simulacro activo, mostrar tarea y temporizador
             st.markdown("### Tarea de expresión escrita")
@@ -4578,7 +4561,6 @@ def tab_examen():
                 ejemplos = generar_ejemplos_evaluados(
                     options["tipo_examen"], options["nivel_examen"])
                 st.markdown(ejemplos)
-
 
 def tab_herramientas():
     """Implementación de la pestaña de herramientas complementarias."""
