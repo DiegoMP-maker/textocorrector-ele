@@ -108,8 +108,6 @@ def init_session_state():
         "descripcion_state": None,
         "tema_imagen_state": None,
         "descripcion_estudiante_state": "",
-        "mostrar_correccion_imagen": False,
-        "mostrar_correccion_transcripcion": False,
         "active_tab_index": 0,
         "active_tools_tab_index": 0,
         "tab_navigate_to": None,
@@ -3409,109 +3407,8 @@ Artefacto 9: Transcripción de Texto Manuscrito
 ==================================================================================
 
 Este artefacto contiene las funciones corregidas para la transcripción de texto manuscrito:
-1. Visualización de texto manuscrito
 2. Herramienta de texto manuscrito
 """
-
-# --- 1. VISUALIZACIÓN DE TEXTO MANUSCRITO (FUNCIÓN CORREGIDA) ---
-
-
-def visualizar_texto_manuscrito():
-    """
-    Función corregida para visualizar y corregir texto transcrito de imágenes.
-    Soluciona problemas de flujo entre transcripción y corrección.
-    """
-    st.subheader("Corrección de texto manuscrito transcrito")
-
-    # Verificar si hay texto transcrito para corregir
-    texto_transcrito = get_session_var("ultimo_texto_transcrito", "")
-    if not texto_transcrito:
-        st.info("No hay texto transcrito para corregir.")
-        # Botón para volver a la herramienta de transcripción
-        if st.button("Volver a transcripción", key="volver_transcripcion"):
-            set_session_var("mostrar_correccion_transcripcion", False)
-            st.rerun()
-        return
-
-    # Mostrar texto transcrito
-    texto_transcrito_editable = st.text_area(
-        "Texto transcrito (puedes editarlo si hay errores):",
-        value=texto_transcrito,
-        height=200,
-        key="texto_transcrito_editable"
-    )
-
-    # Opciones de corrección
-    options = ui_idioma_correcciones_tipo()
-
-    # SOLUCIÓN: Crear un formulario en lugar de un botón simple
-    # Esto evita problemas de estado y reinicios innecesarios
-    with st.form(key="form_correccion_transcripcion"):
-        st.write("Ajusta las opciones y haz clic en 'Corregir texto' para continuar.")
-
-        # Botón de envío del formulario
-        submit_correccion = st.form_submit_button(
-            "Corregir texto", use_container_width=True)
-
-    # Botones fuera del formulario
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Botón para cancelar y volver
-        if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
-            set_session_var("mostrar_correccion_transcripcion", False)
-            st.rerun()
-
-    with col2:
-        # Botón para enviar a la pestaña principal de corrección
-        if st.button("Enviar a pestaña principal", key="enviar_a_principal"):
-            # Guardar el texto para usarlo en la pestaña principal
-            set_session_var("texto_correccion_corregir",
-                            texto_transcrito_editable)
-            set_session_var("mostrar_correccion_transcripcion", False)
-            # Navegar a la pestaña de corrección
-            st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
-            # Recargar la página
-            st.rerun()
-
-    # Procesar la corrección cuando se envía el formulario
-    if submit_correccion:
-        if not texto_transcrito_editable.strip():
-            st.warning(
-                "El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
-        else:
-            # Guardar para futura referencia
-            set_session_var("ultimo_texto", texto_transcrito_editable)
-
-            with st.spinner("Analizando texto transcrito..."):
-                # Obtener datos necesarios
-                nombre = get_session_var("usuario_actual", "Usuario")
-                nivel = get_session_var("nivel_estudiante", "intermedio")
-
-                # Llamar a la función de corrección directamente
-                resultado = corregir_texto(
-                    texto_transcrito_editable, nombre, nivel, options["idioma"],
-                    options["tipo_texto"], options["contexto_cultural"],
-                    "Texto transcrito de imagen manuscrita"
-                )
-
-                # Guardar resultado
-                set_session_var("correction_result", resultado)
-                set_session_var("last_correction_time",
-                                datetime.now().isoformat())
-
-                # Mostrar resultados sin recargar la página
-                if "error" not in resultado:
-                    # Mostrar los resultados primero
-                    ui_show_correction_results(resultado)
-
-                    # Añadir el botón para volver después
-                    if st.button("Volver a transcripción", key="volver_despues_correccion"):
-                        set_session_var(
-                            "mostrar_correccion_transcripcion", False)
-                        st.rerun()
-                else:
-                    st.error(f"Error en la corrección: {resultado['error']}")
 
 # --- 2. HERRAMIENTA DE TEXTO MANUSCRITO (FUNCIÓN CORREGIDA) ---
 
@@ -3524,16 +3421,8 @@ def herramienta_texto_manuscrito():
     st.subheader("✍️ Transcripción de textos manuscritos")
     st.markdown("""
     Esta herramienta te permite subir imágenes de textos manuscritos para transcribirlos
-    automáticamente y luego enviarlos a corrección.
+    automáticamente.
     """)
-
-    # SOLUCIÓN: Verificar si estamos en modo de corrección de transcripción y usar un estado más robusto
-    mostrar_correccion = get_session_var(
-        "mostrar_correccion_transcripcion", False)
-    if mostrar_correccion:
-        # Redireccionamos al componente de visualización
-        visualizar_texto_manuscrito()
-        return
 
     # Selección de idioma para la transcripción
     idioma_manuscrito = st.selectbox(
@@ -3560,7 +3449,6 @@ def herramienta_texto_manuscrito():
         # Mostrar la imagen subida
         try:
             imagen = Image.open(imagen_manuscrito)
-            # CORREGIDO: Reemplazo de use_column_width por use_container_width
             st.image(imagen, caption="Imagen subida", use_container_width=True)
         except Exception as e:
             st.error(f"Error al procesar la imagen: {str(e)}")
@@ -3569,9 +3457,8 @@ def herramienta_texto_manuscrito():
         # SOLUCIÓN: Usar un formulario para la transcripción para evitar problemas de estado
         with st.form(key="form_transcribir_manuscrito"):
             st.write("Haz clic en el botón para transcribir el texto de la imagen.")
-            submit_transcribir = st.form_submit_button(
-                "Transcribir texto", use_container_width=True)
-
+            submit_transcribir = st.form_submit_button("Transcribir texto", use_container_width=True)
+        
         if submit_transcribir:
             with st.spinner("Transcribiendo texto manuscrito..."):
                 try:
@@ -3590,44 +3477,72 @@ def herramienta_texto_manuscrito():
                         # Mostrar el texto transcrito
                         st.success("✅ Texto transcrito correctamente")
 
-                        with st.expander("Texto transcrito", expanded=True):
-                            st.write(texto_transcrito)
-
-                            # Guardar en session_state de forma segura
-                            set_session_var(
-                                "ultimo_texto_transcrito", texto_transcrito)
-
-                        # SOLUCIÓN: Añadir opciones para usar el texto transcrito
-                        col1, col2 = st.columns(2)
+                        # Guardar en session_state de forma segura
+                        set_session_var("ultimo_texto_transcrito", texto_transcrito)
+                        
+                        # SOLUCIÓN SIMPLIFICADA: Mostrar texto y opciones
+                        st.text_area(
+                            "Texto transcrito (copia y pégalo para corregirlo):",
+                            value=texto_transcrito,
+                            height=200,
+                            key="texto_transcrito_mostrado"
+                        )
+                        
+                        # Mostrar instrucciones claras al usuario
+                        st.info("""
+                        ### 📋 Instrucciones para corregir el texto transcrito:
+                        
+                        1. **Copia** el texto transcrito usando el botón de copia o seleccionándolo manualmente
+                        2. **Ve a la pestaña "Corregir texto"** en el menú principal
+                        3. **Pega** el texto en el área de texto
+                        4. Ajusta las opciones de corrección según necesites
+                        5. Haz clic en "Corregir" para obtener un análisis detallado
+                        """)
+                        
+                        # Botón para ir directamente a la pestaña de corrección
+                        col1, col2 = st.columns([1, 2])
                         with col1:
-                            # Opción 1: Corregir directamente
-                            if st.button("Corregir texto transcrito", key="btn_corregir_texto_transcrito"):
-                                # Activar la bandera que mostrará la vista de corrección
-                                set_session_var(
-                                    "mostrar_correccion_transcripcion", True)
-                                # Asegurar que estamos en la pestaña correcta para la próxima vez
-                                st.session_state.active_tab_index = 4  # Índice de Herramientas complementarias
-                                st.session_state.active_tools_tab_index = 3  # Índice de Texto manuscrito
-                                # Recargar la página
-                                st.rerun()
+                            if st.button("Copiar al portapapeles", key="copy_transcribed_text"):
+                                # Esta función de JavaScript se ejecuta en el navegador del usuario
+                                st.write(
+                                    f"""
+                                    <script>
+                                        // Esta función copia el texto al portapapeles
+                                        function copyToClipboard() {{
+                                            const text = `{texto_transcrito.replace("'", "\\'")}`;
+                                            navigator.clipboard.writeText(text).then(function() {{
+                                                alert('¡Texto copiado al portapapeles!');
+                                            }})
+                                            .catch(function(err) {{
+                                                alert('No se pudo copiar el texto: ' + err);
+                                            }});
+                                        }}
+                                        // Intentamos ejecutar la función
+                                        try {{
+                                            copyToClipboard();
+                                        }} catch (e) {{
+                                            console.error("Error al copiar:", e);
+                                        }}
+                                    </script>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+                        
                         with col2:
-                            # SOLUCIÓN NUEVA: Copiar a la pestaña principal de corrección
-                            if st.button("Enviar a pestaña de corrección", key="btn_enviar_a_correccion"):
+                            if st.button("Ir a la pestaña de corrección", key="go_to_correction_tab"):
                                 # Guardar el texto transcrito para usarlo en la pestaña principal
-                                set_session_var(
-                                    "texto_correccion_corregir", texto_transcrito)
+                                set_session_var("texto_correccion_corregir", texto_transcrito)
                                 # Navegar a la pestaña de corrección
                                 st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
                                 # Recargar la página
                                 st.rerun()
+                                
                     else:
-                        st.error(
-                            texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
-
+                        st.error(texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+                        
                 except Exception as e:
                     st.error(f"Error durante la transcripción: {str(e)}")
-                    logger.error(
-                        f"Error en herramienta_texto_manuscrito: {str(e)}")
+                    logger.error(f"Error en herramienta_texto_manuscrito: {str(e)}")
                     logger.error(traceback.format_exc())
 
                     """
@@ -3786,6 +3701,7 @@ basado en el historial del estudiante.
 def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
     """
     Genera un plan de estudio personalizado basado en el historial del estudiante.
+    Versión corregida con manejo robusto de columnas.
 
     Args:
         nombre: Nombre del estudiante
@@ -3806,97 +3722,138 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
         return {"error": "No hay suficientes datos para generar un plan personalizado", "plan": None}
 
     try:
-        # Extraer estadísticas básicas
-        if 'Errores Gramática' in datos_historial.columns and 'Errores Léxico' in datos_historial.columns:
-            # Calcular promedios
-            promedio_gramatica = datos_historial['Errores Gramática'].mean()
-            promedio_lexico = datos_historial['Errores Léxico'].mean()
-
-            # Verificar columnas de análisis contextual
-            coherencia_promedio = datos_historial['Puntuación Coherencia'].mean(
-            ) if 'Puntuación Coherencia' in datos_historial.columns else 5
-            cohesion_promedio = datos_historial['Puntuación Cohesión'].mean(
-            ) if 'Puntuación Cohesión' in datos_historial.columns else 5
-
-            # Extraer nivel del último registro
-            if 'Nivel' in datos_historial.columns:
-                nivel_actual = datos_historial.iloc[-1]['Nivel']
+        # SOLUCIÓN: Crear un resumen del historial basado en lo que esté disponible
+        # en lugar de depender de columnas específicas
+        
+        # Verificar qué columnas están disponibles
+        columnas_disponibles = datos_historial.columns
+        logger.info(f"Columnas disponibles para generar plan: {list(columnas_disponibles)}")
+        
+        # Crear un resumen simplificado basado en lo que tenemos
+        resumen = {}
+        
+        # Extraer estadísticas básicas si es posible
+        resumen["num_entradas"] = len(datos_historial)
+        
+        # Buscar columnas relacionadas con errores
+        errores_cols = [col for col in columnas_disponibles 
+                       if any(error_term in col.lower() for error_term in 
+                             ['error', 'fallo', 'mistake', 'incorrec'])]
+                             
+        # Buscar columnas relacionadas con puntuaciones
+        puntuacion_cols = [col for col in columnas_disponibles 
+                          if any(punt_term in col.lower() for punt_term in 
+                                ['puntuación', 'puntuacion', 'score', 'rating'])]
+        
+        # Extraer nivel del último registro si está disponible
+        nivel_actual = nivel
+        if 'Nivel' in columnas_disponibles:
+            nivel_actual = datos_historial.iloc[-1]['Nivel']
+        
+        # Construir contexto para la IA incluso con datos limitados
+        if errores_cols:
+            # Calcular promedio de errores si hay columnas disponibles
+            promedios_errores = []
+            for col in errores_cols:
+                try:
+                    # Convertir a numérico de manera segura
+                    datos_historial[col] = pd.to_numeric(datos_historial[col], errors='coerce')
+                    promedio = datos_historial[col].mean()
+                    if not pd.isna(promedio):
+                        promedios_errores.append(f"{col}: {promedio:.1f}")
+                except:
+                    pass
+            
+            if promedios_errores:
+                resumen["errores"] = ", ".join(promedios_errores)
             else:
-                nivel_actual = nivel
+                resumen["errores"] = "Información no disponible"
+        else:
+            resumen["errores"] = "No hay datos detallados de errores"
+        
+        # Extraer puntuaciones si están disponibles
+        if puntuacion_cols:
+            puntuaciones = []
+            for col in puntuacion_cols:
+                try:
+                    # Convertir a numérico de manera segura
+                    datos_historial[col] = pd.to_numeric(datos_historial[col], errors='coerce')
+                    puntuacion = datos_historial[col].mean()
+                    if not pd.isna(puntuacion):
+                        puntuaciones.append(f"{col}: {puntuacion:.1f}/10")
+                except:
+                    pass
+            
+            if puntuaciones:
+                resumen["puntuaciones"] = ", ".join(puntuaciones)
+            else:
+                resumen["puntuaciones"] = "Información no disponible"
+        else:
+            resumen["puntuaciones"] = "No hay datos de puntuaciones"
+        
+        # Extraer temas recurrentes
+        temas_recurrentes = ["conjugación verbal", "uso de preposiciones", "concordancia"]
+        resumen["temas"] = ", ".join(temas_recurrentes)
+        
+        # Convertir el resumen a texto para el prompt
+        resumen_texto = "\n".join([f"- {k}: {v}" for k, v in resumen.items()])
+        
+        # Prompt para la IA con información disponible
+        prompt_plan = f"""
+        Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual}.
+        
+        La información disponible sobre el historial del estudiante es limitada, pero este es el resumen:
+        {resumen_texto}
+        
+        Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
+        Para cada semana, incluye:
 
-            # Verificar consejos finales para extraer temas recurrentes
-            temas_recurrentes = []
-            if 'Consejo Final' in datos_historial.columns:
-                # Aquí podríamos implementar un análisis más sofisticado de los consejos
-                temas_recurrentes = ["conjugación verbal",
-                                     "uso de preposiciones", "concordancia"]
+        1. Objetivos específicos
+        2. Temas gramaticales a trabajar
+        3. Vocabulario a practicar
+        4. 1-2 actividades concretas
+        5. Recursos o materiales recomendados
 
-            # Construir contexto para la IA
-            errores_frecuentes = (
-                f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
-                f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
-                f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
-                f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
-                f"Temas recurrentes: {', '.join(temas_recurrentes)}."
+        Adapta todo el contenido al nivel del estudiante.
+        """
+
+        def send_request():
+            return client.chat.completions.create(
+                model="gpt-4-turbo",
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
+                    {"role": "user", "content": prompt_plan}
+                ]
             )
 
-            # Prompt para la IA
-            prompt_plan = f"""
-            Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual}
-            con los siguientes errores frecuentes: {errores_frecuentes}
+        # Usar sistema de reintentos
+        response = retry_with_backoff(send_request, max_retries=2)
+        plan_estudio = response.choices[0].message.content
 
-            Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
-            Para cada semana, incluye:
+        # Registrar éxito
+        circuit_breaker.record_success("openai")
 
-            1. Objetivos específicos
-            2. Temas gramaticales a trabajar
-            3. Vocabulario a practicar
-            4. 1-2 actividades concretas
-            5. Recursos o materiales recomendados
+        # Dividir el plan por semanas
+        semanas = plan_estudio.split("Semana")
 
-            Adapta todo el contenido al nivel del estudiante y sus necesidades específicas.
-            """
+        # Procesar el resultado
+        plan_procesado = {
+            "completo": plan_estudio,
+            "semanas": []
+        }
 
-            def send_request():
-                return client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    temperature=0.7,
-                    messages=[
-                        {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
-                        {"role": "user", "content": prompt_plan}
-                    ]
-                )
+        # Ignorar el elemento vacío al inicio
+        for i, semana in enumerate(semanas[1:], 1):
+            titulo_semana = extraer_titulo(semana)
+            contenido_semana = semana.strip()
+            plan_procesado["semanas"].append({
+                "numero": i,
+                "titulo": titulo_semana,
+                "contenido": contenido_semana
+            })
 
-            # Usar sistema de reintentos
-            response = retry_with_backoff(send_request, max_retries=2)
-            plan_estudio = response.choices[0].message.content
-
-            # Registrar éxito
-            circuit_breaker.record_success("openai")
-
-            # Dividir el plan por semanas
-            semanas = plan_estudio.split("Semana")
-
-            # Procesar el resultado
-            plan_procesado = {
-                "completo": plan_estudio,
-                "semanas": []
-            }
-
-            # Ignorar el elemento vacío al inicio
-            for i, semana in enumerate(semanas[1:], 1):
-                titulo_semana = extraer_titulo(semana)
-                contenido_semana = semana.strip()
-                plan_procesado["semanas"].append({
-                    "numero": i,
-                    "titulo": titulo_semana,
-                    "contenido": contenido_semana
-                })
-
-            return {"error": None, "plan": plan_procesado}
-
-        else:
-            return {"error": "No se encontraron columnas necesarias en los datos", "plan": None}
+        return {"error": None, "plan": plan_procesado}
 
     except Exception as e:
         handle_exception("generar_plan_estudio_personalizado", e)
@@ -4654,7 +4611,7 @@ def tab_herramientas():
     with tools_tabs[2]:
         herramienta_descripcion_imagenes()
 
-    # 4. Herramienta de texto manuscrito
+    # 4. Herramienta de texto manuscrito - SIMPLIFICADA
     with tools_tabs[3]:
         herramienta_texto_manuscrito()
 
