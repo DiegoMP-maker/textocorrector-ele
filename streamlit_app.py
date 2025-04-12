@@ -4254,7 +4254,7 @@ def tab_corregir():
 
 
 def tab_progreso():
-    """Implementación mejorada de la pestaña de progreso con manejo más robusto de columnas."""
+    """Implementación mejorada de la pestaña de progreso con manejo adecuado de tipos de datos."""
     st.header("📊 Tu progreso")
 
     # Obtener datos del usuario
@@ -4278,7 +4278,7 @@ def tab_progreso():
                 "No hay datos de progreso disponibles. Realiza algunas correcciones primero.")
             return
 
-        # SOLUCIÓN MEJORADA: Verificación exhaustiva de columnas y manejo robusto
+        # SOLUCIÓN MEJORADA: Verificación exhaustiva de columnas y manejo robusto de tipos
         try:
             # Mostrar información del historial de forma segura
             ultima_entrada = historial.iloc[-1]
@@ -4314,8 +4314,24 @@ def tab_progreso():
                 except:
                     pass  # Si falla, seguimos con la columna tal cual
                 
-                fecha_primera = historial.iloc[0][fecha_col] if len(historial) > 0 else "No disponible"
-                fecha_ultima = ultima_entrada[fecha_col] if len(historial) > 0 else "No disponible"
+                # CORRECCIÓN: Convertir los valores Timestamp a string para evitar errores en st.metric
+                if len(historial) > 0:
+                    fecha_primera_raw = historial.iloc[0][fecha_col]
+                    fecha_ultima_raw = ultima_entrada[fecha_col]
+                    
+                    # Convertir a string si son objetos Timestamp
+                    if hasattr(fecha_primera_raw, 'strftime'):
+                        fecha_primera = fecha_primera_raw.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        fecha_primera = str(fecha_primera_raw)
+                        
+                    if hasattr(fecha_ultima_raw, 'strftime'):
+                        fecha_ultima = fecha_ultima_raw.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        fecha_ultima = str(fecha_ultima_raw)
+                else:
+                    fecha_primera = "No disponible"
+                    fecha_ultima = "No disponible"
             else:
                 fecha_primera = "No disponible"
                 fecha_ultima = "No disponible"
@@ -4369,27 +4385,28 @@ def tab_progreso():
                 st.warning("No hay suficientes datos para generar gráficos.")
 
             # Mostrar últimos consejos de manera más robusta
-            if "Consejo Final" in historial.columns or "Consejo final" in historial.columns:
+            consejo_col = None
+            for posible_col in ['Consejo Final', 'Consejo final', 'consejo', 'Consejo']:
+                if posible_col in historial.columns:
+                    consejo_col = posible_col
+                    break
+                    
+            if consejo_col:
                 st.subheader("Últimos consejos recibidos")
-                
-                # Buscar la columna de consejo correcta
-                consejo_col = "Consejo Final" if "Consejo Final" in historial.columns else "Consejo final"
                 
                 # Crear una copia para evitar modificar el original
                 try:
-                    if fecha_col:
-                        # Intenta ordenar solo si la columna existe y hay suficientes datos
-                        if len(historial) > 0:
-                            # Mostrar consejos sin ordenar para evitar errores
-                            consejos_recientes = historial[consejo_col].head(3)
-                            for i, consejo in enumerate(consejos_recientes):
-                                if consejo and str(consejo).strip():  # Verificar que no esté vacío
-                                    st.info(f"**Consejo {i+1}**: {consejo}")
-                    else:
-                        # Si no hay columna de fecha, mostrar los últimos consejos sin ordenar
-                        for i, consejo in enumerate(historial[consejo_col].iloc[-3:]):
-                            if consejo and str(consejo).strip():  # Verificar que no esté vacío
-                                st.info(f"**Consejo {i+1}**: {consejo}")
+                    # Mostrar consejos sin ordenar para evitar errores
+                    if len(historial) > 0:
+                        consejos_mostrados = 0
+                        # Comenzamos desde el final para mostrar los más recientes primero
+                        for i in range(len(historial)-1, max(-1, len(historial)-4), -1):
+                            consejo = historial.iloc[i][consejo_col]
+                            if isinstance(consejo, (str)) and consejo.strip():
+                                st.info(f"**Consejo {consejos_mostrados+1}**: {consejo}")
+                                consejos_mostrados += 1
+                                if consejos_mostrados >= 3:  # Mostrar máximo 3 consejos
+                                    break
                 except Exception as e:
                     logger.error(f"Error al mostrar consejos: {str(e)}")
                     st.info("Hay consejos disponibles, pero no se pueden mostrar correctamente.")
