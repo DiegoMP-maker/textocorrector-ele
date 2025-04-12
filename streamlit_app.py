@@ -4254,7 +4254,7 @@ def tab_corregir():
 
 
 def tab_progreso():
-    """Implementación de la pestaña de progreso con manejo seguro de columnas."""
+    """Implementación mejorada de la pestaña de progreso con manejo más robusto de columnas."""
     st.header("📊 Tu progreso")
 
     # Obtener datos del usuario
@@ -4278,148 +4278,153 @@ def tab_progreso():
                 "No hay datos de progreso disponibles. Realiza algunas correcciones primero.")
             return
 
-        # Calcular resumen (última entrada)
-        ultima_entrada = historial.iloc[-1]
-        num_correcciones = len(historial)
+        # SOLUCIÓN MEJORADA: Verificación exhaustiva de columnas y manejo robusto
+        try:
+            # Mostrar información del historial de forma segura
+            ultima_entrada = historial.iloc[-1]
+            num_correcciones = len(historial)
+            
+            # Buscar la columna de fecha de manera más exhaustiva
+            fecha_col = None
+            posibles_columnas_fecha = ['Fecha', 'fecha', 'FECHA', 'Date', 'date']
+            
+            # Intenta encontrar una columna exacta primero
+            for col_name in posibles_columnas_fecha:
+                if col_name in historial.columns:
+                    fecha_col = col_name
+                    break
+            
+            # Si no encuentra, busca de manera menos estricta
+            if fecha_col is None:
+                for col in historial.columns:
+                    if any(fecha_str in col.lower() for fecha_str in ['fecha', 'date', 'time']):
+                        fecha_col = col
+                        break
+            
+            # Si aún no encontramos, usamos la primera columna como fallback
+            if fecha_col is None and len(historial.columns) > 0:
+                fecha_col = historial.columns[0]
+                logger.warning(f"No se encontró columna de fecha. Usando {fecha_col} como sustituto")
+            
+            # Obtener valores de fecha de forma segura
+            if fecha_col is not None:
+                # Intentar convertir a datetime si es necesario
+                try:
+                    historial[fecha_col] = pd.to_datetime(historial[fecha_col], errors='coerce')
+                except:
+                    pass  # Si falla, seguimos con la columna tal cual
+                
+                fecha_primera = historial.iloc[0][fecha_col] if len(historial) > 0 else "No disponible"
+                fecha_ultima = ultima_entrada[fecha_col] if len(historial) > 0 else "No disponible"
+            else:
+                fecha_primera = "No disponible"
+                fecha_ultima = "No disponible"
+            
+            # Mostrar stats básicos
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Correcciones realizadas", num_correcciones)
+            with col2:
+                st.metric("Primera corrección", fecha_primera)
+            with col3:
+                st.metric("Última corrección", fecha_ultima)
+            with col4:
+                nivel_actual = get_session_var("nivel_estudiante", "intermedio")
+                nivel_map = {
+                    "principiante": "A1-A2",
+                    "intermedio": "B1-B2",
+                    "avanzado": "C1-C2"
+                }
+                st.metric("Nivel actual", nivel_map.get(nivel_actual, nivel_actual))
 
-        # SOLUCIÓN: Verificar existencia de columnas antes de acceder
-        fecha_col = None
-        for col in historial.columns:
-            if 'fecha' in col.lower():
-                fecha_col = col
-                break
+            # Mostrar gráficos de progreso
+            st.subheader("Gráficos de progreso")
 
-        fecha_primera = historial.iloc[0][fecha_col] if fecha_col and len(
-            historial) > 0 else "No disponible"
-        fecha_ultima = ultima_entrada[fecha_col] if fecha_col else "No disponible"
+            # Obtener gráficos
+            graficos = mostrar_progreso(historial)
 
-        # Mostrar stats básicos
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Correcciones realizadas", num_correcciones)
-        with col2:
-            st.metric("Primera corrección", fecha_primera)
-        with col3:
-            st.metric("Última corrección", fecha_ultima)
-        with col4:
-            nivel_actual = get_session_var("nivel_estudiante", "intermedio")
-            nivel_map = {
-                "principiante": "A1-A2",
-                "intermedio": "B1-B2",
-                "avanzado": "C1-C2"
-            }
-            st.metric("Nivel actual", nivel_map.get(
-                nivel_actual, nivel_actual))
+            if graficos["errores_totales"] is not None:
+                # Pestaña para gráficos
+                grafico_tab1, grafico_tab2, grafico_tab3 = st.tabs(
+                    ["Errores totales", "Tipos de errores", "Habilidades"])
 
-        # Mostrar gráficos de progreso
-        st.subheader("Gráficos de progreso")
-
-        # Obtener gráficos
-        graficos = mostrar_progreso(historial)
-
-        if graficos["errores_totales"] is not None:
-            # Pestaña para gráficos
-            grafico_tab1, grafico_tab2, grafico_tab3 = st.tabs(
-                ["Errores totales", "Tipos de errores", "Habilidades"])
-
-            with grafico_tab1:
-                st.altair_chart(graficos["errores_totales"],
-                                use_container_width=True)
-
-            with grafico_tab2:
-                if graficos["tipos_error"] is not None:
-                    st.altair_chart(graficos["tipos_error"],
+                with grafico_tab1:
+                    st.altair_chart(graficos["errores_totales"],
                                     use_container_width=True)
-                else:
-                    st.info(
-                        "No hay datos suficientes para mostrar errores por tipo.")
 
-            with grafico_tab3:
-                if graficos["radar"] is not None:
-                    st.pyplot(graficos["radar"])
-                else:
-                    st.info(
-                        "No hay datos suficientes para mostrar el gráfico de habilidades contextuales.")
-
-        else:
-            st.warning("No hay suficientes datos para generar gráficos.")
-
-        # Mostrar últimos consejos
-        # SOLUCIÓN: Verificar existencia de columna antes de acceder
-        if "Consejo Final" in historial.columns and fecha_col:
-            st.subheader("Últimos consejos recibidos")
-            try:
-                consejos_recientes = historial.sort_values(
-                    by=fecha_col, ascending=False)["Consejo Final"].head(3)
-                if not consejos_recientes.empty:
-                    for i, consejo in enumerate(consejos_recientes):
-                        # Verificar que no esté vacío
-                        if consejo and str(consejo).strip():
-                            st.info(f"**Consejo {i+1}**: {consejo}")
-            except Exception as e:
-                logger.error(f"Error al mostrar consejos: {str(e)}")
-                st.warning("No se pudieron mostrar los consejos recientes.")
-        else:
-            st.info("No hay consejos disponibles en el historial.")
-
-        # Generar plan de estudio personalizado
-        st.subheader("Plan de estudio personalizado")
-        if st.button("Generar plan de estudio", key="generar_plan"):
-            with st.spinner("Analizando tu historial y generando plan de estudio..."):
-                plan_result = generar_plan_estudio_personalizado(
-                    nombre_estudiante, nivel_actual, historial)
-
-                if "error" in plan_result and plan_result["error"]:
-                    st.error(
-                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
-                else:
-                    plan = plan_result.get("plan", {})
-                    if plan and "semanas" in plan:
-                        st.success(
-                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
-
-                        # Mostrar plan por semanas
-                        for semana in plan["semanas"]:
-                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
-                                st.markdown(semana["contenido"])
+                with grafico_tab2:
+                    if graficos["tipos_error"] is not None:
+                        st.altair_chart(graficos["tipos_error"],
+                                        use_container_width=True)
                     else:
-                        st.warning(
-                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
+                        st.info("No hay datos suficientes para mostrar errores por tipo.")
 
-        # Mostrar últimos consejos
-        if "Consejo Final" in historial.columns:
-            st.subheader("Últimos consejos recibidos")
-            consejos_recientes = historial.sort_values(
-                by="Fecha", ascending=False)["Consejo Final"].head(3)
-            if not consejos_recientes.empty:
-                for i, consejo in enumerate(consejos_recientes):
-                    # Verificar que no esté vacío
-                    if consejo and str(consejo).strip():
-                        st.info(f"**Consejo {i+1}**: {consejo}")
-
-        # Generar plan de estudio personalizado
-        st.subheader("Plan de estudio personalizado")
-        if st.button("Generar plan de estudio", key="generar_plan"):
-            with st.spinner("Analizando tu historial y generando plan de estudio..."):
-                plan_result = generar_plan_estudio_personalizado(
-                    nombre_estudiante, nivel_actual, historial)
-
-                if "error" in plan_result and plan_result["error"]:
-                    st.error(
-                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
-                else:
-                    plan = plan_result.get("plan", {})
-                    if plan and "semanas" in plan:
-                        st.success(
-                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
-
-                        # Mostrar plan por semanas
-                        for semana in plan["semanas"]:
-                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
-                                st.markdown(semana["contenido"])
+                with grafico_tab3:
+                    if graficos["radar"] is not None:
+                        st.pyplot(graficos["radar"])
                     else:
-                        st.warning(
-                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
+                        st.info(
+                            "No hay datos suficientes para mostrar el gráfico de habilidades contextuales.")
+            else:
+                st.warning("No hay suficientes datos para generar gráficos.")
+
+            # Mostrar últimos consejos de manera más robusta
+            if "Consejo Final" in historial.columns or "Consejo final" in historial.columns:
+                st.subheader("Últimos consejos recibidos")
+                
+                # Buscar la columna de consejo correcta
+                consejo_col = "Consejo Final" if "Consejo Final" in historial.columns else "Consejo final"
+                
+                # Crear una copia para evitar modificar el original
+                try:
+                    if fecha_col:
+                        # Intenta ordenar solo si la columna existe y hay suficientes datos
+                        if len(historial) > 0:
+                            # Mostrar consejos sin ordenar para evitar errores
+                            consejos_recientes = historial[consejo_col].head(3)
+                            for i, consejo in enumerate(consejos_recientes):
+                                if consejo and str(consejo).strip():  # Verificar que no esté vacío
+                                    st.info(f"**Consejo {i+1}**: {consejo}")
+                    else:
+                        # Si no hay columna de fecha, mostrar los últimos consejos sin ordenar
+                        for i, consejo in enumerate(historial[consejo_col].iloc[-3:]):
+                            if consejo and str(consejo).strip():  # Verificar que no esté vacío
+                                st.info(f"**Consejo {i+1}**: {consejo}")
+                except Exception as e:
+                    logger.error(f"Error al mostrar consejos: {str(e)}")
+                    st.info("Hay consejos disponibles, pero no se pueden mostrar correctamente.")
+            else:
+                st.info("No hay consejos disponibles en el historial.")
+
+            # Generar plan de estudio personalizado
+            st.subheader("Plan de estudio personalizado")
+            if st.button("Generar plan de estudio", key="generar_plan"):
+                with st.spinner("Analizando tu historial y generando plan de estudio..."):
+                    plan_result = generar_plan_estudio_personalizado(
+                        nombre_estudiante, nivel_actual, historial)
+
+                    if "error" in plan_result and plan_result["error"]:
+                        st.error(
+                            f"No se pudo generar el plan de estudio: {plan_result['error']}")
+                    else:
+                        plan = plan_result.get("plan", {})
+                        if plan and "semanas" in plan:
+                            st.success(
+                                "¡Plan de estudio generado! Revisa cada semana a continuación:")
+
+                            # Mostrar plan por semanas
+                            for semana in plan["semanas"]:
+                                with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
+                                    st.markdown(semana["contenido"])
+                        else:
+                            st.warning(
+                                "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
+        
+        except Exception as e:
+            st.error(f"Ocurrió un error al mostrar el progreso: {str(e)}")
+            logger.error(f"Error en tab_progreso: {str(e)}")
+            logger.error(traceback.format_exc())
+            st.info("Por favor, continúa realizando correcciones para generar datos de progreso.")
 
 
 def tab_examen():
