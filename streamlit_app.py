@@ -2283,7 +2283,7 @@ Este artefacto contiene:
 def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, errores_obj, analisis_contextual, consejo_final):
     """
     Genera un informe de corrección en formato Word (DOCX).
-    Versión mejorada con mejor manejo de errores y validación.
+    Versión optimizada con mejor manejo de errores y validación.
 
     Args:
         nombre: Nombre del estudiante
@@ -2299,9 +2299,6 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         BytesIO: Buffer con el documento generado
     """
     try:
-        # Añadir información de depuración
-        logger.info(f"Iniciando generación de informe DOCX para {nombre}")
-
         # Crear el documento desde cero
         doc = Document()
 
@@ -2329,39 +2326,39 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         # Análisis de errores
         doc.add_heading('Análisis de errores', level=1)
 
-        # Verificar que errores_obj es un diccionario
-        if errores_obj and isinstance(errores_obj, dict):
+        # SOLUCIÓN: Simplificar verificación de errores
+        if isinstance(errores_obj, dict):
             for categoria, errores in errores_obj.items():
-                if errores and isinstance(errores, list) and len(errores) > 0:
+                if isinstance(errores, list) and errores:
                     doc.add_heading(categoria, level=2)
-                    for error in errores:
-                        if isinstance(error, dict):
+                    for i, err in enumerate(errores, 1):
+                        if not isinstance(err, dict):
+                            continue
+                            
+                        p = doc.add_paragraph()
+                        fragmento = err.get('fragmento_erroneo', '')
+                        if fragmento:
+                            run = p.add_run('Fragmento erróneo: ')
+                            run.bold = True
+                            run = p.add_run(fragmento)
+                            run.font.color.rgb = RGBColor(255, 0, 0)
+
+                        correccion = err.get('correccion', '')
+                        if correccion:
                             p = doc.add_paragraph()
+                            run = p.add_run('Corrección: ')
+                            run.bold = True
+                            run = p.add_run(correccion)
+                            run.font.color.rgb = RGBColor(0, 128, 0)
 
-                            # Verificar que los campos existan antes de agregarlos
-                            fragmento = error.get('fragmento_erroneo', '')
-                            if fragmento:
-                                run = p.add_run('Fragmento erróneo: ')
-                                run.bold = True
-                                run = p.add_run(fragmento)
-                                run.font.color.rgb = RGBColor(255, 0, 0)
+                        explicacion = err.get('explicacion', '')
+                        if explicacion:
+                            p = doc.add_paragraph()
+                            run = p.add_run('Explicación: ')
+                            run.bold = True
+                            p.add_run(explicacion)
 
-                            correccion = error.get('correccion', '')
-                            if correccion:
-                                p = doc.add_paragraph()
-                                run = p.add_run('Corrección: ')
-                                run.bold = True
-                                run = p.add_run(correccion)
-                                run.font.color.rgb = RGBColor(0, 128, 0)
-
-                            explicacion = error.get('explicacion', '')
-                            if explicacion:
-                                p = doc.add_paragraph()
-                                run = p.add_run('Explicación: ')
-                                run.bold = True
-                                p.add_run(explicacion)
-
-                            doc.add_paragraph()  # Espacio
+                        doc.add_paragraph()  # Espacio
         else:
             doc.add_paragraph("No se detectaron errores significativos.")
 
@@ -2381,51 +2378,45 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
         hdr_cells[3].text = 'Registro'
         hdr_cells[4].text = 'Adecuación cultural'
 
-        # Verificar que analisis_contextual es un diccionario
-        if analisis_contextual and isinstance(analisis_contextual, dict):
-            # Datos
-            row_cells = table.add_row().cells
-            row_cells[0].text = 'Puntuación'
+        # SOLUCIÓN: Simplificar verificación de análisis contextual
+        # Datos
+        row_cells = table.add_row().cells
+        row_cells[0].text = 'Puntuación'
+        
+        # Manejar valores de manera más simple
+        coherencia = analisis_contextual.get('coherencia', {}) if isinstance(analisis_contextual, dict) else {}
+        cohesion = analisis_contextual.get('cohesion', {}) if isinstance(analisis_contextual, dict) else {}
+        registro = analisis_contextual.get('registro_linguistico', {}) if isinstance(analisis_contextual, dict) else {}
+        adecuacion = analisis_contextual.get('adecuacion_cultural', {}) if isinstance(analisis_contextual, dict) else {}
 
-            # Obtener puntuaciones con manejo seguro
-            coherencia = analisis_contextual.get('coherencia', {})
-            cohesion = analisis_contextual.get('cohesion', {})
-            registro = analisis_contextual.get('registro_linguistico', {})
-            adecuacion = analisis_contextual.get('adecuacion_cultural', {})
+        row_cells[1].text = str(coherencia.get('puntuacion', 'N/A'))
+        row_cells[2].text = str(cohesion.get('puntuacion', 'N/A'))
+        row_cells[3].text = str(registro.get('puntuacion', 'N/A'))
+        row_cells[4].text = str(adecuacion.get('puntuacion', 'N/A'))
 
-            row_cells[1].text = str(coherencia.get('puntuacion', 'N/A'))
-            row_cells[2].text = str(cohesion.get('puntuacion', 'N/A'))
-            row_cells[3].text = str(registro.get('puntuacion', 'N/A'))
-            row_cells[4].text = str(adecuacion.get('puntuacion', 'N/A'))
+        # Añadir comentarios del análisis contextual
+        if coherencia:
+            doc.add_heading('Coherencia textual', level=3)
+            doc.add_paragraph(coherencia.get('comentario', 'No disponible'))
 
-            # Añadir comentarios del análisis contextual
-            if coherencia:
-                doc.add_heading('Coherencia textual', level=3)
-                doc.add_paragraph(coherencia.get(
-                    'comentario', 'No disponible'))
+        if cohesion:
+            doc.add_heading('Cohesión textual', level=3)
+            doc.add_paragraph(cohesion.get('comentario', 'No disponible'))
 
-            if cohesion:
-                doc.add_heading('Cohesión textual', level=3)
-                doc.add_paragraph(cohesion.get('comentario', 'No disponible'))
+        if registro:
+            doc.add_heading('Registro lingüístico', level=3)
+            doc.add_paragraph(f"Tipo detectado: {registro.get('tipo_detectado', 'No especificado')}")
+            doc.add_paragraph(registro.get('adecuacion', 'No disponible'))
 
-            if registro:
-                doc.add_heading('Registro lingüístico', level=3)
-                doc.add_paragraph(
-                    f"Tipo detectado: {registro.get('tipo_detectado', 'No especificado')}")
-                doc.add_paragraph(registro.get('adecuacion', 'No disponible'))
-
-            if adecuacion:
-                doc.add_heading('Adecuación cultural', level=3)
-                doc.add_paragraph(adecuacion.get(
-                    'comentario', 'No disponible'))
-        else:
-            doc.add_paragraph("Análisis contextual no disponible.")
+        if adecuacion:
+            doc.add_heading('Adecuación cultural', level=3)
+            doc.add_paragraph(adecuacion.get('comentario', 'No disponible'))
 
         # Consejo final
         doc.add_heading('Consejo final', level=1)
         doc.add_paragraph(consejo_final or "No disponible")
 
-        # CAMBIO: Simplificar generación de QR para evitar problemas
+        # SOLUCIÓN: Simplificar generación del QR
         try:
             qr = qrcode.QRCode(
                 version=1,
@@ -2449,69 +2440,31 @@ def generar_informe_docx(nombre, nivel, fecha, texto_original, texto_corregido, 
 
             # Añadir la imagen del QR al documento
             doc.add_heading('Acceso online', level=1)
-            doc.add_paragraph(
-                'Escanea este código QR para acceder a este informe online:')
-
-            # CAMBIO: Usar un enfoque más robusto para añadir la imagen
-            try:
-                doc.add_picture(qr_buffer, width=Inches(2.0))
-            except Exception as pic_error:
-                logger.error(
-                    f"Error al añadir QR como imagen: {str(pic_error)}")
-                doc.add_paragraph(
-                    "Código QR no disponible - Error al generar imagen")
-
+            doc.add_paragraph('Escanea este código QR para acceder a este informe online:')
+            
+            # Añadir la imagen
+            doc.add_picture(qr_buffer, width=Inches(2.0))
+            
             # Cerrar el buffer del QR
             qr_buffer.close()
-            logger.info("Código QR generado correctamente")
         except Exception as qr_error:
-            logger.error(f"Error al generar QR: {str(qr_error)}")
-            # Continuar sin el QR
+            # Si hay error con el QR, simplemente seguimos sin él
             doc.add_heading('Acceso online', level=1)
             doc.add_paragraph('Código QR no disponible en este momento.')
 
-        # Guardar el documento en memoria
-        logger.info("Guardando documento DOCX en memoria")
+        # SOLUCIÓN: Guardar el documento simplificado
         docx_buffer = BytesIO()
         doc.save(docx_buffer)
         docx_buffer.seek(0)
 
-        # Verificar tamaño del buffer
-        buffer_size = len(docx_buffer.getvalue())
-        logger.info(
-            f"Documento DOCX generado correctamente. Tamaño: {buffer_size} bytes")
-
-        if buffer_size == 0:
-            logger.error("¡El buffer del documento tiene tamaño cero!")
-            raise ValueError("El documento generado está vacío")
-
         return docx_buffer
 
     except Exception as e:
-        logger.error(f"Error detallado al generar informe DOCX: {str(e)}")
+        # Si hay un error general, hacemos un log y devolvemos None
+        logger.error(f"Error al generar informe DOCX: {str(e)}")
         logger.error(traceback.format_exc())
-
-        # Mostrar error detallado sin interrumpir la aplicación
-        try:
-            # Crear un documento de error
-            error_doc = Document()
-            error_doc.add_heading('Error al generar informe', 0)
-            error_doc.add_paragraph(
-                f"Se produjo un error al generar el informe: {str(e)}")
-            error_doc.add_paragraph(
-                f"Detalles técnicos: {traceback.format_exc()[:500]}...")
-            error_doc.add_paragraph("Por favor, contacte con soporte técnico.")
-
-            # Salvar documento de error
-            error_buffer = BytesIO()
-            error_doc.save(error_buffer)
-            error_buffer.seek(0)
-            return error_buffer
-        except Exception as inner_e:
-            logger.error(
-                f"Error secundario al generar informe de error: {str(inner_e)}")
-            # Si falla completamente, devolver None
-            return None
+        return None
+        
         """
 TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
 ==================================================================================
@@ -2525,7 +2478,7 @@ Continuación de las funciones de procesamiento que dependen de la UI
 def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, analisis_contextual, consejo_final):
     """
     Genera un informe de corrección en formato HTML.
-    Versión mejorada con mejor manejo de valores nulos y formato.
+    Versión optimizada con mejor manejo de valores nulos y formato.
 
     Args:
         nombre: Nombre del estudiante
@@ -2540,16 +2493,17 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
         str: Contenido HTML del informe
     """
     try:
-        # Verificar entradas con valores seguros por defecto
+        # SOLUCIÓN: Simplificar verificación de entradas
+        # Usar valores seguros por defecto de manera más directa
         nombre = nombre or "Estudiante"
         nivel = nivel or "No especificado"
         fecha = fecha or datetime.now().strftime("%Y-%m-%d %H:%M")
         texto_original = texto_original or "No disponible"
         texto_corregido = texto_corregido or "No disponible"
         consejo_final = consejo_final or "No disponible"
-        app_version = APP_VERSION  # Usar variable global
+        app_version = APP_VERSION
 
-        # Sanitizar textos para HTML
+        # Función para sanitizar HTML
         def sanitize_html(text):
             if not text:
                 return ""
@@ -2559,15 +2513,15 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
             sanitized = sanitized.replace("\n", "<br>")
             return sanitized
 
+        # Sanitizar textos
         texto_original_safe = sanitize_html(texto_original)
         texto_corregido_safe = sanitize_html(texto_corregido)
         consejo_final_safe = sanitize_html(consejo_final)
 
-        # Verificar analisis_contextual
-        if not isinstance(analisis_contextual, dict):
-            analisis_contextual = {}
-
-        # Obtener puntuaciones con manejo seguro
+        # SOLUCIÓN: Simplificar verificación de análisis contextual
+        analisis_contextual = analisis_contextual if isinstance(analisis_contextual, dict) else {}
+        
+        # Extraer datos de análisis contextual con manejo seguro
         coherencia = analisis_contextual.get('coherencia', {})
         cohesion = analisis_contextual.get('cohesion', {})
         registro = analisis_contextual.get('registro_linguistico', {})
@@ -2578,7 +2532,7 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
         puntuacion_registro = registro.get('puntuacion', 'N/A')
         puntuacion_adecuacion = adecuacion.get('puntuacion', 'N/A')
 
-        # Crear HTML con estructura mejorada
+        # Crear HTML
         html_content = f'''
         <!DOCTYPE html>
         <html lang="es">
@@ -2632,25 +2586,6 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
                     white-space: pre-wrap;
                     margin: 15px 0;
                     border-radius: 4px;
-                }}
-                .error-item {{ 
-                    margin-bottom: 20px; 
-                    padding: 10px; 
-                    background-color: #f1f1f1;
-                    border-radius: 4px;
-                }}
-                .fragmento {{ 
-                    color: #dc3545; 
-                    font-weight: bold;
-                }}
-                .correccion {{ 
-                    color: #28a745; 
-                    font-weight: bold;
-                }}
-                .explicacion {{ 
-                    color: #17a2b8; 
-                    font-style: italic; 
-                    margin-top: 10px;
                 }}
                 .puntuaciones {{ 
                     width: 100%; 
@@ -2756,6 +2691,24 @@ def generar_informe_html(nombre, nivel, fecha, texto_original, texto_corregido, 
                     <p>Este informe fue generado automáticamente por la aplicación Textocorrector ELE</p>
                 </div>
             </div>
+        </body>
+        </html>
+        '''
+
+        return html_content
+
+    except Exception as e:
+        logger.error(f"Error al generar informe HTML: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Crear HTML básico de error
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head><title>Error en informe</title></head>
+        <body>
+            <h1>Error al generar informe</h1>
+            <p>Se produjo un error al generar el informe. Por favor, inténtelo de nuevo.</p>
         </body>
         </html>
         '''
@@ -3785,15 +3738,15 @@ def ui_show_recommendations(errores_obj, analisis_contextual, nivel, idioma):
 def ui_export_options(data):
     """
     Muestra opciones para exportar los resultados de la corrección.
-    Versión mejorada con mejor manejo de errores y comprobaciones.
+    Versión optimizada con mejor manejo de errores y comprobaciones simplificadas.
 
     Args:
         data: Resultados de la corrección
     """
     st.header("📊 Exportar informe")
 
-    # Verificar que existen campos necesarios
-    if not isinstance(data, dict) or "texto_corregido" not in data:
+    # Verificación básica de datos
+    if not isinstance(data, dict):
         st.warning("⚠️ No hay datos suficientes para exportar.")
         return
 
@@ -3815,113 +3768,88 @@ def ui_export_options(data):
     with export_tab1:
         st.write("Exporta este informe como documento Word (DOCX)")
 
+        # SOLUCIÓN: Simplificar la lógica de generación y descarga
         if st.button("Generar documento Word", key="gen_docx"):
             with st.spinner("Generando documento Word..."):
-                try:
-                    # Generar el documento con manejo explícito de errores
-                    docx_buffer = generar_informe_docx(
-                        nombre, nivel, fecha, texto_original, texto_corregido,
-                        errores_obj, analisis_contextual, consejo_final
+                docx_buffer = generar_informe_docx(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    errores_obj, analisis_contextual, consejo_final
+                )
+                
+                if docx_buffer:
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                    st.download_button(
+                        label="📥 Descargar documento Word",
+                        data=docx_buffer,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="docx_download_corregir"
                     )
-
-                    # Si el buffer se generó correctamente, mostrar el botón de descarga
-                    if docx_buffer is not None:
-                        # Verificar tamaño del buffer
-                        if len(docx_buffer.getvalue()) > 0:
-                            nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                            st.download_button(
-                                label="📥 Descargar documento Word",
-                                data=docx_buffer,
-                                file_name=nombre_archivo,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key="docx_download_corregir",
-                                help="Haz clic para descargar el informe en formato Word"
-                            )
-                            st.success("✅ Documento generado correctamente")
-                        else:
-                            st.error(
-                                "El documento generado está vacío. Inténtalo de nuevo.")
-                    else:
-                        st.error(
-                            "No se pudo generar el documento Word. Verifica que todas las dependencias estén instaladas.")
-                except Exception as e:
-                    st.error(f"Error al generar el documento Word: {str(e)}")
-                    logger.error(f"Error en generación de DOCX: {str(e)}")
-                    logger.error(traceback.format_exc())
+                    st.success("✅ Documento generado correctamente")
+                else:
+                    st.error("No se pudo generar el documento Word. Inténtalo de nuevo.")
 
     with export_tab2:
         st.write("Exporta este informe como página web (HTML)")
 
+        # SOLUCIÓN: Simplificar la lógica de generación y descarga de HTML
         if st.button("Generar documento HTML", key="gen_html"):
             with st.spinner("Generando HTML..."):
-                try:
-                    # Generar el HTML
-                    html_content = generar_informe_html(
-                        nombre, nivel, fecha, texto_original, texto_corregido,
-                        analisis_contextual, consejo_final
-                    )
-
+                html_content = generar_informe_html(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    analisis_contextual, consejo_final
+                )
+                
+                if html_content:
                     # Convertir a bytes para descargar
                     html_bytes = html_content.encode()
-
-                    # Verificar que tenemos contenido
-                    if len(html_bytes) > 0:
-                        # Botón de descarga
-                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                        st.download_button(
-                            label="📥 Descargar página HTML",
-                            data=html_bytes,
-                            file_name=nombre_archivo,
-                            mime="text/html",
-                            key="html_download_corregir",
-                            help="Haz clic para descargar el informe como página web HTML"
+                    
+                    # Botón de descarga
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+                    st.download_button(
+                        label="📥 Descargar página HTML",
+                        data=html_bytes,
+                        file_name=nombre_archivo,
+                        mime="text/html",
+                        key="html_download_corregir"
+                    )
+                    st.success("✅ HTML generado correctamente")
+                    
+                    # Opción para previsualizar
+                    with st.expander("Previsualizar HTML"):
+                        # Sanitizar de manera segura para la previsualización
+                        sanitized_html = html_content.replace('"', '&quot;')
+                        st.markdown(
+                            f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
+                            unsafe_allow_html=True
                         )
-                        st.success("✅ HTML generado correctamente")
-
-                        # Opción para previsualizar
-                        with st.expander("Previsualizar HTML"):
-                            # Sanitizar para evitar problemas con comillas
-                            sanitized_html = html_content.replace(
-                                '"', '&quot;')
-                            st.markdown(
-                                f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
-                                unsafe_allow_html=True
-                            )
-                    else:
-                        st.error(
-                            "El HTML generado está vacío. Inténtalo de nuevo.")
-                except Exception as e:
-                    st.error(f"Error al generar el HTML: {str(e)}")
-                    logger.error(f"Error en generación de HTML: {str(e)}")
-                    logger.error(traceback.format_exc())
+                else:
+                    st.error("No se pudo generar el HTML. Inténtalo de nuevo.")
 
     with export_tab3:
         st.write("Exporta los datos del análisis en formato CSV")
 
+        # SOLUCIÓN: Simplificar la lógica de generación y descarga de CSV
         if st.button("Generar CSV", key="gen_csv"):
             with st.spinner("Generando CSV..."):
-                try:
-                    # Generar el CSV
-                    csv_buffer = generar_csv_analisis(
-                        nombre, nivel, fecha, data
+                csv_buffer = generar_csv_analisis(
+                    nombre, nivel, fecha, data
+                )
+                
+                if csv_buffer:
+                    # Botón de descarga
+                    nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+                    st.download_button(
+                        label="📥 Descargar CSV",
+                        data=csv_buffer,
+                        file_name=nombre_archivo,
+                        mime="text/csv",
+                        key="csv_download_corregir"
                     )
-
-                    # Verificar que tenemos contenido
-                    if csv_buffer and len(csv_buffer.getvalue()) > 0:
-                        # Botón de descarga
-                        nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                        st.download_button(
-                            label="📥 Descargar CSV",
-                            data=csv_buffer,
-                            file_name=nombre_archivo,
-                            mime="text/csv",
-                            key="csv_download_corregir",
-                            help="Haz clic para descargar los datos de análisis en formato CSV"
-                        )
-                        st.success("✅ CSV generado correctamente")
-                    else:
-                        st.error(
-                            "El CSV generado está vacío. Inténtalo de nuevo.")
+                    st.success("✅ CSV generado correctamente")
+                else:
+                    st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
+                            
                 except Exception as e:
                     st.error(f"Error al generar el CSV: {str(e)}")
                     logger.error(f"Error en generación de CSV: {str(e)}")
@@ -4125,54 +4053,54 @@ def visualizar_texto_manuscrito():
     # Opciones de corrección
     options = ui_idioma_correcciones_tipo()
 
-    # Botón para enviar a corrección
-    if st.button("Enviar a corrección", key="corregir_texto_transcrito_btn"):
+    # SOLUCIÓN: Crear un formulario en lugar de un botón simple
+    # Esto evita problemas de estado y reinicios innecesarios
+    with st.form(key="form_correccion_transcripcion"):
+        st.write("Ajusta las opciones y haz clic en 'Corregir texto' para continuar.")
+        
+        # Botón de envío del formulario
+        submit_correccion = st.form_submit_button("Corregir texto", use_container_width=True)
+    
+    # Botón para cancelar y volver
+    if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
+        set_session_var("mostrar_correccion_transcripcion", False)
+        st.rerun()
+        
+    # Procesar la corrección cuando se envía el formulario
+    if submit_correccion:
         if not texto_transcrito_editable.strip():
-            st.warning(
-                "El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
-            return
-
-        # Guardar para futura referencia
-        set_session_var("ultimo_texto", texto_transcrito_editable)
-
-        with st.spinner("Analizando texto transcrito..."):
-            try:
+            st.warning("El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
+        else:
+            # Guardar para futura referencia
+            set_session_var("ultimo_texto", texto_transcrito_editable)
+            
+            with st.spinner("Analizando texto transcrito..."):
                 # Obtener datos necesarios
                 nombre = get_session_var("usuario_actual", "Usuario")
                 nivel = get_session_var("nivel_estudiante", "intermedio")
-
-                # Llamar a la función de corrección
+                
+                # Llamar a la función de corrección directamente
                 resultado = corregir_texto(
                     texto_transcrito_editable, nombre, nivel, options["idioma"],
                     options["tipo_texto"], options["contexto_cultural"],
                     "Texto transcrito de imagen manuscrita"
                 )
-
+                
                 # Guardar resultado
                 set_session_var("correction_result", resultado)
-                set_session_var("last_correction_time",
-                                datetime.now().isoformat())
-
-                # Mostrar resultados
+                set_session_var("last_correction_time", datetime.now().isoformat())
+                
+                # Mostrar resultados sin recargar la página
                 if "error" not in resultado:
+                    # Mostrar los resultados primero
                     ui_show_correction_results(resultado)
-
-                    # IMPORTANTE: Botón para volver después de la corrección
+                    
+                    # Añadir el botón para volver después
                     if st.button("Volver a transcripción", key="volver_despues_correccion"):
-                        set_session_var(
-                            "mostrar_correccion_transcripcion", False)
+                        set_session_var("mostrar_correccion_transcripcion", False)
                         st.rerun()
                 else:
                     st.error(f"Error en la corrección: {resultado['error']}")
-            except Exception as e:
-                st.error(f"Error durante la corrección: {str(e)}")
-                logger.error(f"Error en visualizar_texto_manuscrito: {str(e)}")
-                logger.error(traceback.format_exc())
-
-    # IMPORTANTE: Botón para cancelar y volver
-    if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
-        set_session_var("mostrar_correccion_transcripcion", False)
-        st.rerun()
 
 
 # --- 4. IMPLEMENTACIÓN DE SUBPESTAÑAS DE EXÁMENES ---
@@ -4871,7 +4799,7 @@ def herramienta_descripcion_imagenes():
 
 def herramienta_texto_manuscrito():
     """
-    Implementación corregida de la herramienta de transcripción de textos manuscritos.
+    Implementación optimizada de la herramienta de transcripción de textos manuscritos.
     Soluciona problemas de flujo entre transcripción y corrección.
     """
     st.subheader("✍️ Transcripción de textos manuscritos")
@@ -4880,8 +4808,10 @@ def herramienta_texto_manuscrito():
     automáticamente y luego enviarlos a corrección.
     """)
 
-    # IMPORTANTE: Verificar si estamos en modo de corrección de transcripción
-    if get_session_var("mostrar_correccion_transcripcion", False):
+    # SOLUCIÓN: Verificar si estamos en modo de corrección de transcripción y usar un estado más robusto
+    mostrar_correccion = get_session_var("mostrar_correccion_transcripcion", False)
+    if mostrar_correccion:
+        # Redireccionamos al componente de visualización
         visualizar_texto_manuscrito()
         return
 
@@ -4915,8 +4845,12 @@ def herramienta_texto_manuscrito():
             st.error(f"Error al procesar la imagen: {str(e)}")
             return
 
-        # Botón para transcribir
-        if st.button("Transcribir texto", key="transcribir_manuscrito"):
+        # SOLUCIÓN: Usar un formulario para la transcripción para evitar problemas de estado
+        with st.form(key="form_transcribir_manuscrito"):
+            st.write("Haz clic en el botón para transcribir el texto de la imagen.")
+            submit_transcribir = st.form_submit_button("Transcribir texto", use_container_width=True)
+        
+        if submit_transcribir:
             with st.spinner("Transcribiendo texto manuscrito..."):
                 try:
                     # Leer bytes de la imagen
@@ -4938,21 +4872,23 @@ def herramienta_texto_manuscrito():
                             st.write(texto_transcrito)
 
                             # Guardar en session_state de forma segura
-                            set_session_var(
-                                "ultimo_texto_transcrito", texto_transcrito)
-
-                        # CORRECCIÓN CLAVE: En lugar de redireccionar, usar una bandera
-                        if st.button("Corregir texto transcrito", key="corregir_texto_transcrito"):
-                            set_session_var(
-                                "mostrar_correccion_transcripcion", True)
-                            st.rerun()  # Forzar actualización de la interfaz
+                            set_session_var("ultimo_texto_transcrito", texto_transcrito)
+                        
+                        # SOLUCIÓN: Crear un botón que active directamente la vista de corrección
+                        if st.button("Corregir texto transcrito", key="btn_corregir_texto_transcrito"):
+                            # Activar la bandera que mostrará la vista de corrección
+                            set_session_var("mostrar_correccion_transcripcion", True)
+                            # Asegurar que estamos en la pestaña correcta para la próxima vez
+                            st.session_state.active_tab_index = 4  # Índice de Herramientas complementarias
+                            st.session_state.active_tools_tab_index = 3  # Índice de Texto manuscrito
+                            # Recargar la página
+                            st.rerun()
                     else:
-                        st.error(
-                            texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+                        st.error(texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+                        
                 except Exception as e:
                     st.error(f"Error durante la transcripción: {str(e)}")
-                    logger.error(
-                        f"Error en herramienta_texto_manuscrito: {str(e)}")
+                    logger.error(f"Error en herramienta_texto_manuscrito: {str(e)}")
                     logger.error(traceback.format_exc())
                     """
 TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
