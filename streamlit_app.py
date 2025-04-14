@@ -1,15 +1,15 @@
-"""
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 1: Importaciones y Configuración Base
-==================================================================================
+#
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 1: Importaciones y Configuración Base
+# ==================================================================================
 
-Este artefacto contiene:
-1. Todas las importaciones de bibliotecas necesarias
-2. Configuración base de la aplicación Streamlit
-3. Configuración de logging
-4. Definición de la versión de la aplicación
-"""
+# Este artefacto contiene:
+# 1. Todas las importaciones de bibliotecas necesarias
+# 2. Configuración base de la aplicación Streamlit
+# 3. Configuración de logging
+# 4. Definición de la versión de la aplicación
+
 
 import traceback
 import streamlit as st
@@ -58,17 +58,17 @@ st.cache_data.clear()
 # Versión de la aplicación
 APP_VERSION = "2.1.0"  # Actualizado para la versión reescrita
 
-"""
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 2: Inicialización de Variables y Estados
-==================================================================================
 
-Este artefacto contiene:
-1. Funciones para inicializar variables de session_state
-2. Funciones seguras para acceder y modificar valores del session_state
-3. Inicialización del sidebar
-"""
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 2: Inicialización de Variables y Estados
+# ==================================================================================
+
+# Este artefacto contiene:
+# 1. Funciones para inicializar variables de session_state
+# 2. Funciones seguras para acceder y modificar valores del session_state
+# 3. Inicialización del sidebar
+
 
 # Inicializar variables de session_state si no existen
 
@@ -108,6 +108,8 @@ def init_session_state():
         "descripcion_state": None,
         "tema_imagen_state": None,
         "descripcion_estudiante_state": "",
+        "mostrar_correccion_imagen": False,
+        "mostrar_correccion_transcripcion": False,
         "active_tab_index": 0,
         "active_tools_tab_index": 0,
         "tab_navigate_to": None,
@@ -152,19 +154,19 @@ st.sidebar.info(
     """.format(APP_VERSION, st.session_state.session_id[:8])
 )
 
-"""
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 3: Funciones de Seguridad y Conexión a APIs
-==================================================================================
 
-Este artefacto contiene:
-1. Funciones para manejo seguro de claves API
-2. Implementación del patrón Circuit Breaker para APIs
-3. Conexión segura a Google Sheets
-4. Configuración segura de clientes API (OpenAI)
-5. Funciones de diagnóstico para el estado de conexiones
-"""
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 3: Funciones de Seguridad y Conexión a APIs
+# ==================================================================================
+
+# Este artefacto contiene:
+# 1. Funciones para manejo seguro de claves API
+# 2. Implementación del patrón Circuit Breaker para APIs
+# 3. Conexión segura a Google Sheets
+# 4. Configuración segura de clientes API (OpenAI)
+# 5. Funciones de diagnóstico para el estado de conexiones
+
 
 # --- 1. CONFIGURACIÓN DE CLAVES SEGURAS ---
 
@@ -502,18 +504,17 @@ def diagnosticar_aplicacion():
     return problemas
 
 
-"""
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 4: Funciones Core de Procesamiento
-==================================================================================
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 4: Funciones Core de Procesamiento
+# ==================================================================================
 
-Este artefacto contiene:
-1. Funciones para procesamiento de respuestas API (OpenAI, ElevenLabs)
-2. Funciones para procesamiento de JSON
-3. Integración core con APIs externas
-4. Funciones de procesamiento para corrección y análisis de texto
-"""
+# Este artefacto contiene:
+# 1. Funciones para procesamiento de respuestas API (OpenAI, ElevenLabs)
+# 2. Funciones para procesamiento de JSON
+# 3. Integración core con APIs externas
+# 4. Funciones de procesamiento para corrección y análisis de texto
+
 
 # --- 1. FUNCIONES DE API DE OPENAI ---
 
@@ -1079,18 +1080,18 @@ def obtener_historial_estudiante(nombre):
         logger.error(f"Error en obtener_historial_estudiante: {str(e)}")
         return None
 
-    """
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 5 - Parte 1: Funciones Utilitarias - Generación de consignas y criterios
-==================================================================================
 
-Este artefacto contiene:
-1. Funciones para generar consignas de escritura
-2. Funciones para obtener criterios de evaluación
-3. Funciones para obtener duración de examen
-4. Función para extraer título de texto
-"""
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 5 - Parte 1: Funciones Utilitarias - Generación de consignas y criterios
+# ==================================================================================
+
+# Este artefacto contiene:
+# 1. Funciones para generar consignas de escritura
+# 2. Funciones para obtener criterios de evaluación
+# 3. Funciones para obtener duración de examen
+# 4. Función para extraer título de texto
+
 
 # --- 1. FUNCIONES DE GENERACIÓN DE CONSIGNAS ---
 
@@ -1402,15 +1403,13 @@ def extraer_titulo(texto):
     return "Contenido sin título"
 
 
-"""
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 5 - Parte 2: Funciones Utilitarias - Análisis de complejidad textual
-==================================================================================
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 5 - Parte 2: Funciones Utilitarias - Análisis de complejidad textual
+# ==================================================================================
 
-Este artefacto contiene:
-1. Funciones para análisis de complejidad textual
-"""
+# Este artefacto contiene:
+# 1. Funciones para análisis de complejidad textual
 
 
 def analizar_complejidad_texto(texto):
@@ -3287,7 +3286,7 @@ def obtener_recursos_recomendados(errores_obj, analisis_contextual, nivel):
 def ui_export_options(data):
     """
     Muestra opciones para exportar los resultados de la corrección.
-    Versión corregida que evita errores de botones en formularios.
+    Versión optimizada que evita usar botones dentro de formularios.
 
     Args:
         data: Resultados de la corrección
@@ -3314,110 +3313,92 @@ def ui_export_options(data):
         ["📝 Documento Word", "🌐 Documento HTML", "📊 Excel/CSV"]
     )
 
-    # SOLUCIÓN: Asegurarnos de que los botones estén en el nivel superior de cada pestaña
     with export_tab1:
         st.write("Exporta este informe como documento Word (DOCX)")
-        
-        # Botón fuera de cualquier otro contenedor
-        gen_docx = st.button("Generar documento Word", key="gen_docx", use_container_width=True)
-        
-        if gen_docx:
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
+        if st.button("Generar documento Word", key="gen_docx"):
             with st.spinner("Generando documento Word..."):
-                try:
-                    docx_buffer = generar_informe_docx(
-                        nombre, nivel, fecha, texto_original, texto_corregido,
-                        errores_obj, analisis_contextual, consejo_final
+                docx_buffer = generar_informe_docx(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    errores_obj, analisis_contextual, consejo_final
+                )
+
+                if docx_buffer:
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
+                    st.download_button(
+                        label="📥 Descargar documento Word",
+                        data=docx_buffer,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="docx_download_corregir"
                     )
-                    
-                    if docx_buffer:
-                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.docx"
-                        st.download_button(
-                            label="📥 Descargar documento Word",
-                            data=docx_buffer,
-                            file_name=nombre_archivo,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key="docx_download_corregir"
-                        )
-                        st.success("✅ Documento generado correctamente")
-                    else:
-                        st.error("No se pudo generar el documento Word. Inténtalo de nuevo.")
-                except Exception as e:
-                    st.error(f"Error al generar el documento Word: {str(e)}")
-                    logger.error(f"Error en generar_informe_docx: {str(e)}")
-                    logger.error(traceback.format_exc())
+                    st.success("✅ Documento generado correctamente")
+                else:
+                    st.error(
+                        "No se pudo generar el documento Word. Inténtalo de nuevo.")
 
     with export_tab2:
         st.write("Exporta este informe como página web (HTML)")
-        
-        # Botón fuera de cualquier otro contenedor
-        gen_html = st.button("Generar documento HTML", key="gen_html", use_container_width=True)
-        
-        if gen_html:
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
+        if st.button("Generar documento HTML", key="gen_html"):
             with st.spinner("Generando HTML..."):
-                try:
-                    html_content = generar_informe_html(
-                        nombre, nivel, fecha, texto_original, texto_corregido,
-                        analisis_contextual, consejo_final
+                html_content = generar_informe_html(
+                    nombre, nivel, fecha, texto_original, texto_corregido,
+                    analisis_contextual, consejo_final
+                )
+
+                if html_content:
+                    # Convertir a bytes para descargar
+                    html_bytes = html_content.encode()
+
+                    # Botón de descarga
+                    nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
+                    st.download_button(
+                        label="📥 Descargar página HTML",
+                        data=html_bytes,
+                        file_name=nombre_archivo,
+                        mime="text/html",
+                        key="html_download_corregir"
                     )
-                    
-                    if html_content:
-                        # Convertir a bytes para descargar
-                        html_bytes = html_content.encode()
-                        
-                        # Botón de descarga
-                        nombre_archivo = f"informe_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.html"
-                        st.download_button(
-                            label="📥 Descargar página HTML",
-                            data=html_bytes,
-                            file_name=nombre_archivo,
-                            mime="text/html",
-                            key="html_download_corregir"
+                    st.success("✅ HTML generado correctamente")
+
+                    # Opción para previsualizar
+                    with st.expander("Previsualizar HTML"):
+                        # Sanitizar de manera segura para la previsualización
+                        sanitized_html = html_content.replace('"', '&quot;')
+                        st.markdown(
+                            f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
+                            unsafe_allow_html=True
                         )
-                        st.success("✅ HTML generado correctamente")
-                        
-                        # Opción para previsualizar
-                        with st.expander("Previsualizar HTML"):
-                            # Sanitizar de manera segura para la previsualización
-                            sanitized_html = html_content.replace('"', '&quot;')
-                            st.markdown(
-                                f'<iframe srcdoc="{sanitized_html}" width="100%" height="600" style="border: 1px solid #ddd; border-radius: 5px;"></iframe>',
-                                unsafe_allow_html=True
-                            )
-                    else:
-                        st.error("No se pudo generar el HTML. Inténtalo de nuevo.")
-                except Exception as e:
-                    st.error(f"Error al generar el documento HTML: {str(e)}")
-                    logger.error(f"Error en generar_informe_html: {str(e)}")
+                else:
+                    st.error("No se pudo generar el HTML. Inténtalo de nuevo.")
 
     with export_tab3:
         st.write("Exporta los datos del análisis en formato CSV")
-        
-        # Botón fuera de cualquier otro contenedor
-        gen_csv = st.button("Generar CSV", key="gen_csv", use_container_width=True)
-        
-        if gen_csv:
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
+        if st.button("Generar CSV", key="gen_csv"):
             with st.spinner("Generando CSV..."):
-                try:
-                    csv_buffer = generar_csv_analisis(
-                        nombre, nivel, fecha, data
+                csv_buffer = generar_csv_analisis(
+                    nombre, nivel, fecha, data
+                )
+
+                if csv_buffer:
+                    # Botón de descarga
+                    nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
+                    st.download_button(
+                        label="📥 Descargar CSV",
+                        data=csv_buffer,
+                        file_name=nombre_archivo,
+                        mime="text/csv",
+                        key="csv_download_corregir"
                     )
-                    
-                    if csv_buffer:
-                        # Botón de descarga
-                        nombre_archivo = f"datos_{nombre.replace(' ', '_')}_{fecha.replace(':', '_').replace(' ', '_')}.csv"
-                        st.download_button(
-                            label="📥 Descargar CSV",
-                            data=csv_buffer,
-                            file_name=nombre_archivo,
-                            mime="text/csv",
-                            key="csv_download_corregir"
-                        )
-                        st.success("✅ CSV generado correctamente")
-                    else:
-                        st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
-                except Exception as e:
-                    st.error(f"Error al generar el CSV: {str(e)}")
-                    logger.error(f"Error en generar_csv_analisis: {str(e)}")
+                    st.success("✅ CSV generado correctamente")
+                else:
+                    st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
+
                     """
 TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
 ==================================================================================
@@ -3425,8 +3406,109 @@ Artefacto 9: Transcripción de Texto Manuscrito
 ==================================================================================
 
 Este artefacto contiene las funciones corregidas para la transcripción de texto manuscrito:
+1. Visualización de texto manuscrito
 2. Herramienta de texto manuscrito
 """
+
+# --- 1. VISUALIZACIÓN DE TEXTO MANUSCRITO (FUNCIÓN CORREGIDA) ---
+
+
+def visualizar_texto_manuscrito():
+    """
+    Función corregida para visualizar y corregir texto transcrito de imágenes.
+    Soluciona problemas de flujo entre transcripción y corrección.
+    """
+    st.subheader("Corrección de texto manuscrito transcrito")
+
+    # Verificar si hay texto transcrito para corregir
+    texto_transcrito = get_session_var("ultimo_texto_transcrito", "")
+    if not texto_transcrito:
+        st.info("No hay texto transcrito para corregir.")
+        # Botón para volver a la herramienta de transcripción
+        if st.button("Volver a transcripción", key="volver_transcripcion"):
+            set_session_var("mostrar_correccion_transcripcion", False)
+            st.rerun()
+        return
+
+    # Mostrar texto transcrito
+    texto_transcrito_editable = st.text_area(
+        "Texto transcrito (puedes editarlo si hay errores):",
+        value=texto_transcrito,
+        height=200,
+        key="texto_transcrito_editable"
+    )
+
+    # Opciones de corrección
+    options = ui_idioma_correcciones_tipo()
+
+    # SOLUCIÓN: Crear un formulario en lugar de un botón simple
+    # Esto evita problemas de estado y reinicios innecesarios
+    with st.form(key="form_correccion_transcripcion"):
+        st.write("Ajusta las opciones y haz clic en 'Corregir texto' para continuar.")
+
+        # Botón de envío del formulario
+        submit_correccion = st.form_submit_button(
+            "Corregir texto", use_container_width=True)
+
+    # Botones fuera del formulario
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Botón para cancelar y volver
+        if st.button("Cancelar y volver", key="cancelar_correccion_transcripcion"):
+            set_session_var("mostrar_correccion_transcripcion", False)
+            st.rerun()
+
+    with col2:
+        # Botón para enviar a la pestaña principal de corrección
+        if st.button("Enviar a pestaña principal", key="enviar_a_principal"):
+            # Guardar el texto para usarlo en la pestaña principal
+            set_session_var("texto_correccion_corregir",
+                            texto_transcrito_editable)
+            set_session_var("mostrar_correccion_transcripcion", False)
+            # Navegar a la pestaña de corrección
+            st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
+            # Recargar la página
+            st.rerun()
+
+    # Procesar la corrección cuando se envía el formulario
+    if submit_correccion:
+        if not texto_transcrito_editable.strip():
+            st.warning(
+                "El texto está vacío. Por favor, asegúrate de que hay contenido para corregir.")
+        else:
+            # Guardar para futura referencia
+            set_session_var("ultimo_texto", texto_transcrito_editable)
+
+            with st.spinner("Analizando texto transcrito..."):
+                # Obtener datos necesarios
+                nombre = get_session_var("usuario_actual", "Usuario")
+                nivel = get_session_var("nivel_estudiante", "intermedio")
+
+                # Llamar a la función de corrección directamente
+                resultado = corregir_texto(
+                    texto_transcrito_editable, nombre, nivel, options["idioma"],
+                    options["tipo_texto"], options["contexto_cultural"],
+                    "Texto transcrito de imagen manuscrita"
+                )
+
+                # Guardar resultado
+                set_session_var("correction_result", resultado)
+                set_session_var("last_correction_time",
+                                datetime.now().isoformat())
+
+                # Mostrar resultados sin recargar la página
+                if "error" not in resultado:
+                    # Mostrar los resultados primero
+                    ui_show_correction_results(resultado)
+
+                    # Añadir el botón para volver después
+                    if st.button("Volver a transcripción", key="volver_despues_correccion"):
+                        set_session_var(
+                            "mostrar_correccion_transcripcion", False)
+                        st.rerun()
+                else:
+                    st.error(f"Error en la corrección: {resultado['error']}")
 
 # --- 2. HERRAMIENTA DE TEXTO MANUSCRITO (FUNCIÓN CORREGIDA) ---
 
@@ -3434,12 +3516,21 @@ Este artefacto contiene las funciones corregidas para la transcripción de texto
 def herramienta_texto_manuscrito():
     """
     Implementación optimizada de la herramienta de transcripción de textos manuscritos.
+    Soluciona problemas de flujo entre transcripción y corrección.
     """
     st.subheader("✍️ Transcripción de textos manuscritos")
     st.markdown("""
     Esta herramienta te permite subir imágenes de textos manuscritos para transcribirlos
-    automáticamente.
+    automáticamente y luego enviarlos a corrección.
     """)
+
+    # SOLUCIÓN: Verificar si estamos en modo de corrección de transcripción y usar un estado más robusto
+    mostrar_correccion = get_session_var(
+        "mostrar_correccion_transcripcion", False)
+    if mostrar_correccion:
+        # Redireccionamos al componente de visualización
+        visualizar_texto_manuscrito()
+        return
 
     # Selección de idioma para la transcripción
     idioma_manuscrito = st.selectbox(
@@ -3466,16 +3557,18 @@ def herramienta_texto_manuscrito():
         # Mostrar la imagen subida
         try:
             imagen = Image.open(imagen_manuscrito)
+            # CORREGIDO: Reemplazo de use_column_width por use_container_width
             st.image(imagen, caption="Imagen subida", use_container_width=True)
         except Exception as e:
             st.error(f"Error al procesar la imagen: {str(e)}")
             return
 
-        # Usar un formulario para la transcripción
+        # SOLUCIÓN: Usar un formulario para la transcripción para evitar problemas de estado
         with st.form(key="form_transcribir_manuscrito"):
             st.write("Haz clic en el botón para transcribir el texto de la imagen.")
-            submit_transcribir = st.form_submit_button("Transcribir texto", use_container_width=True)
-        
+            submit_transcribir = st.form_submit_button(
+                "Transcribir texto", use_container_width=True)
+
         if submit_transcribir:
             with st.spinner("Transcribiendo texto manuscrito..."):
                 try:
@@ -3494,43 +3587,44 @@ def herramienta_texto_manuscrito():
                         # Mostrar el texto transcrito
                         st.success("✅ Texto transcrito correctamente")
 
-                        # Guardar en session_state de forma segura
-                        set_session_var("ultimo_texto_transcrito", texto_transcrito)
-                        
-                        # SOLUCIÓN CORREGIDA: Mostrar texto y opciones
-                        st.text_area(
-                            "Texto transcrito (selecciona todo el texto y usa CTRL+C para copiarlo):",
-                            value=texto_transcrito,
-                            height=200,
-                            key="texto_transcrito_mostrado"
-                        )
-                        
-                        # Mostrar instrucciones claras al usuario
-                        st.info("""
-                        ### 📋 Instrucciones para corregir el texto transcrito:
-                        
-                        1. **Selecciona** el texto transcrito en el cuadro de arriba y cópialo (CTRL+C o CMD+C)
-                        2. **Ve a la pestaña "Corregir texto"** en el menú principal
-                        3. **Pega** el texto en el área de texto
-                        4. Ajusta las opciones de corrección según necesites
-                        5. Haz clic en "Corregir" para obtener un análisis detallado
-                        """)
-                        
-                        # Botón para ir directamente a la pestaña de corrección
-                        if st.button("Ir a la pestaña de corrección", key="go_to_correction_tab"):
-                            # Guardar el texto transcrito para usarlo en la pestaña principal
-                            set_session_var("texto_correccion_corregir", texto_transcrito)
-                            # Navegar a la pestaña de corrección
-                            st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
-                            # Recargar la página
-                            st.rerun()
-                                
+                        with st.expander("Texto transcrito", expanded=True):
+                            st.write(texto_transcrito)
+
+                            # Guardar en session_state de forma segura
+                            set_session_var(
+                                "ultimo_texto_transcrito", texto_transcrito)
+
+                        # SOLUCIÓN: Añadir opciones para usar el texto transcrito
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            # Opción 1: Corregir directamente
+                            if st.button("Corregir texto transcrito", key="btn_corregir_texto_transcrito"):
+                                # Activar la bandera que mostrará la vista de corrección
+                                set_session_var(
+                                    "mostrar_correccion_transcripcion", True)
+                                # Asegurar que estamos en la pestaña correcta para la próxima vez
+                                st.session_state.active_tab_index = 4  # Índice de Herramientas complementarias
+                                st.session_state.active_tools_tab_index = 3  # Índice de Texto manuscrito
+                                # Recargar la página
+                                st.rerun()
+                        with col2:
+                            # SOLUCIÓN NUEVA: Copiar a la pestaña principal de corrección
+                            if st.button("Enviar a pestaña de corrección", key="btn_enviar_a_correccion"):
+                                # Guardar el texto transcrito para usarlo en la pestaña principal
+                                set_session_var(
+                                    "texto_correccion_corregir", texto_transcrito)
+                                # Navegar a la pestaña de corrección
+                                st.session_state.tab_navigate_to = 0  # Índice de la pestaña "Corregir texto"
+                                # Recargar la página
+                                st.rerun()
                     else:
-                        st.error(texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
-                        
+                        st.error(
+                            texto_transcrito or "No se pudo transcribir el texto. Por favor, verifica que la imagen sea clara y contiene texto manuscrito legible.")
+
                 except Exception as e:
                     st.error(f"Error durante la transcripción: {str(e)}")
-                    logger.error(f"Error en herramienta_texto_manuscrito: {str(e)}")
+                    logger.error(
+                        f"Error en herramienta_texto_manuscrito: {str(e)}")
                     logger.error(traceback.format_exc())
 
                     """
@@ -3689,7 +3783,6 @@ basado en el historial del estudiante.
 def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
     """
     Genera un plan de estudio personalizado basado en el historial del estudiante.
-    Versión corregida con manejo robusto de columnas.
 
     Args:
         nombre: Nombre del estudiante
@@ -3710,138 +3803,97 @@ def generar_plan_estudio_personalizado(nombre, nivel, datos_historial):
         return {"error": "No hay suficientes datos para generar un plan personalizado", "plan": None}
 
     try:
-        # SOLUCIÓN: Crear un resumen del historial basado en lo que esté disponible
-        # en lugar de depender de columnas específicas
-        
-        # Verificar qué columnas están disponibles
-        columnas_disponibles = datos_historial.columns
-        logger.info(f"Columnas disponibles para generar plan: {list(columnas_disponibles)}")
-        
-        # Crear un resumen simplificado basado en lo que tenemos
-        resumen = {}
-        
-        # Extraer estadísticas básicas si es posible
-        resumen["num_entradas"] = len(datos_historial)
-        
-        # Buscar columnas relacionadas con errores
-        errores_cols = [col for col in columnas_disponibles 
-                       if any(error_term in col.lower() for error_term in 
-                             ['error', 'fallo', 'mistake', 'incorrec'])]
-                             
-        # Buscar columnas relacionadas con puntuaciones
-        puntuacion_cols = [col for col in columnas_disponibles 
-                          if any(punt_term in col.lower() for punt_term in 
-                                ['puntuación', 'puntuacion', 'score', 'rating'])]
-        
-        # Extraer nivel del último registro si está disponible
-        nivel_actual = nivel
-        if 'Nivel' in columnas_disponibles:
-            nivel_actual = datos_historial.iloc[-1]['Nivel']
-        
-        # Construir contexto para la IA incluso con datos limitados
-        if errores_cols:
-            # Calcular promedio de errores si hay columnas disponibles
-            promedios_errores = []
-            for col in errores_cols:
-                try:
-                    # Convertir a numérico de manera segura
-                    datos_historial[col] = pd.to_numeric(datos_historial[col], errors='coerce')
-                    promedio = datos_historial[col].mean()
-                    if not pd.isna(promedio):
-                        promedios_errores.append(f"{col}: {promedio:.1f}")
-                except:
-                    pass
-            
-            if promedios_errores:
-                resumen["errores"] = ", ".join(promedios_errores)
+        # Extraer estadísticas básicas
+        if 'Errores Gramática' in datos_historial.columns and 'Errores Léxico' in datos_historial.columns:
+            # Calcular promedios
+            promedio_gramatica = datos_historial['Errores Gramática'].mean()
+            promedio_lexico = datos_historial['Errores Léxico'].mean()
+
+            # Verificar columnas de análisis contextual
+            coherencia_promedio = datos_historial['Puntuación Coherencia'].mean(
+            ) if 'Puntuación Coherencia' in datos_historial.columns else 5
+            cohesion_promedio = datos_historial['Puntuación Cohesión'].mean(
+            ) if 'Puntuación Cohesión' in datos_historial.columns else 5
+
+            # Extraer nivel del último registro
+            if 'Nivel' in datos_historial.columns:
+                nivel_actual = datos_historial.iloc[-1]['Nivel']
             else:
-                resumen["errores"] = "Información no disponible"
-        else:
-            resumen["errores"] = "No hay datos detallados de errores"
-        
-        # Extraer puntuaciones si están disponibles
-        if puntuacion_cols:
-            puntuaciones = []
-            for col in puntuacion_cols:
-                try:
-                    # Convertir a numérico de manera segura
-                    datos_historial[col] = pd.to_numeric(datos_historial[col], errors='coerce')
-                    puntuacion = datos_historial[col].mean()
-                    if not pd.isna(puntuacion):
-                        puntuaciones.append(f"{col}: {puntuacion:.1f}/10")
-                except:
-                    pass
-            
-            if puntuaciones:
-                resumen["puntuaciones"] = ", ".join(puntuaciones)
-            else:
-                resumen["puntuaciones"] = "Información no disponible"
-        else:
-            resumen["puntuaciones"] = "No hay datos de puntuaciones"
-        
-        # Extraer temas recurrentes
-        temas_recurrentes = ["conjugación verbal", "uso de preposiciones", "concordancia"]
-        resumen["temas"] = ", ".join(temas_recurrentes)
-        
-        # Convertir el resumen a texto para el prompt
-        resumen_texto = "\n".join([f"- {k}: {v}" for k, v in resumen.items()])
-        
-        # Prompt para la IA con información disponible
-        prompt_plan = f"""
-        Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual}.
-        
-        La información disponible sobre el historial del estudiante es limitada, pero este es el resumen:
-        {resumen_texto}
-        
-        Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
-        Para cada semana, incluye:
+                nivel_actual = nivel
 
-        1. Objetivos específicos
-        2. Temas gramaticales a trabajar
-        3. Vocabulario a practicar
-        4. 1-2 actividades concretas
-        5. Recursos o materiales recomendados
+            # Verificar consejos finales para extraer temas recurrentes
+            temas_recurrentes = []
+            if 'Consejo Final' in datos_historial.columns:
+                # Aquí podríamos implementar un análisis más sofisticado de los consejos
+                temas_recurrentes = ["conjugación verbal",
+                                     "uso de preposiciones", "concordancia"]
 
-        Adapta todo el contenido al nivel del estudiante.
-        """
-
-        def send_request():
-            return client.chat.completions.create(
-                model="gpt-4-turbo",
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
-                    {"role": "user", "content": prompt_plan}
-                ]
+            # Construir contexto para la IA
+            errores_frecuentes = (
+                f"Promedio de errores gramaticales: {promedio_gramatica:.1f}, "
+                f"Promedio de errores léxicos: {promedio_lexico:.1f}. "
+                f"Puntuación en coherencia: {coherencia_promedio:.1f}/10, "
+                f"Puntuación en cohesión: {cohesion_promedio:.1f}/10. "
+                f"Temas recurrentes: {', '.join(temas_recurrentes)}."
             )
 
-        # Usar sistema de reintentos
-        response = retry_with_backoff(send_request, max_retries=2)
-        plan_estudio = response.choices[0].message.content
+            # Prompt para la IA
+            prompt_plan = f"""
+            Crea un plan de estudio personalizado para un estudiante de español llamado {nombre} de nivel {nivel_actual}
+            con los siguientes errores frecuentes: {errores_frecuentes}
 
-        # Registrar éxito
-        circuit_breaker.record_success("openai")
+            Organiza el plan por semanas (4 semanas) con objetivos claros, actividades concretas y recursos recomendados.
+            Para cada semana, incluye:
 
-        # Dividir el plan por semanas
-        semanas = plan_estudio.split("Semana")
+            1. Objetivos específicos
+            2. Temas gramaticales a trabajar
+            3. Vocabulario a practicar
+            4. 1-2 actividades concretas
+            5. Recursos o materiales recomendados
 
-        # Procesar el resultado
-        plan_procesado = {
-            "completo": plan_estudio,
-            "semanas": []
-        }
+            Adapta todo el contenido al nivel del estudiante y sus necesidades específicas.
+            """
 
-        # Ignorar el elemento vacío al inicio
-        for i, semana in enumerate(semanas[1:], 1):
-            titulo_semana = extraer_titulo(semana)
-            contenido_semana = semana.strip()
-            plan_procesado["semanas"].append({
-                "numero": i,
-                "titulo": titulo_semana,
-                "contenido": contenido_semana
-            })
+            def send_request():
+                return client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": "Eres un experto en diseño curricular ELE que crea planes de estudio personalizados."},
+                        {"role": "user", "content": prompt_plan}
+                    ]
+                )
 
-        return {"error": None, "plan": plan_procesado}
+            # Usar sistema de reintentos
+            response = retry_with_backoff(send_request, max_retries=2)
+            plan_estudio = response.choices[0].message.content
+
+            # Registrar éxito
+            circuit_breaker.record_success("openai")
+
+            # Dividir el plan por semanas
+            semanas = plan_estudio.split("Semana")
+
+            # Procesar el resultado
+            plan_procesado = {
+                "completo": plan_estudio,
+                "semanas": []
+            }
+
+            # Ignorar el elemento vacío al inicio
+            for i, semana in enumerate(semanas[1:], 1):
+                titulo_semana = extraer_titulo(semana)
+                contenido_semana = semana.strip()
+                plan_procesado["semanas"].append({
+                    "numero": i,
+                    "titulo": titulo_semana,
+                    "contenido": contenido_semana
+                })
+
+            return {"error": None, "plan": plan_procesado}
+
+        else:
+            return {"error": "No se encontraron columnas necesarias en los datos", "plan": None}
 
     except Exception as e:
         handle_exception("generar_plan_estudio_personalizado", e)
@@ -4199,7 +4251,7 @@ def tab_corregir():
 
 
 def tab_progreso():
-    """Implementación mejorada de la pestaña de progreso con manejo adecuado de tipos de datos."""
+    """Implementación de la pestaña de progreso con manejo seguro de columnas."""
     st.header("📊 Tu progreso")
 
     # Obtener datos del usuario
@@ -4223,181 +4275,160 @@ def tab_progreso():
                 "No hay datos de progreso disponibles. Realiza algunas correcciones primero.")
             return
 
-        # SOLUCIÓN MEJORADA: Verificación exhaustiva de columnas y manejo robusto de tipos
-        try:
-            # Mostrar información del historial de forma segura
-            ultima_entrada = historial.iloc[-1]
-            num_correcciones = len(historial)
-            
-            # Buscar la columna de fecha de manera más exhaustiva
-            fecha_col = None
-            posibles_columnas_fecha = ['Fecha', 'fecha', 'FECHA', 'Date', 'date']
-            
-            # Intenta encontrar una columna exacta primero
-            for col_name in posibles_columnas_fecha:
-                if col_name in historial.columns:
-                    fecha_col = col_name
-                    break
-            
-            # Si no encuentra, busca de manera menos estricta
-            if fecha_col is None:
-                for col in historial.columns:
-                    if any(fecha_str in col.lower() for fecha_str in ['fecha', 'date', 'time']):
-                        fecha_col = col
-                        break
-            
-            # Si aún no encontramos, usamos la primera columna como fallback
-            if fecha_col is None and len(historial.columns) > 0:
-                fecha_col = historial.columns[0]
-                logger.warning(f"No se encontró columna de fecha. Usando {fecha_col} como sustituto")
-            
-            # Obtener valores de fecha de forma segura
-            if fecha_col is not None:
-                # Intentar convertir a datetime si es necesario
-                try:
-                    historial[fecha_col] = pd.to_datetime(historial[fecha_col], errors='coerce')
-                except:
-                    pass  # Si falla, seguimos con la columna tal cual
-                
-                # CORRECCIÓN: Convertir los valores Timestamp a string para evitar errores en st.metric
-                if len(historial) > 0:
-                    fecha_primera_raw = historial.iloc[0][fecha_col]
-                    fecha_ultima_raw = ultima_entrada[fecha_col]
-                    
-                    # Convertir a string si son objetos Timestamp
-                    if hasattr(fecha_primera_raw, 'strftime'):
-                        fecha_primera = fecha_primera_raw.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        fecha_primera = str(fecha_primera_raw)
-                        
-                    if hasattr(fecha_ultima_raw, 'strftime'):
-                        fecha_ultima = fecha_ultima_raw.strftime('%Y-%m-%d %H:%M')
-                    else:
-                        fecha_ultima = str(fecha_ultima_raw)
-                else:
-                    fecha_primera = "No disponible"
-                    fecha_ultima = "No disponible"
-            else:
-                fecha_primera = "No disponible"
-                fecha_ultima = "No disponible"
-            
-            # Mostrar stats básicos
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Correcciones realizadas", num_correcciones)
-            with col2:
-                st.metric("Primera corrección", fecha_primera)
-            with col3:
-                st.metric("Última corrección", fecha_ultima)
-            with col4:
-                nivel_actual = get_session_var("nivel_estudiante", "intermedio")
-                nivel_map = {
-                    "principiante": "A1-A2",
-                    "intermedio": "B1-B2",
-                    "avanzado": "C1-C2"
-                }
-                st.metric("Nivel actual", nivel_map.get(nivel_actual, nivel_actual))
+        # Calcular resumen (última entrada)
+        ultima_entrada = historial.iloc[-1]
+        num_correcciones = len(historial)
 
-            # Mostrar gráficos de progreso
-            st.subheader("Gráficos de progreso")
+        # SOLUCIÓN: Verificar existencia de columnas antes de acceder
+        fecha_col = None
+        for col in historial.columns:
+            if 'fecha' in col.lower():
+                fecha_col = col
+                break
 
-            # Obtener gráficos
-            graficos = mostrar_progreso(historial)
+        fecha_primera = historial.iloc[0][fecha_col] if fecha_col and len(
+            historial) > 0 else "No disponible"
+        fecha_ultima = ultima_entrada[fecha_col] if fecha_col else "No disponible"
 
-            if graficos["errores_totales"] is not None:
-                # Pestaña para gráficos
-                grafico_tab1, grafico_tab2, grafico_tab3 = st.tabs(
-                    ["Errores totales", "Tipos de errores", "Habilidades"])
+        # Mostrar stats básicos
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Correcciones realizadas", num_correcciones)
+        with col2:
+            st.metric("Primera corrección", fecha_primera)
+        with col3:
+            st.metric("Última corrección", fecha_ultima)
+        with col4:
+            nivel_actual = get_session_var("nivel_estudiante", "intermedio")
+            nivel_map = {
+                "principiante": "A1-A2",
+                "intermedio": "B1-B2",
+                "avanzado": "C1-C2"
+            }
+            st.metric("Nivel actual", nivel_map.get(
+                nivel_actual, nivel_actual))
 
-                with grafico_tab1:
-                    st.altair_chart(graficos["errores_totales"],
+        # Mostrar gráficos de progreso
+        st.subheader("Gráficos de progreso")
+
+        # Obtener gráficos
+        graficos = mostrar_progreso(historial)
+
+        if graficos["errores_totales"] is not None:
+            # Pestaña para gráficos
+            grafico_tab1, grafico_tab2, grafico_tab3 = st.tabs(
+                ["Errores totales", "Tipos de errores", "Habilidades"])
+
+            with grafico_tab1:
+                st.altair_chart(graficos["errores_totales"],
+                                use_container_width=True)
+
+            with grafico_tab2:
+                if graficos["tipos_error"] is not None:
+                    st.altair_chart(graficos["tipos_error"],
                                     use_container_width=True)
+                else:
+                    st.info(
+                        "No hay datos suficientes para mostrar errores por tipo.")
 
-                with grafico_tab2:
-                    if graficos["tipos_error"] is not None:
-                        st.altair_chart(graficos["tipos_error"],
-                                        use_container_width=True)
+            with grafico_tab3:
+                if graficos["radar"] is not None:
+                    st.pyplot(graficos["radar"])
+                else:
+                    st.info(
+                        "No hay datos suficientes para mostrar el gráfico de habilidades contextuales.")
+
+        else:
+            st.warning("No hay suficientes datos para generar gráficos.")
+
+        # Mostrar últimos consejos
+        # SOLUCIÓN: Verificar existencia de columna antes de acceder
+        if "Consejo Final" in historial.columns and fecha_col:
+            st.subheader("Últimos consejos recibidos")
+            try:
+                consejos_recientes = historial.sort_values(
+                    by=fecha_col, ascending=False)["Consejo Final"].head(3)
+                if not consejos_recientes.empty:
+                    for i, consejo in enumerate(consejos_recientes):
+                        # Verificar que no esté vacío
+                        if consejo and str(consejo).strip():
+                            st.info(f"**Consejo {i+1}**: {consejo}")
+            except Exception as e:
+                logger.error(f"Error al mostrar consejos: {str(e)}")
+                st.warning("No se pudieron mostrar los consejos recientes.")
+        else:
+            st.info("No hay consejos disponibles en el historial.")
+
+        # Generar plan de estudio personalizado
+        st.subheader("Plan de estudio personalizado")
+        if st.button("Generar plan de estudio", key="generar_plan"):
+            with st.spinner("Analizando tu historial y generando plan de estudio..."):
+                plan_result = generar_plan_estudio_personalizado(
+                    nombre_estudiante, nivel_actual, historial)
+
+                if "error" in plan_result and plan_result["error"]:
+                    st.error(
+                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
+                else:
+                    plan = plan_result.get("plan", {})
+                    if plan and "semanas" in plan:
+                        st.success(
+                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
+
+                        # Mostrar plan por semanas
+                        for semana in plan["semanas"]:
+                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
+                                st.markdown(semana["contenido"])
                     else:
-                        st.info("No hay datos suficientes para mostrar errores por tipo.")
+                        st.warning(
+                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
 
-                with grafico_tab3:
-                    if graficos["radar"] is not None:
-                        st.pyplot(graficos["radar"])
+        # Mostrar últimos consejos
+        if "Consejo Final" in historial.columns:
+            st.subheader("Últimos consejos recibidos")
+            consejos_recientes = historial.sort_values(
+                by="Fecha", ascending=False)["Consejo Final"].head(3)
+            if not consejos_recientes.empty:
+                for i, consejo in enumerate(consejos_recientes):
+                    # Verificar que no esté vacío
+                    if consejo and str(consejo).strip():
+                        st.info(f"**Consejo {i+1}**: {consejo}")
+
+        # Generar plan de estudio personalizado
+        st.subheader("Plan de estudio personalizado")
+        if st.button("Generar plan de estudio", key="generar_plan"):
+            with st.spinner("Analizando tu historial y generando plan de estudio..."):
+                plan_result = generar_plan_estudio_personalizado(
+                    nombre_estudiante, nivel_actual, historial)
+
+                if "error" in plan_result and plan_result["error"]:
+                    st.error(
+                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
+                else:
+                    plan = plan_result.get("plan", {})
+                    if plan and "semanas" in plan:
+                        st.success(
+                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
+
+                        # Mostrar plan por semanas
+                        for semana in plan["semanas"]:
+                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
+                                st.markdown(semana["contenido"])
                     else:
-                        st.info(
-                            "No hay datos suficientes para mostrar el gráfico de habilidades contextuales.")
-            else:
-                st.warning("No hay suficientes datos para generar gráficos.")
-
-            # Mostrar últimos consejos de manera más robusta
-            consejo_col = None
-            for posible_col in ['Consejo Final', 'Consejo final', 'consejo', 'Consejo']:
-                if posible_col in historial.columns:
-                    consejo_col = posible_col
-                    break
-                    
-            if consejo_col:
-                st.subheader("Últimos consejos recibidos")
-                
-                # Crear una copia para evitar modificar el original
-                try:
-                    # Mostrar consejos sin ordenar para evitar errores
-                    if len(historial) > 0:
-                        consejos_mostrados = 0
-                        # Comenzamos desde el final para mostrar los más recientes primero
-                        for i in range(len(historial)-1, max(-1, len(historial)-4), -1):
-                            consejo = historial.iloc[i][consejo_col]
-                            if isinstance(consejo, (str)) and consejo.strip():
-                                st.info(f"**Consejo {consejos_mostrados+1}**: {consejo}")
-                                consejos_mostrados += 1
-                                if consejos_mostrados >= 3:  # Mostrar máximo 3 consejos
-                                    break
-                except Exception as e:
-                    logger.error(f"Error al mostrar consejos: {str(e)}")
-                    st.info("Hay consejos disponibles, pero no se pueden mostrar correctamente.")
-            else:
-                st.info("No hay consejos disponibles en el historial.")
-
-            # Generar plan de estudio personalizado
-            st.subheader("Plan de estudio personalizado")
-            if st.button("Generar plan de estudio", key="generar_plan"):
-                with st.spinner("Analizando tu historial y generando plan de estudio..."):
-                    plan_result = generar_plan_estudio_personalizado(
-                        nombre_estudiante, nivel_actual, historial)
-
-                    if "error" in plan_result and plan_result["error"]:
-                        st.error(
-                            f"No se pudo generar el plan de estudio: {plan_result['error']}")
-                    else:
-                        plan = plan_result.get("plan", {})
-                        if plan and "semanas" in plan:
-                            st.success(
-                                "¡Plan de estudio generado! Revisa cada semana a continuación:")
-
-                            # Mostrar plan por semanas
-                            for semana in plan["semanas"]:
-                                with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
-                                    st.markdown(semana["contenido"])
-                        else:
-                            st.warning(
-                                "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
-        
-        except Exception as e:
-            st.error(f"Ocurrió un error al mostrar el progreso: {str(e)}")
-            logger.error(f"Error en tab_progreso: {str(e)}")
-            logger.error(traceback.format_exc())
-            st.info("Por favor, continúa realizando correcciones para generar datos de progreso.")
+                        st.warning(
+                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
 
 
 def tab_examen():
-    """Implementación mejorada de la pestaña de preparación para exámenes."""
+    """Implementación de la pestaña de preparación para exámenes."""
     st.header("🎓 Preparación para exámenes")
 
     # Obtener datos del usuario
     user_data = ui_user_info_form(form_key="form_user_info_examen")
 
     if not user_data and "usuario_actual" not in st.session_state:
-        st.info("Por favor, introduce tu información para iniciar la preparación para exámenes.")
+        st.info(
+            "Por favor, introduce tu información para iniciar la preparación para exámenes.")
         return
 
     # Nombre del estudiante actual
@@ -4433,30 +4464,34 @@ def tab_examen():
 
         if inicio_simulacro is None or duracion_simulacro is None or tarea_simulacro is None:
             # No hay simulacro activo, mostrar opciones para iniciar
-            tiempo_personalizado = st.slider(
-                "Tiempo para el simulacro (minutos):", min_value=10, max_value=120, value=45
-            )
-            
-            # SOLUCIÓN: Usar botón normal en lugar de formulario
-            if st.button("Iniciar simulacro", key="inicio_simulacro_btn"):
-                # Generar una tarea de expresión escrita
-                with st.spinner("Generando tarea de examen..."):
-                    # Obtener la duración y la tarea para el nivel y tipo seleccionado
-                    duracion_examen = obtener_duracion_examen(
-                        options["tipo_examen"], options["nivel_examen"])
-                    if tiempo_personalizado:
-                        duracion_examen = tiempo_personalizado * 60  # Convertir minutos a segundos
+            with st.form(key="form_iniciar_simulacro"):
+                st.write(
+                    "Haz clic en el botón para generar una tarea de examen y comenzar el simulacro.")
+                tiempo_personalizado = st.slider(
+                    "Tiempo para el simulacro (minutos):", min_value=10, max_value=120, value=45)
+                submit_iniciar = st.form_submit_button(
+                    "Iniciar simulacro", use_container_width=True)
 
-                    tarea_examen = generar_tarea_examen(
-                        options["tipo_examen"], options["nivel_examen"])
+                if submit_iniciar:
+                    # Generar una tarea de expresión escrita
+                    with st.spinner("Generando tarea de examen..."):
+                        # Obtener la duración y la tarea para el nivel y tipo seleccionado
+                        duracion_examen = obtener_duracion_examen(
+                            options["tipo_examen"], options["nivel_examen"])
+                        if tiempo_personalizado:
+                            duracion_examen = tiempo_personalizado * 60  # Convertir minutos a segundos
 
-                    # Guardar datos del simulacro
-                    set_session_var("inicio_simulacro", time.time())
-                    set_session_var("duracion_simulacro", duracion_examen)
-                    set_session_var("tarea_simulacro", tarea_examen)
+                        tarea_examen = generar_tarea_examen(
+                            options["tipo_examen"], options["nivel_examen"])
 
-                    # Recargar para mostrar el simulacro
-                    st.rerun()
+                        # Guardar datos del simulacro
+                        set_session_var("inicio_simulacro", time.time())
+                        set_session_var("duracion_simulacro", duracion_examen)
+                        set_session_var("tarea_simulacro", tarea_examen)
+
+                        # Recargar para mostrar el simulacro
+                        st.rerun()
+
         else:
             # Hay un simulacro activo, mostrar tarea y temporizador
             st.markdown("### Tarea de expresión escrita")
@@ -4562,6 +4597,7 @@ def tab_examen():
                     options["tipo_examen"], options["nivel_examen"])
                 st.markdown(ejemplos)
 
+
 def tab_herramientas():
     """Implementación de la pestaña de herramientas complementarias."""
     st.header("🧰 Herramientas complementarias")
@@ -4593,7 +4629,7 @@ def tab_herramientas():
     with tools_tabs[2]:
         herramienta_descripcion_imagenes()
 
-    # 4. Herramienta de texto manuscrito - SIMPLIFICADA
+    # 4. Herramienta de texto manuscrito
     with tools_tabs[3]:
         herramienta_texto_manuscrito()
 
@@ -4980,15 +5016,15 @@ def main():
 if __name__ == "__main__":
     main()
 
-    """
-TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-==================================================================================
-Artefacto 13: Implementación Herramientas Complementarias Faltantes
-==================================================================================
 
-Este artefacto complementa la implementación con las funciones de herramientas
-que quedaron pendientes en el artefacto 12.
-"""
+# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+# ==================================================================================
+# Artefacto 13: Implementación Herramientas Complementarias Faltantes
+# ==================================================================================
+
+# Este artefacto complementa la implementación con las funciones de herramientas
+# que quedaron pendientes en el artefacto 12.
+
 
 # Caché mejorado para reducir llamadas a la API
 
