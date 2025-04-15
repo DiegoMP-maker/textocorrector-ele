@@ -3315,8 +3315,8 @@ def ui_export_options(data):
 
     with export_tab1:
         st.write("Exporta este informe como documento Word (DOCX)")
-        
-        # Usar botones directamente (sin form)
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar documento Word", key="gen_docx"):
             with st.spinner("Generando documento Word..."):
                 docx_buffer = generar_informe_docx(
@@ -3340,8 +3340,8 @@ def ui_export_options(data):
 
     with export_tab2:
         st.write("Exporta este informe como página web (HTML)")
-        
-        # Sin usar formularios
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar documento HTML", key="gen_html"):
             with st.spinner("Generando HTML..."):
                 html_content = generar_informe_html(
@@ -3377,8 +3377,8 @@ def ui_export_options(data):
 
     with export_tab3:
         st.write("Exporta los datos del análisis en formato CSV")
-        
-        # Sin usar formularios
+
+        # SOLUCIÓN: Usar st.button directamente (no dentro de un form)
         if st.button("Generar CSV", key="gen_csv"):
             with st.spinner("Generando CSV..."):
                 csv_buffer = generar_csv_analisis(
@@ -3399,16 +3399,16 @@ def ui_export_options(data):
                 else:
                     st.error("No se pudo generar el CSV. Inténtalo de nuevo.")
 
-                    
-# TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
-# ==================================================================================
-# Artefacto 9: Transcripción de Texto Manuscrito
-# ==================================================================================
+                    """
+TEXTOCORRECTOR ELE - APLICACIÓN DE CORRECCIÓN DE TEXTOS EN ESPAÑOL CON ANÁLISIS CONTEXTUAL
+==================================================================================
+Artefacto 9: Transcripción de Texto Manuscrito
+==================================================================================
 
-# Este artefacto contiene las funciones corregidas para la transcripción de texto manuscrito:
-# 1. Visualización de texto manuscrito
-# 2. Herramienta de texto manuscrito
-
+Este artefacto contiene las funciones corregidas para la transcripción de texto manuscrito:
+1. Visualización de texto manuscrito
+2. Herramienta de texto manuscrito
+"""
 
 # --- 1. VISUALIZACIÓN DE TEXTO MANUSCRITO (FUNCIÓN CORREGIDA) ---
 
@@ -4359,6 +4359,41 @@ def tab_progreso():
                 st.warning("No se pudieron mostrar los consejos recientes.")
         else:
             st.info("No hay consejos disponibles en el historial.")
+
+        # Generar plan de estudio personalizado
+        st.subheader("Plan de estudio personalizado")
+        if st.button("Generar plan de estudio", key="generar_plan"):
+            with st.spinner("Analizando tu historial y generando plan de estudio..."):
+                plan_result = generar_plan_estudio_personalizado(
+                    nombre_estudiante, nivel_actual, historial)
+
+                if "error" in plan_result and plan_result["error"]:
+                    st.error(
+                        f"No se pudo generar el plan de estudio: {plan_result['error']}")
+                else:
+                    plan = plan_result.get("plan", {})
+                    if plan and "semanas" in plan:
+                        st.success(
+                            "¡Plan de estudio generado! Revisa cada semana a continuación:")
+
+                        # Mostrar plan por semanas
+                        for semana in plan["semanas"]:
+                            with st.expander(f"Semana {semana['numero']}: {semana['titulo']}"):
+                                st.markdown(semana["contenido"])
+                    else:
+                        st.warning(
+                            "No se pudo generar un plan de estudio detallado. Intenta realizar más correcciones.")
+
+        # Mostrar últimos consejos
+        if "Consejo Final" in historial.columns:
+            st.subheader("Últimos consejos recibidos")
+            consejos_recientes = historial.sort_values(
+                by="Fecha", ascending=False)["Consejo Final"].head(3)
+            if not consejos_recientes.empty:
+                for i, consejo in enumerate(consejos_recientes):
+                    # Verificar que no esté vacío
+                    if consejo and str(consejo).strip():
+                        st.info(f"**Consejo {i+1}**: {consejo}")
 
         # Generar plan de estudio personalizado
         st.subheader("Plan de estudio personalizado")
